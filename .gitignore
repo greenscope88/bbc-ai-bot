@@ -1,0 +1,20 @@
+# Sensitive
+.env
+
+# Logs
+logs/
+debug/
+
+# Backups
+backups/
+*.bak
+
+# Database dumps
+db/
+
+# Cursor
+.cursor/
+
+# OS / temp
+.DS_Store
+Thumbs.db
