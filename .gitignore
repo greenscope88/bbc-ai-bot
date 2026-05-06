@@ -1,20 +1,67 @@
-# Sensitive
-.env
 
-# Logs
+# =========================
+# 🔐 Secrets
+# =========================
+.env
+.env.*
+*.key
+*.pem
+
+# =========================
+# 📦 Logs / Runtime
+# =========================
 logs/
 debug/
+runtime-logs/
+*.log
 
-# Backups
+# =========================
+# 💾 Backups
+# =========================
 backups/
 *.bak
 
-# Database dumps
-db/
+# =========================
+# 🗄️ Database (DATA ONLY)
+# =========================
+db/data/
+db/dump/
+db/*.bak
+*.sqlite
+*.db
 
-# Cursor
+# ⚠️ IMPORTANT:
+# db/schema.sql  ← 不 ignore（要版本控制）
+# db/migrations/ ← 不 ignore（要版本控制）
+
+# =========================
+# 📦 Node / PHP dependencies
+# =========================
+node_modules/
+vendor/
+
+# =========================
+# 🧰 DEV TOOLS ONLY
+# =========================
+tools/
+
+# =========================
+# ⚙️ Cursor / IDE
+# =========================
 .cursor/
+.cursor-server/
 
-# OS / temp
+# =========================
+# 🧠 AI runtime cache
+# =========================
+cache/
+tmp/
+runtime/
+vectorstore/
+embeddings/
+
+# =========================
+# 🖥️ OS files
+# =========================
 .DS_Store
 Thumbs.db
