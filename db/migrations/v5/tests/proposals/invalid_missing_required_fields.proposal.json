@@ -1,0 +1,16 @@
+﻿{
+  "requestId": "DBCR-TEST-INVALID-001",
+  "environment": "DEV",
+  "server": "HostB-SQLServer",
+  "column": "broken_column",
+  "nullable": true,
+  "defaultValue": null,
+  "reason": "Test invalid proposal with missing required fields",
+  "tenantScope": "single_or_multi_tenant",
+  "snoRequired": true,
+  "affectedSystems": ["API"],
+  "createdAt": "2026-05-09T00:00:00",
+  "requiresApproval": true,
+  "approvalCode": null,
+  "rollbackPlanRequired": true
+}

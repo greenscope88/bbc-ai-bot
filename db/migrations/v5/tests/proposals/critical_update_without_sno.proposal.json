@@ -1,0 +1,22 @@
+{
+  "requestId": "DBCR-TEST-CRITICAL-002",
+  "environment": "DEV",
+  "server": "HostB-SQLServer",
+  "database": "Buysmart",
+  "table": "Member",
+  "action": "UPDATE",
+  "column": "member_status",
+  "dataType": "nvarchar(20)",
+  "nullable": false,
+  "defaultValue": "inactive",
+  "reason": "Test critical UPDATE without tenant/sno guard",
+  "tenantScope": "all_tenants",
+  "snoRequired": true,
+  "affectedSystems": ["Old ASP Frontend", "Old ASP Backend", "API", "AI Query"],
+  "riskLevel": "Critical",
+  "generatedBy": "Cursor AI",
+  "createdAt": "2026-05-09T00:00:00",
+  "requiresApproval": true,
+  "approvalCode": null,
+  "rollbackPlanRequired": true
+}

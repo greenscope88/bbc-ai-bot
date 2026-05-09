@@ -1,0 +1,22 @@
+{
+  "requestId": "DBCR-TEST-CRITICAL-001",
+  "environment": "DEV",
+  "server": "HostB-SQLServer",
+  "database": "Buysmart",
+  "table": "Member",
+  "action": "DROP_TABLE",
+  "column": null,
+  "dataType": null,
+  "nullable": null,
+  "defaultValue": null,
+  "reason": "Test critical risk DROP_TABLE",
+  "tenantScope": "all_tenants",
+  "snoRequired": false,
+  "affectedSystems": ["Old ASP Frontend", "Old ASP Backend", "API", "AI Query"],
+  "riskLevel": "Critical",
+  "generatedBy": "Cursor AI",
+  "createdAt": "2026-05-09T00:00:00",
+  "requiresApproval": true,
+  "approvalCode": null,
+  "rollbackPlanRequired": true
+}

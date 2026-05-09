@@ -1,0 +1,22 @@
+{
+  "requestId": "DBCR-TEST-MEDIUM-001",
+  "environment": "DEV",
+  "server": "HostB-SQLServer",
+  "database": "Buysmart",
+  "table": "Member",
+  "action": "ADD_COLUMN",
+  "column": "member_status",
+  "dataType": "nvarchar(20)",
+  "nullable": false,
+  "defaultValue": "active",
+  "reason": "Test medium risk NOT NULL ADD_COLUMN",
+  "tenantScope": "single_or_multi_tenant",
+  "snoRequired": true,
+  "affectedSystems": ["Old ASP Frontend", "Old ASP Backend", "API"],
+  "riskLevel": "Medium",
+  "generatedBy": "Cursor AI",
+  "createdAt": "2026-05-09T00:00:00",
+  "requiresApproval": true,
+  "approvalCode": null,
+  "rollbackPlanRequired": true
+}
