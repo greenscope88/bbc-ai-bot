@@ -1,0 +1,22 @@
+{
+  "requestId": "DBCR-TEST-INVALID-VALUE-003",
+  "environment": "DEV",
+  "server": "HostB-SQLServer",
+  "database": "Buysmart",
+  "table": "Member",
+  "action": "ADD_COLUMN",
+  "column": "test_column",
+  "dataType": "nvarchar(100)",
+  "nullable": true,
+  "defaultValue": null,
+  "reason": "Test invalid riskLevel value",
+  "tenantScope": "single_or_multi_tenant",
+  "snoRequired": true,
+  "affectedSystems": ["API"],
+  "riskLevel": "Danger",
+  "generatedBy": "Cursor AI",
+  "createdAt": "2026-05-09T00:00:00",
+  "requiresApproval": true,
+  "approvalCode": null,
+  "rollbackPlanRequired": true
+}
