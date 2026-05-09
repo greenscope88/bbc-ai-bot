@@ -1,0 +1,22 @@
+{
+  "requestId": "DBCR-20260509-001",
+  "environment": "DEV",
+  "server": "HostB-SQLServer",
+  "database": "Buysmart",
+  "table": "Member",
+  "action": "ADD_COLUMN",
+  "column": "line_user_id",
+  "dataType": "nvarchar(100)",
+  "nullable": true,
+  "defaultValue": null,
+  "reason": "Support LINE Login binding",
+  "tenantScope": "single_or_multi_tenant",
+  "snoRequired": true,
+  "affectedSystems": ["Old ASP Frontend", "Old ASP Backend", "API", "AI Query"],
+  "riskLevel": "Low",
+  "generatedBy": "Cursor AI",
+  "createdAt": "2026-05-09T00:00:00",
+  "requiresApproval": true,
+  "approvalCode": null,
+  "rollbackPlanRequired": true
+}
