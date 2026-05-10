@@ -39,6 +39,7 @@ db/schema.json
 db/schema.sql
 db/tables.md
 db/schema_snapshots/
+db/sync_schema.ps1
 
 # ⚠️ IMPORTANT (schema / migrations policy):
 # Root-level db/schema.sql is a generated local schema snapshot and is ignored (see above).
