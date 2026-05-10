@@ -36,10 +36,10 @@ function Max-Risk([string]$a, [string]$b) {
 }
 
 $action = [string]$proposal.action
-$actionTruncateTable = ("TRUN" + "CATE_TABLE")
 $nullable = $proposal.nullable
 $tenantScope = [string]$proposal.tenantScope
 $snoRequired = [bool]$proposal.snoRequired
+$declaredRiskLevel = [string]$proposal.riskLevel
 $affectedSystems = @()
 if ($null -ne $proposal.affectedSystems) {
     $affectedSystems = @($proposal.affectedSystems)
@@ -47,6 +47,7 @@ if ($null -ne $proposal.affectedSystems) {
 
 $risk = "Low"
 $reasons = @()
+$riskWarning = ""
 
 switch ($action) {
     "ADD_COLUMN" {
@@ -87,6 +88,10 @@ switch ($action) {
         $risk = "Critical"
         $reasons += "DROP_DATABASE is Critical."
     }
+    "TRUNCATE_TABLE" {
+        $risk = "Critical"
+        $reasons += "TRUNCATE_TABLE action is Critical."
+    }
     "DELETE" {
         $risk = "Critical"
         $reasons += "DELETE action is Critical."
@@ -100,21 +105,21 @@ switch ($action) {
         $reasons += "MERGE action is Critical."
     }
     default {
-        if ($action -eq $actionTruncateTable) {
-            $risk = "Critical"
-            $reasons += "Truncate-table action is Critical."
-        }
-        else {
-            $risk = "Medium"
-            $reasons += "Unknown action defaults to Medium."
-        }
+        $risk = "Medium"
+        $reasons += "Unknown action defaults to Medium."
     }
 }
 
-$tenantScopeUnclear = [string]::IsNullOrWhiteSpace($tenantScope) -or @("unknown", "unspecified", "unclear") -contains $tenantScope.ToLowerInvariant()
+$tenantScopeUnclear = ($tenantScope -eq "unclear")
 if ($snoRequired -and $tenantScopeUnclear) {
     $risk = Max-Risk $risk "High"
     $reasons += "snoRequired=true with unclear tenantScope raises risk to at least High."
+}
+
+$tenantScopeAllTenants = ($tenantScope -eq "all_tenants")
+if ($tenantScopeAllTenants -and @("UPDATE", "DELETE", "MERGE", "DATA_MIGRATION") -contains $action) {
+    $risk = "Critical"
+    $reasons += "all_tenants with UPDATE/DELETE/MERGE/DATA_MIGRATION is Critical."
 }
 
 $coreSystems = @("Old ASP Frontend", "Old ASP Backend", "API", "AI Query")
@@ -126,14 +131,35 @@ foreach ($s in $affectedSystems) {
     }
 }
 
-$isNullableAddColumn = ($action -eq "ADD_COLUMN" -and $nullable -eq $true)
-if ($hitsCoreSystem -and -not $isNullableAddColumn) {
-    $risk = Max-Risk $risk "Medium"
-    $reasons += "Affected core systems require risk not lower than Medium unless nullable ADD_COLUMN."
+if ($hitsCoreSystem) {
+    if ($action -eq "ADD_COLUMN" -and $nullable -eq $true) {
+        $risk = Max-Risk $risk "Low"
+        $reasons += "Core systems with nullable ADD_COLUMN can remain Low."
+    }
+    elseif ($action -eq "ADD_COLUMN" -and $nullable -ne $true) {
+        $risk = Max-Risk $risk "Medium"
+        $reasons += "Core systems with NOT NULL ADD_COLUMN are at least Medium."
+    }
+    elseif (@("ALTER_COLUMN", "DROP_COLUMN") -contains $action) {
+        $risk = Max-Risk $risk "High"
+        $reasons += "Core systems with ALTER_COLUMN/DROP_COLUMN are at least High."
+    }
+    elseif (@("UPDATE", "DELETE", "MERGE", "DROP_TABLE", "TRUNCATE_TABLE") -contains $action) {
+        $risk = "Critical"
+        $reasons += "Core systems with UPDATE/DELETE/MERGE/DROP_TABLE/TRUNCATE_TABLE are Critical."
+    }
 }
 
 $autoExecutable = $true
-if ($risk -eq "High" -or $risk -eq "Critical") {
+if ($risk -eq "Low") {
+    $autoExecutable = $true
+    $reasons += "Low can be auto-executable."
+}
+elseif ($risk -eq "Medium") {
+    $autoExecutable = $true
+    $reasons += "Medium may be auto-executable by current rule set."
+}
+elseif ($risk -eq "High" -or $risk -eq "Critical") {
     $autoExecutable = $false
     if ($risk -eq "Critical") {
         $reasons += "Critical is blocked by default."
@@ -143,11 +169,21 @@ if ($risk -eq "High" -or $risk -eq "Critical") {
     }
 }
 
+$riskUnderestimated = $false
+if ((Get-RiskScore $declaredRiskLevel) -lt (Get-RiskScore $risk)) {
+    $riskUnderestimated = $true
+    $riskWarning = "Declared riskLevel is lower than calculatedRiskLevel."
+    $reasons += "Declared riskLevel is lower than calculatedRiskLevel."
+}
+
 $result = [PSCustomObject]@{
     requestId           = [string]$proposal.requestId
     action              = $action
+    declaredRiskLevel   = $declaredRiskLevel
     calculatedRiskLevel = $risk
+    riskUnderestimated  = $riskUnderestimated
     autoExecutable      = $autoExecutable
+    riskWarning         = $riskWarning
     reason              = ($reasons -join " ")
 }
 

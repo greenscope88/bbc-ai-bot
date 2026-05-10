@@ -1,0 +1,22 @@
+{
+  "requestId": "DBCR-TEST-RISK-UNDER-004",
+  "environment": "DEV",
+  "server": "HostB-SQLServer",
+  "database": "Buysmart",
+  "table": "Member",
+  "action": "ADD_COLUMN",
+  "column": "tenant_note",
+  "dataType": "nvarchar(200)",
+  "nullable": true,
+  "defaultValue": null,
+  "reason": "Test underestimated unclear tenant scope declared as Low",
+  "tenantScope": "unclear",
+  "snoRequired": true,
+  "affectedSystems": ["API", "AI Query"],
+  "riskLevel": "Low",
+  "generatedBy": "Cursor AI",
+  "createdAt": "2026-05-09T00:00:00",
+  "requiresApproval": true,
+  "approvalCode": null,
+  "rollbackPlanRequired": true
+}

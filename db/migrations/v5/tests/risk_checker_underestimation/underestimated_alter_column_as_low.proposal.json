@@ -1,0 +1,22 @@
+{
+  "requestId": "DBCR-TEST-RISK-UNDER-001",
+  "environment": "DEV",
+  "server": "HostB-SQLServer",
+  "database": "Buysmart",
+  "table": "Member",
+  "action": "ALTER_COLUMN",
+  "column": "member_name",
+  "dataType": "nvarchar(50)",
+  "nullable": false,
+  "defaultValue": null,
+  "reason": "Test underestimated ALTER_COLUMN declared as Low",
+  "tenantScope": "single_or_multi_tenant",
+  "snoRequired": true,
+  "affectedSystems": ["Old ASP Frontend", "Old ASP Backend", "API", "AI Query"],
+  "riskLevel": "Low",
+  "generatedBy": "Cursor AI",
+  "createdAt": "2026-05-09T00:00:00",
+  "requiresApproval": true,
+  "approvalCode": null,
+  "rollbackPlanRequired": true
+}
