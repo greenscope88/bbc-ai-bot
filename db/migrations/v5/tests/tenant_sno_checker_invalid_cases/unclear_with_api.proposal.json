@@ -1,0 +1,22 @@
+{
+  "requestId": "DBCR-TEST-TENANT-INVALID-005",
+  "environment": "DEV",
+  "server": "HostB-SQLServer",
+  "database": "Buysmart",
+  "table": "Member",
+  "action": "ADD_COLUMN",
+  "column": "tenant_note",
+  "dataType": "nvarchar(200)",
+  "nullable": true,
+  "defaultValue": null,
+  "reason": "Test unclear tenant scope with API affected system",
+  "tenantScope": "unclear",
+  "snoRequired": true,
+  "affectedSystems": ["API", "AI Query"],
+  "riskLevel": "High",
+  "generatedBy": "Cursor AI",
+  "createdAt": "2026-05-09T00:00:00",
+  "requiresApproval": true,
+  "approvalCode": null,
+  "rollbackPlanRequired": true
+}

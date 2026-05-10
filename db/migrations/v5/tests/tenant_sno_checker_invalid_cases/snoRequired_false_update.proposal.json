@@ -1,0 +1,22 @@
+{
+  "requestId": "DBCR-TEST-TENANT-INVALID-004",
+  "environment": "DEV",
+  "server": "HostB-SQLServer",
+  "database": "Buysmart",
+  "table": "Member",
+  "action": "UPDATE",
+  "column": "member_status",
+  "dataType": "nvarchar(20)",
+  "nullable": false,
+  "defaultValue": "inactive",
+  "reason": "Test UPDATE without sno guard",
+  "tenantScope": "single_or_multi_tenant",
+  "snoRequired": false,
+  "affectedSystems": ["API", "AI Query"],
+  "riskLevel": "Critical",
+  "generatedBy": "Cursor AI",
+  "createdAt": "2026-05-09T00:00:00",
+  "requiresApproval": true,
+  "approvalCode": null,
+  "rollbackPlanRequired": true
+}
