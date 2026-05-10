@@ -30,9 +30,20 @@ db/*.bak
 *.sqlite
 *.db
 
-# ⚠️ IMPORTANT:
-# db/schema.sql  ← 不 ignore（要版本控制）
-# db/migrations/ ← 不 ignore（要版本控制）
+# --- Local DB schema sync artifacts ---
+# Generated schema snapshots and local sync metadata.
+# These files may contain server/database identifiers or full schema details.
+# Do not commit these files. Use governed migration files and sanitized examples instead.
+db/memory.lock.json
+db/schema.json
+db/schema.sql
+db/tables.md
+db/schema_snapshots/
+
+# ⚠️ IMPORTANT (schema / migrations policy):
+# Root-level db/schema.sql is a generated local schema snapshot and is ignored (see above).
+# Governed migration SQL files should live under governed migration paths (e.g. db/migrations/),
+# not as root-level generated snapshot files. The db/migrations/ tree remains version-controlled — do not ignore it.
 
 # =========================
 # 📦 Node / PHP dependencies
