@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ApprovalGateOutput",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "success": { "type": "boolean" },
+    "approved": { "type": "boolean" },
+    "reason": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" }
+  },
+  "required": ["success", "approved"],
+  "oneOf": [
+    {
+      "properties": {
+        "success": { "const": false },
+        "approved": { "const": false }
+      },
+      "required": ["reason"]
+    },
+    {
+      "properties": {
+        "success": { "const": true },
+        "approved": { "const": true }
+      },
+      "required": ["timestamp"]
+    }
+  ]
+}
+
