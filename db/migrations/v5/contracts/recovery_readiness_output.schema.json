@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RecoveryReadinessCheckerOutput",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "success": { "type": "boolean" },
+    "ready": { "type": "boolean" },
+    "recoveryMode": { "type": "string" },
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "backupExists": { "type": "boolean" },
+        "schemaSnapshotExists": { "type": "boolean" },
+        "restoreGuideExists": { "type": "boolean" },
+        "recoveryModeAEnabled": { "type": "boolean" }
+      },
+      "required": [
+        "backupExists",
+        "schemaSnapshotExists",
+        "restoreGuideExists",
+        "recoveryModeAEnabled"
+      ]
+    },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "reason": { "type": "string" }
+  },
+  "required": ["success", "ready", "recoveryMode", "checks"],
+  "oneOf": [
+    {
+      "properties": {
+        "success": { "const": true },
+        "ready": { "const": true },
+        "recoveryMode": { "const": "A" }
+      },
+      "required": ["timestamp"]
+    },
+    {
+      "properties": {
+        "success": { "const": false },
+        "ready": { "const": false }
+      },
+      "required": ["reason"]
+    }
+  ]
+}
+
