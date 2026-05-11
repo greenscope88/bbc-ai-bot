@@ -1,0 +1,22 @@
+{
+  "requestId": "DBCR-MOCK-P3-DEL-001",
+  "environment": "DEV",
+  "server": "MOCK-NOCONNECT-PHASE3",
+  "database": "MockPhase3Catalog",
+  "table": "mock_p3_staging_rows",
+  "action": "DELETE",
+  "column": null,
+  "dataType": null,
+  "nullable": false,
+  "defaultValue": null,
+  "reason": "[do_not_execute] MOCK: DELETE action represents unqualified DELETE (no WHERE) scenario for risk_checker CRITICAL testing. No SQL must be run.",
+  "tenantScope": "single_or_multi_tenant",
+  "snoRequired": false,
+  "affectedSystems": ["MockTestHarness"],
+  "riskLevel": "Critical",
+  "generatedBy": "Phase3MockFixture",
+  "createdAt": "2026-05-11T12:00:00",
+  "requiresApproval": true,
+  "approvalCode": null,
+  "rollbackPlanRequired": true
+}

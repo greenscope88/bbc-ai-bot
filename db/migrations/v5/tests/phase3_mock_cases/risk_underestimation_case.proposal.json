@@ -1,0 +1,22 @@
+{
+  "requestId": "DBCR-MOCK-P3-UNDER-001",
+  "environment": "DEV",
+  "server": "MOCK-NOCONNECT-PHASE3",
+  "database": "MockPhase3Catalog",
+  "table": "mock_p3_widgets",
+  "action": "DROP_COLUMN",
+  "column": "mock_temp_marker",
+  "dataType": null,
+  "nullable": false,
+  "defaultValue": null,
+  "reason": "[do_not_execute] MOCK: Declared Low but action DROP_COLUMN forces calculated High — expect riskUnderestimated true. No SQL must be run.",
+  "tenantScope": "single_or_multi_tenant",
+  "snoRequired": false,
+  "affectedSystems": ["MockTestHarness"],
+  "riskLevel": "Low",
+  "generatedBy": "Phase3MockFixture",
+  "createdAt": "2026-05-11T12:00:00",
+  "requiresApproval": true,
+  "approvalCode": null,
+  "rollbackPlanRequired": true
+}

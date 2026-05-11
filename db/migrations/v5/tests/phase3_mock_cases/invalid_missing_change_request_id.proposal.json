@@ -1,0 +1,21 @@
+{
+  "environment": "DEV",
+  "server": "MOCK-NOCONNECT-PHASE3",
+  "database": "MockPhase3Catalog",
+  "table": "mock_p3_widgets",
+  "action": "ADD_COLUMN",
+  "column": "mock_field_x",
+  "dataType": "int",
+  "nullable": true,
+  "defaultValue": null,
+  "reason": "Phase 3 mock: intentionally missing requestId (DB Change Request id) to fail proposal_checker.",
+  "tenantScope": "single_or_multi_tenant",
+  "snoRequired": false,
+  "affectedSystems": ["MockTestHarness"],
+  "riskLevel": "Low",
+  "generatedBy": "Phase3MockFixture",
+  "createdAt": "2026-05-11T12:00:00",
+  "requiresApproval": true,
+  "approvalCode": null,
+  "rollbackPlanRequired": true
+}

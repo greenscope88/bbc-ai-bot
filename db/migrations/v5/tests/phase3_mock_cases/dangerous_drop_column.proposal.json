@@ -1,0 +1,22 @@
+{
+  "requestId": "DBCR-MOCK-P3-DROP-COL-001",
+  "environment": "DEV",
+  "server": "MOCK-NOCONNECT-PHASE3",
+  "database": "MockPhase3Catalog",
+  "table": "mock_p3_widgets",
+  "action": "DROP_COLUMN",
+  "column": "mock_legacy_flag",
+  "dataType": null,
+  "nullable": false,
+  "defaultValue": null,
+  "reason": "[do_not_execute] MOCK: DROP_COLUMN for risk_checker HIGH classification testing only. No SQL must be run.",
+  "tenantScope": "single_or_multi_tenant",
+  "snoRequired": false,
+  "affectedSystems": ["MockTestHarness"],
+  "riskLevel": "High",
+  "generatedBy": "Phase3MockFixture",
+  "createdAt": "2026-05-11T12:00:00",
+  "requiresApproval": true,
+  "approvalCode": null,
+  "rollbackPlanRequired": true
+}
