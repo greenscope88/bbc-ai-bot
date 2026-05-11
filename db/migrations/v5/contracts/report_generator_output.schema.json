@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Phase4ReportGeneratorOutput",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "success": { "type": "boolean" },
+    "reportGenerated": { "type": "boolean" },
+    "outputDir": { "type": "string" },
+    "files": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "reason": { "type": "string" }
+  },
+  "required": ["success", "reportGenerated"],
+  "oneOf": [
+    {
+      "properties": {
+        "success": { "const": true },
+        "reportGenerated": { "const": true }
+      },
+      "required": ["outputDir", "files", "timestamp"]
+    },
+    {
+      "properties": {
+        "success": { "const": false },
+        "reportGenerated": { "const": false }
+      },
+      "required": ["reason"]
+    }
+  ]
+}
+
