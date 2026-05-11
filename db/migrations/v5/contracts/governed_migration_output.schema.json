@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GovernedMigrationOutput",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "success": { "type": "boolean" },
+    "executed": { "type": "boolean" },
+    "mode": { "type": "string" },
+    "reportGenerated": { "type": "boolean" },
+    "outputDir": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "reason": { "type": "string" }
+  },
+  "required": ["success", "executed"],
+  "oneOf": [
+    {
+      "properties": {
+        "success": { "const": true },
+        "executed": { "const": false },
+        "reportGenerated": { "const": true }
+      },
+      "required": ["mode", "outputDir", "timestamp", "reportGenerated"]
+    },
+    {
+      "properties": {
+        "success": { "const": false },
+        "executed": { "const": false }
+      },
+      "required": ["reason"]
+    }
+  ]
+}
+

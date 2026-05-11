@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GovernedMigrationInput",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "migrationId": { "type": "string", "minLength": 1 },
+    "proposalId": { "type": "string", "minLength": 1 },
+    "environment": { "type": "string", "minLength": 1 },
+    "mode": { "type": "string", "minLength": 1 },
+    "operator": { "type": "string", "minLength": 1 },
+    "approval": {
+      "type": "object",
+      "properties": {
+        "approved": { "type": "boolean" }
+      },
+      "required": ["approved"]
+    },
+    "riskSummary": {
+      "type": "object",
+      "properties": {
+        "allowed": { "type": "boolean" }
+      },
+      "required": ["allowed"]
+    },
+    "recoveryReadiness": {
+      "type": "object",
+      "properties": {
+        "ready": { "type": "boolean" }
+      },
+      "required": ["ready"]
+    },
+    "schemaDiffSummary": {
+      "type": "object",
+      "properties": {
+        "safe": { "type": "boolean" }
+      },
+      "required": ["safe"]
+    },
+    "executionPlan": { "type": ["object", "array", "string", "null"] }
+  },
+  "required": [
+    "migrationId",
+    "proposalId",
+    "environment",
+    "mode",
+    "operator",
+    "approval",
+    "riskSummary",
+    "recoveryReadiness",
+    "schemaDiffSummary",
+    "executionPlan"
+  ]
+}
+
