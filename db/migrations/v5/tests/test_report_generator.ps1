@@ -4,9 +4,8 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $gen = Join-Path $root "report_generator.ps1"
 
 function Invoke-Generator([string]$InputJsonPath, [string]$OutputDir) {
-    $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $gen `
-        -InputJsonPath $InputJsonPath `
-        -OutputDir $OutputDir 2>&1 | Out-String
+    # Direct invocation (same pattern as activation_test_suite.ps1); avoids nested powershell.exe hangs.
+    $out = & $gen -InputJsonPath $InputJsonPath -OutputDir $OutputDir 2>&1 | Out-String
     $code = $LASTEXITCODE
 
     $text = $out.Trim()
