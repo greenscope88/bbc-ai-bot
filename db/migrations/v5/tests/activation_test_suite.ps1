@@ -73,7 +73,11 @@ New-Item -ItemType Directory -Path $tmpRoot -Force | Out-Null
 try {
     # 1) Run unit tests
     Run-TestScript (Join-Path $testDir "test_approval_gate.ps1")
+    Run-TestScript (Join-Path $testDir "test_approval_gate_phase5_contract.ps1")
     Run-TestScript (Join-Path $testDir "test_recovery_readiness_checker.ps1")
+    Run-TestScript (Join-Path $testDir "test_maintenance_window_validator.ps1")
+    Run-TestScript (Join-Path $testDir "test_final_signoff_validator.ps1")
+    Run-TestScript (Join-Path $testDir "test_governed_wrapper_live_guard_skeleton.ps1")
     # Equivalent report_generator validation (direct invocation, no subprocess hang).
     $rgInputOk = Join-Path $tmpRoot "rg_input_ok.json"
     $rgOut1 = Join-Path $tmpRoot "rg_out1"

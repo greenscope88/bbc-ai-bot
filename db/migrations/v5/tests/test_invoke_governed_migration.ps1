@@ -74,13 +74,13 @@ try {
     Assert-True ($r.Object.success -eq $true) "[DRY_RUN] expected success=true"
     Assert-True ($r.Object.mode -eq "DRY_RUN") "[DRY_RUN] expected mode=DRY_RUN"
 
-    # Case 3: LIVE_EXECUTE must fail
+    # Case 3: LIVE_EXECUTE without Phase 5 contract args must fail
     $liveInputPath = Join-Path $tmpRoot "live_input.json"
     (New-BaseInput "LIVE_EXECUTE" | ConvertTo-Json -Depth 20) | Set-Content -LiteralPath $liveInputPath -Encoding UTF8
     $r = Invoke-Wrapper -InputJsonPath $liveInputPath -OutputDir (Join-Path $tmpRoot "out_live")
     Assert-True ($r.ExitCode -eq 1) "[LIVE] expected exit 1"
     Assert-True ($r.Object.success -eq $false) "[LIVE] expected success=false"
-    Assert-True ($r.Object.reason -eq "LIVE_EXECUTE is not supported in this phase") "[LIVE] expected reason"
+    Assert-True ($r.Object.reason -match "ContractInputPath") "[LIVE] expected ContractInputPath guard reason"
 
     # Case 4: approval not approved -> fail
     $bad = New-BaseInput "MOCK"

@@ -1,55 +1,151 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://bbc-ai-bot.local/schemas/governed_migration_input.schema.json",
   "title": "GovernedMigrationInput",
+  "description": "SQL Safe Migration 5.0 Phase 5 — governed migration input contract (MOCK / DRY_RUN / LIVE_EXECUTE). Validation does not imply execution authorization.",
   "type": "object",
-  "additionalProperties": true,
+  "additionalProperties": false,
   "properties": {
-    "migrationId": { "type": "string", "minLength": 1 },
-    "proposalId": { "type": "string", "minLength": 1 },
-    "environment": { "type": "string", "minLength": 1 },
-    "mode": { "type": "string", "minLength": 1 },
-    "operator": { "type": "string", "minLength": 1 },
-    "approval": {
-      "type": "object",
-      "properties": {
-        "approved": { "type": "boolean" }
-      },
-      "required": ["approved"]
+    "contractVersion": {
+      "type": "string",
+      "description": "Optional schema contract version for forward-compatible tooling.",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
     },
-    "riskSummary": {
+    "mode": {
+      "type": "string",
+      "enum": ["MOCK", "DRY_RUN", "LIVE_EXECUTE"]
+    },
+    "migrationFile": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Path or repo-relative reference to the migration SQL file governed by this run."
+    },
+    "environment": {
+      "type": "string",
+      "enum": ["DEV", "STAGING", "PRODUCTION"]
+    },
+    "enableLiveExecution": {
+      "type": "boolean",
+      "description": "Technical switch: when false, wrappers MUST refuse LIVE_EXECUTE regardless of other fields."
+    },
+    "maintenanceWindow": {
       "type": "object",
+      "additionalProperties": false,
+      "required": ["approved", "windowStart", "windowEnd", "approvedBy"],
       "properties": {
-        "allowed": { "type": "boolean" }
-      },
-      "required": ["allowed"]
+        "approved": { "type": "boolean" },
+        "windowStart": { "type": "string", "format": "date-time" },
+        "windowEnd": { "type": "string", "format": "date-time" },
+        "approvedBy": { "type": "string", "minLength": 1 }
+      }
+    },
+    "humanApprovals": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["role", "approver", "approvedAt", "signatureRef"],
+        "properties": {
+          "role": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Approver capacity, e.g. change_owner, dba, security."
+          },
+          "approver": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Human identity (account id, display name, or org-defined principal)."
+          },
+          "approvedAt": { "type": "string", "format": "date-time" },
+          "signatureRef": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Auditable reference: ticket URL, signed file id, or hash of approval artifact."
+          }
+        }
+      }
+    },
+    "backupConfirmation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["backupFile", "createdAt", "verifiedBy"],
+      "properties": {
+        "backupFile": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path or storage reference to the .bak (or org-approved backup handle)."
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "verifiedBy": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human who attested backup existence and relevance to this change."
+        }
+      }
     },
     "recoveryReadiness": {
       "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reportPath"],
       "properties": {
-        "ready": { "type": "boolean" }
-      },
-      "required": ["ready"]
+        "status": {
+          "type": "string",
+          "enum": ["PASS", "FAIL", "NEEDS_REVIEW"]
+        },
+        "reportPath": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path to recovery readiness output or bundled report (plan-only artifacts)."
+        }
+      }
     },
-    "schemaDiffSummary": {
+    "finalSignOff": {
       "type": "object",
+      "additionalProperties": false,
+      "required": ["approved", "approvedBy", "approvedAt", "ticketId"],
       "properties": {
-        "safe": { "type": "boolean" }
-      },
-      "required": ["safe"]
+        "approved": { "type": "boolean" },
+        "approvedBy": { "type": "string", "minLength": 1 },
+        "approvedAt": { "type": "string", "format": "date-time" },
+        "ticketId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Change / CAB / sign-off record id."
+        }
+      }
     },
-    "executionPlan": { "type": ["object", "array", "string", "null"] }
+    "auditMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["changeRequestId", "businessReason", "submittedBy"],
+      "properties": {
+        "changeRequestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "businessReason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "submittedBy": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Submitter principal (human or service account id); not an AI self-assertion."
+        }
+      }
+    }
   },
   "required": [
-    "migrationId",
-    "proposalId",
-    "environment",
     "mode",
-    "operator",
-    "approval",
-    "riskSummary",
+    "migrationFile",
+    "environment",
+    "enableLiveExecution",
+    "maintenanceWindow",
+    "humanApprovals",
+    "backupConfirmation",
     "recoveryReadiness",
-    "schemaDiffSummary",
-    "executionPlan"
+    "finalSignOff",
+    "auditMetadata"
   ]
 }
-
