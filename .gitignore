@@ -77,3 +77,6 @@ embeddings/
 # =========================
 .DS_Store
 Thumbs.db
+
+# Local DB migration drafts - do not commit directly
+db/migration_drafts/
