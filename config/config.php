@@ -85,4 +85,23 @@ return [
         'user' => (isset($env['DB_USER']) ? $env['DB_USER'] : ''),
         'pass' => (isset($env['DB_PASS']) ? $env['DB_PASS'] : ''),
     ],
+    'gateway' => [
+        'host_b' => [
+            'http_enabled' => isset($env['GATEWAY_HOSTB_HTTP_ENABLED']) && filter_var($env['GATEWAY_HOSTB_HTTP_ENABLED'], FILTER_VALIDATE_BOOLEAN),
+            'base_url' => isset($env['GATEWAY_HOSTB_BASE_URL']) ? trim((string) $env['GATEWAY_HOSTB_BASE_URL']) : '',
+            'api_key' => getenv('GATEWAY_HOSTB_API_KEY') ?: null,
+            'connect_timeout_sec' => isset($env['GATEWAY_HOSTB_CONNECT_TIMEOUT_SEC']) ? max(0, (int) $env['GATEWAY_HOSTB_CONNECT_TIMEOUT_SEC']) : 3,
+            'read_timeout_sec' => isset($env['GATEWAY_HOSTB_READ_TIMEOUT_SEC']) ? max(0, (int) $env['GATEWAY_HOSTB_READ_TIMEOUT_SEC']) : 10,
+        ],
+        'audit_log' => [
+            'persistence_mode' => isset($env['GATEWAY_AUDIT_LOG_PERSISTENCE_MODE'])
+                ? strtolower(trim((string) $env['GATEWAY_AUDIT_LOG_PERSISTENCE_MODE']))
+                : 'disabled',
+        ],
+        'rate_limit' => [
+            'persistence_mode' => isset($env['GATEWAY_RATE_LIMIT_PERSISTENCE_MODE'])
+                ? strtolower(trim((string) $env['GATEWAY_RATE_LIMIT_PERSISTENCE_MODE']))
+                : 'disabled',
+        ],
+    ],
 ];
