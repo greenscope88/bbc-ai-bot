@@ -40,12 +40,18 @@ $r2 = $resolver->resolve('unknown_sno_00000001');
 assert_result_shape($r2);
 test_assert(($r2['errorCode'] ?? '') === 'TENANT_NOT_FOUND', '2: unknown sno');
 
-// 3. known sno, provider_id_no null -> TENANT_MAPPING_INCOMPLETE_PROVIDER
+// 3. staging sno resolves successfully (provider_id_no confirmed via Host B SQL JOIN)
 $r3 = $resolver->resolve($knownSno);
 assert_result_shape($r3);
-test_assert(($r3['ok'] ?? true) === false, '3: not ok');
-test_assert(($r3['errorCode'] ?? '') === 'TENANT_MAPPING_INCOMPLETE_PROVIDER', '3: incomplete provider');
-test_assert($r3['tenantContext'] === null, '3: tenantContext null on failure');
+test_assert(($r3['ok'] ?? false) === true, '3: ok');
+test_assert($r3['errorCode'] === null, '3: errorCode null');
+test_assert(is_array($r3['tenantContext']), '3: tenantContext not null');
+$tc3 = $r3['tenantContext'];
+test_assert(($tc3['sno'] ?? '') === $knownSno, '3: sno');
+test_assert(($tc3['provider_id_no'] ?? null) === 102, '3: provider_id_no');
+test_assert(($tc3['depID'] ?? null) === 888, '3: depID');
+test_assert(($tc3['storeNo'] ?? null) === 6290, '3: storeNo');
+test_assert(($tc3['store_uid'] ?? null) === 6290, '3: store_uid');
 
 // 4. depID / storeNo / store_uid exist in staging config
 $map = require dirname(__DIR__) . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'tenant_context_map.php';
