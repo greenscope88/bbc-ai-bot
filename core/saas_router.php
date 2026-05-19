@@ -9,6 +9,7 @@ require_once __DIR__ . '/ai_prompt_builder.php';
 require_once __DIR__ . '/line_service.php';
 require_once __DIR__ . '/usage_tracker.php';
 require_once __DIR__ . '/gemini_service.php';
+require_once __DIR__ . '/tour_prompt_context_service.php';
 
 class SaaSRouter
 {
@@ -154,6 +155,18 @@ class SaaSRouter
         }
 
         $prompt = AiPromptBuilder::build($tenant, $intent, $serviceData, $limits);
+
+        // Stage 1-B-17 draft only. Default OFF. Do not enable in production without approval.
+        $enableTourPromptContext = false;
+        $tourContext = (new TourPromptContextService())->buildTourContextForPrompt([
+            'userText' => $userMessage,
+            'sno' => (string) ($tenant['sno'] ?? ''),
+            'featureEnabled' => $enableTourPromptContext,
+        ]);
+        if ($tourContext !== '') {
+            $prompt = AiPromptBuilder::appendTourContext($prompt, $tourContext);
+        }
+
         $geminiResult = callGemini($prompt);
         $replyText = $geminiResult['ok'] ? (string) $geminiResult['text'] : 'AI錯誤：' . (string) $geminiResult['error'];
 
