@@ -34,6 +34,8 @@ final class TourQueryIntentDetector
     /** @var list<string> */
     private const PREFIX_NOISE = [
         '請問一下',
+        '推薦一下',
+        '請推薦',
         '請問',
         '想問',
         '有沒有',
@@ -45,6 +47,12 @@ final class TourQueryIntentDetector
         '我想查',
     ];
 
+    /** @var list<string> Trailing tokens removed after core phrase is preserved (e.g. 日本旅遊 → 日本). */
+    private const SUFFIX_NOISE = [
+        '行程',
+        '旅遊',
+    ];
+
     /** @var list<string> */
     private const INLINE_NOISE = [
         '有哪些行程',
@@ -53,7 +61,6 @@ final class TourQueryIntentDetector
         '有什麼',
         '旅遊推薦',
         '行程推薦',
-        '自由行',
         '行程',
         '旅遊',
         '推薦',
@@ -74,6 +81,10 @@ final class TourQueryIntentDetector
      */
     public function detect(string $message): array
     {
+        if (function_exists('mb_internal_encoding')) {
+            mb_internal_encoding('UTF-8');
+        }
+
         $text = trim($message);
         if ($text === '') {
             return $this->result(false, null, 0.0, 'empty_message');
@@ -136,14 +147,22 @@ final class TourQueryIntentDetector
     {
         $working = trim($text);
 
-        foreach (self::PREFIX_NOISE as $prefix) {
-            if (mb_strpos($working, $prefix) === 0) {
-                $working = trim(mb_substr($working, mb_strlen($prefix, 'UTF-8'), null, 'UTF-8'));
+        $prefixes = self::PREFIX_NOISE;
+        usort($prefixes, static function (string $a, string $b): int {
+            return mb_strlen($b, 'UTF-8') <=> mb_strlen($a, 'UTF-8');
+        });
+
+        $prefixChanged = true;
+        while ($prefixChanged) {
+            $prefixChanged = false;
+            foreach ($prefixes as $prefix) {
+                if (mb_strpos($working, $prefix, 0, 'UTF-8') === 0) {
+                    $working = trim(mb_substr($working, mb_strlen($prefix, 'UTF-8'), null, 'UTF-8'));
+                    $prefixChanged = true;
+                    break;
+                }
             }
         }
-
-        $working = preg_replace('/(?:\d+|[一二三四五六七八九十百千兩]+)\s*日$/u', '', $working) ?? $working;
-        $working = trim($working);
 
         $changed = true;
         while ($changed) {
@@ -153,16 +172,37 @@ final class TourQueryIntentDetector
                 if ($pos !== false) {
                     $working = trim(mb_substr($working, 0, $pos, 'UTF-8') . mb_substr($working, $pos + mb_strlen($noise, 'UTF-8'), null, 'UTF-8'));
                     $changed = true;
+                    break;
                 }
             }
-            if (mb_substr($working, -1, null, 'UTF-8') === '團') {
-                $working = trim(mb_substr($working, 0, -1, 'UTF-8'));
+            $charLen = mb_strlen($working, 'UTF-8');
+            if ($charLen > 0 && mb_substr($working, $charLen - 1, null, 'UTF-8') === '團') {
+                $working = trim(mb_substr($working, 0, $charLen - 1, 'UTF-8'));
                 $changed = true;
             }
         }
 
+        $suffixChanged = true;
+        while ($suffixChanged) {
+            $suffixChanged = false;
+            foreach (self::SUFFIX_NOISE as $suffix) {
+                $len = mb_strlen($suffix, 'UTF-8');
+                $charLen = mb_strlen($working, 'UTF-8');
+                if ($len > 0 && $charLen > $len && mb_substr($working, $charLen - $len, null, 'UTF-8') === $suffix) {
+                    $working = trim(mb_substr($working, 0, $charLen - $len, 'UTF-8'));
+                    $suffixChanged = true;
+                    break;
+                }
+            }
+        }
+
+        // e.g. 東京五日 → 東京 (keep 大阪五日遊 intact — ends with 遊, not 日)
+        $working = preg_replace('/(?:\d+|[一二三四五六七八九十百千兩]+)\s*日$/u', '', $working) ?? $working;
+        $working = trim($working);
+
         $working = preg_replace('/\s+/u', '', $working) ?? $working;
-        $working = trim($working, " \t\n\r\0\x0B，。！？、；：\"'");
+        $working = preg_replace('/^[，。！？、；："\']+|[，。！？、；："\']+$/u', '', $working) ?? $working;
+        $working = trim($working);
 
         return $working;
     }

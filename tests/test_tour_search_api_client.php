@@ -32,6 +32,14 @@ $baseUrl = 'https://bonusmee.com/api/gateway/tour/search.php';
 $sno = 'e1fd133c7e8e45a1';
 $keyword = '富國島';
 
+// 0. default timeout (Stage 1-B-21)
+$defaultClient = new TourSearchApiClient($baseUrl);
+$ref = new ReflectionClass(TourSearchApiClient::class);
+$timeoutProp = $ref->getProperty('timeoutSeconds');
+$timeoutProp->setAccessible(true);
+test_assert($timeoutProp->getValue($defaultClient) === TourSearchApiClient::DEFAULT_TIMEOUT_SECONDS, '0: default timeout 20s');
+test_assert(TourSearchApiClient::DEFAULT_TIMEOUT_SECONDS === 20, '0: DEFAULT_TIMEOUT_SECONDS constant');
+
 // 1. URL build + urlencode
 $client = new TourSearchApiClient($baseUrl);
 $url = $client->buildRequestUrl($sno, $keyword, 1, 5, 'trace-abc');

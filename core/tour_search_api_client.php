@@ -8,6 +8,9 @@ final class TourSearchApiClient
 {
     private const DEFAULT_BASE_URL = 'https://bonusmee.com/api/gateway/tour/search.php';
 
+    /** Stage 1-B-21: raised from 5s to reduce CLIENT_HTTP_TIMEOUT on live Host B calls. */
+    public const DEFAULT_TIMEOUT_SECONDS = 20;
+
     private string $baseUrl;
 
     private int $timeoutSeconds;
@@ -18,10 +21,10 @@ final class TourSearchApiClient
     /**
      * @param callable(string, array<string, string>, int): array{ok: bool, http_status: int, body: string, transport_error: string|null}|null $transport
      */
-    public function __construct(?string $baseUrl = null, int $timeoutSeconds = 5, ?callable $transport = null)
+    public function __construct(?string $baseUrl = null, int $timeoutSeconds = self::DEFAULT_TIMEOUT_SECONDS, ?callable $transport = null)
     {
         $this->baseUrl = $baseUrl ?? self::DEFAULT_BASE_URL;
-        $this->timeoutSeconds = max(1, $timeoutSeconds);
+        $this->timeoutSeconds = max(1, min(60, $timeoutSeconds));
         $this->transport = $transport;
     }
 
