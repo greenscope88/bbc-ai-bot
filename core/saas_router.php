@@ -10,6 +10,7 @@ require_once __DIR__ . '/line_service.php';
 require_once __DIR__ . '/usage_tracker.php';
 require_once __DIR__ . '/gemini_service.php';
 require_once __DIR__ . '/tour_prompt_context_service.php';
+require_once __DIR__ . '/tour_prompt_feature_gate.php';
 
 class SaaSRouter
 {
@@ -156,8 +157,16 @@ class SaaSRouter
 
         $prompt = AiPromptBuilder::build($tenant, $intent, $serviceData, $limits);
 
-        // Stage 1-B-17 draft only. Default OFF. Do not enable in production without approval.
-        $enableTourPromptContext = false;
+        // Stage 1-B-18: governed by TourPromptFeatureGate (default OFF, empty allowlists).
+        $channelId = (string) ($tenant['channel_id'] ?? '');
+        if ($channelId === '' && isset($event['destination'])) {
+            $channelId = (string) $event['destination'];
+        }
+
+        $enableTourPromptContext = TourPromptFeatureGate::isEnabled([
+            'sno' => (string) ($tenant['sno'] ?? ''),
+            'channelId' => $channelId !== '' ? $channelId : null,
+        ]);
         $tourContext = (new TourPromptContextService())->buildTourContextForPrompt([
             'userText' => $userMessage,
             'sno' => (string) ($tenant['sno'] ?? ''),
