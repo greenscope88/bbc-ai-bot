@@ -48,16 +48,27 @@ if (!function_exists('app_config_get')) {
     }
 }
 
-if (!function_exists('sqlsrv_dsn')) {
-    function sqlsrv_dsn(): string
+if (!function_exists('build_sqlsrv_dsn')) {
+    /**
+     * ODBC Driver 18 defaults to Encrypt=yes; TrustServerCertificate=1 is required
+     * when the server uses a self-signed or internal CA certificate (pdo_sqlsrv accepts 1, not yes).
+     */
+    function build_sqlsrv_dsn(string $host, string $database): string
     {
-        $host = (string) app_config_get('database.host', '');
-        $name = (string) app_config_get('database.name', '');
-
-        if ($host === '' || $name === '') {
+        if ($host === '' || $database === '') {
             throw new RuntimeException('Database host/name is missing in configuration.');
         }
 
-        return "sqlsrv:Server={$host};Database={$name}";
+        return "sqlsrv:Server={$host};Database={$database};TrustServerCertificate=1";
+    }
+}
+
+if (!function_exists('sqlsrv_dsn')) {
+    function sqlsrv_dsn(): string
+    {
+        return build_sqlsrv_dsn(
+            (string) app_config_get('database.host', ''),
+            (string) app_config_get('database.name', '')
+        );
     }
 }

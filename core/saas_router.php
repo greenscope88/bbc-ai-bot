@@ -9,6 +9,7 @@ require_once __DIR__ . '/ai_prompt_builder.php';
 require_once __DIR__ . '/line_service.php';
 require_once __DIR__ . '/usage_tracker.php';
 require_once __DIR__ . '/gemini_service.php';
+require_once __DIR__ . '/tour_fallback_formatter.php';
 require_once __DIR__ . '/tour_prompt_context_service.php';
 require_once __DIR__ . '/tour_prompt_feature_gate.php';
 
@@ -94,7 +95,7 @@ class SaaSRouter
             if ($geminiResult['ok']) {
                 $replyText = (string) $geminiResult['text'];
             } else {
-                $replyText = 'AI錯誤：' . (string) $geminiResult['error'];
+                $replyText = '天氣查詢暫時無法取得，請稍後再試，或換個方式提問。';
             }
 
             $lineReplyRes = LineService::replyToLine($lineReplyUrl, $lineToken, $replyToken, $replyText);
@@ -177,7 +178,20 @@ class SaaSRouter
         }
 
         $geminiResult = callGemini($prompt);
-        $replyText = $geminiResult['ok'] ? (string) $geminiResult['text'] : 'AI錯誤：' . (string) $geminiResult['error'];
+        $usedTourFallback = false;
+        if ($geminiResult['ok']) {
+            $replyText = (string) $geminiResult['text'];
+        } elseif ($tourContext !== '') {
+            $fallbackText = TourFallbackFormatter::formatFromTourContext($tourContext);
+            if ($fallbackText !== '') {
+                $replyText = $fallbackText;
+                $usedTourFallback = true;
+            } else {
+                $replyText = '您好，目前系統較忙碌，請稍後再試，或聯繫客服為您服務。';
+            }
+        } else {
+            $replyText = '您好，目前系統較忙碌，請稍後再試，或聯繫客服為您服務。';
+        }
 
         $lineReplyRes = LineService::replyToLine($lineReplyUrl, $lineToken, $replyToken, $replyText);
         self::appendWebhookLog('line_api_response', [
@@ -192,7 +206,7 @@ class SaaSRouter
             'intent' => $intent,
             'line_reply_status' => $lineReplyRes['status'],
             'elapsed_ms' => (int) ((microtime(true) - $start) * 1000),
-            'ai_ok' => $geminiResult['ok'],
+            'ai_ok' => $geminiResult['ok'] || $usedTourFallback,
         ]);
 
         return ['ok' => true, 'message' => 'completed'];
@@ -205,7 +219,8 @@ class SaaSRouter
         $user = (string) ($config['database']['user'] ?? '');
         $pass = (string) ($config['database']['pass'] ?? '');
 
-        $dsn = 'sqlsrv:Server=' . $host . ';Database=' . $db;
+        require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'bootstrap.php';
+        $dsn = build_sqlsrv_dsn($host, $db);
         return new PDO($dsn, $user, $pass, [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,

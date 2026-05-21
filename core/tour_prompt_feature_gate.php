@@ -8,10 +8,10 @@ declare(strict_types=1);
  */
 final class TourPromptFeatureGate
 {
-    private const FEATURE_ENABLED = false;
+    private const FEATURE_ENABLED = true;
 
     /** @var list<string> */
-    private const ALLOWED_SNO = [];
+    private const ALLOWED_SNO = ['e1fd133c7e8e45a1'];
 
     /** @var list<string> */
     private const ALLOWED_CHANNEL_IDS = [];
