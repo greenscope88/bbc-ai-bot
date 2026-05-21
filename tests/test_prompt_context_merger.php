@@ -21,7 +21,7 @@ function test_assert(bool $cond, string $message): void
 $basePrompt = "你是測試旅行社的 LINE 客服。\n使用者問題：我想找東京行程";
 
 $tourContext = "【旅遊產品搜尋結果】\n本次查詢共找到 2 筆相關行程。\n"
-    . "完整搜尋結果連結：\nhttps://bonusmee.com/view/cloud/cloud_store_tourdate.php?keyword=%E6%9D%B1%E4%BA%AC";
+    . "完整搜尋結果：\nhttps://bonusmee.com/view/cloud/cloud_store_tourdate.php?keyword=%E6%9D%B1%E4%BA%AC";
 
 // 1. normal merge
 $merged = AiPromptBuilder::appendTourContext($basePrompt, $tourContext);
@@ -40,11 +40,13 @@ test_assert(strpos($merged, '--------------------------------------------------'
 test_assert(substr_count($merged, '--------------------------------------------------') >= 2, '3: opening and closing separators');
 
 // 4. Gemini instruction block
-test_assert(strpos($merged, '請嚴格遵守：') !== false, '4: instruction header');
-test_assert(strpos($merged, '僅引用上述搜尋結果中實際存在的資訊') !== false, '4: rule 1');
-test_assert(strpos($merged, '不得捏造不存在的行程') !== false, '4: rule 2');
-test_assert(strpos($merged, '必須附上搜尋結果連結') !== false, '4: rule 3');
-test_assert(strpos($merged, '不得暴露任何內部系統欄位或敏感資訊') !== false, '4: rule 4');
+test_assert(strpos($merged, '請嚴格遵守（回覆給客人時）') !== false, '4: instruction header');
+test_assert(strpos($merged, '固定清單') !== false, '4: list format');
+test_assert(strpos($merged, 'MM/DD') !== false, '4: date format rule');
+test_assert(strpos($merged, '直售價：') !== false, '4: price label');
+test_assert(strpos($merged, '完整搜尋結果') !== false, '4: search url rule');
+test_assert(strpos($merged, GeminiTourContextBuilder::LINE_TOUR_ITEM_SEPARATOR) !== false, '4: LINE item separator rule');
+test_assert(strpos($merged, '不得暴露任何內部系統欄位或敏感資訊') !== false, '4: sensitive rule');
 
 // 5. merger does not inject sensitive values
 foreach (['api_key', 'x-api-key', 'SECRET-TRACE', 'internal_url', 'upstream_url'] as $needle) {

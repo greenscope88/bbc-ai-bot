@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'tour_query_intent_detector.php';
+
 class IntentRouter
 {
     public static function detect(string $message): array
@@ -20,12 +22,24 @@ class IntentRouter
         } elseif (strpos($lower, '台胞證') !== false) {
             $intent = 'service_query';
             $serviceName = '台胞證';
-        } elseif (strpos($lower, '行程') !== false || strpos($lower, '團') !== false) {
-            $intent = 'tour_query';
-            $serviceName = '行程';
+        } elseif (strpos($lower, '簽證') !== false) {
+            $intent = 'service_query';
+            $serviceName = '簽證';
+        } elseif (strpos($lower, '訂單') !== false) {
+            $intent = 'service_query';
+            $serviceName = '訂單';
+        } elseif (strpos($lower, '匯率') !== false) {
+            $intent = 'service_query';
+            $serviceName = '匯率';
         } elseif (strpos($lower, '價格') !== false || strpos($lower, '費用') !== false) {
             $intent = 'service_query';
             $serviceName = '價格';
+        } else {
+            $tour = (new TourQueryIntentDetector())->detect($text);
+            if (($tour['is_tour_query'] ?? false) === true) {
+                $intent = 'tour_query';
+                $serviceName = '行程';
+            }
         }
 
         return [

@@ -34,6 +34,7 @@ $normal = [
             'stock' => 8,
             'price' => 39900,
             'tradeRefund' => 3000,
+            'departureStr' => '台北',
             'traceId' => 'must-not-appear',
             'depID' => 888,
         ],
@@ -43,6 +44,7 @@ $normal = [
             'stock' => 12,
             'price' => 42900,
             'tradeRefund' => 3500,
+            'departureStr' => '高雄',
         ],
         [
             'title' => '第三筆',
@@ -59,18 +61,28 @@ $text1 = $builder->build($normal);
 test_assert(strpos($text1, '【旅遊產品搜尋結果】') !== false, '1: title block');
 test_assert(strpos($text1, '共找到 12 筆') !== false, '1: total');
 test_assert(strpos($text1, '東京迪士尼親子五日') !== false, '1: item1 name');
-test_assert(strpos($text1, 'NT$39,900') !== false, '1: price format');
-test_assert(strpos($text1, 'NT$3,000') !== false, '1: rebate format');
+test_assert(strpos($text1, '07/10') !== false, '1: date MM/DD item1');
+test_assert(strpos($text1, '07/18') !== false, '1: date MM/DD item2');
+test_assert(strpos($text1, 'NT$39,900 起') !== false, '1: price format');
+test_assert(strpos($text1, '出發地：台北') !== false && strpos($text1, '出發地：高雄') !== false, '1: departure Taipei Kaohsiung');
+test_assert(substr_count($text1, '出發地：未提供') >= 1, '1: departure unknown when missing');
+test_assert(strpos($text1, '同業後退') === false, '1: no rebate line in listing');
+test_assert(strpos($text1, '可售數量') === false, '1: no stock line in listing');
 test_assert(strpos($text1, 'https://bonusmee.com/view/cloud') !== false, '1: search url');
 test_assert(strpos($text1, 'secret-trace') === false, '1: no traceId value');
 test_assert(strpos($text1, '888') === false, '1: no depID value');
 test_assert(strpos($text1, '請 Gemini 回覆客人時') !== false, '1: instructions');
+$lineSep = GeminiTourContextBuilder::LINE_TOUR_ITEM_SEPARATOR;
+test_assert(strpos($text1, $lineSep) !== false, '1: item separators');
+test_assert(strpos($text1, "{$lineSep}\n\n2. 東京富士山溫泉五日") !== false, '1: separator before item 2');
+test_assert(strpos($text1, "{$lineSep}\n\n完整搜尋結果：") === false, '1: no separator immediately before search block');
 
 // 2. maxItems
 $text2 = $builder->build($normal, ['maxItems' => 2]);
 test_assert(strpos($text2, '東京迪士尼親子五日') !== false, '2: first item');
 test_assert(strpos($text2, '東京富士山溫泉五日') !== false, '2: second item');
 test_assert(strpos($text2, '第三筆') === false, '2: third item excluded');
+test_assert(strpos($text2, "{$lineSep}\n\n2. 東京富士山溫泉五日") !== false, '2: separator between two items');
 
 // 3. empty results
 $empty = [
@@ -85,11 +97,113 @@ $text3 = $builder->build($empty);
 test_assert(strpos($text3, '目前沒有找到符合條件的行程') !== false, '3: empty message');
 test_assert(strpos($text3, 'https://example.com/search') !== false, '3: still has url');
 
+// merge same title → single block with combined MM/DD
+$mergePayload = [
+    'success' => true,
+    'http_status' => 200,
+    'pagination' => ['page' => 1, 'pageSize' => 5, 'total' => 2],
+    'items' => [
+        [
+            'title' => '同一行程',
+            'tourDate' => '2026-06-01',
+            'price' => 10000,
+            'departureStr' => '台北',
+            'couponNo' => 90001,
+        ],
+        [
+            'title' => '同一行程',
+            'tourDate' => '2026-06-10',
+            'price' => 10000,
+            'departureStr' => '台北',
+            'couponNo' => 90001,
+        ],
+    ],
+    'search_url' => 'https://bonusmee.com/merged',
+    'error' => null,
+];
+$textMerge = $builder->build($mergePayload, ['maxItems' => 5]);
+test_assert(strpos($textMerge, '06/01') !== false && strpos($textMerge, '06/10') !== false, 'merge: MM/DD combined');
+test_assert(preg_match_all('/同一行程/u', $textMerge) === 1, 'merge: single title occurrence in context');
+test_assert(strpos($textMerge, '出發地：台北') !== false, 'merge: departure retained');
+
+// merge split: same title, different departureStr → two rows
+$splitDep = [
+    'success' => true,
+    'pagination' => ['total' => 2],
+    'items' => [
+        ['title' => '京津八日', 'tourDate' => '2026-06-01', 'price' => 40000, 'departureStr' => '台北', 'couponNo' => 70001],
+        ['title' => '京津八日', 'tourDate' => '2026-06-02', 'price' => 40000, 'departureStr' => '高雄', 'couponNo' => 70001],
+    ],
+    'search_url' => 'https://bonusmee.com/split-dep',
+];
+$textSplitDep = $builder->build($splitDep);
+test_assert(preg_match_all('/京津八日/u', $textSplitDep) === 2, 'splitDep: two rows same title diff dep');
+test_assert(strpos($textSplitDep, '出發地：台北') !== false && strpos($textSplitDep, '出發地：高雄') !== false, 'splitDep: departures');
+
+// merge split: same title + departure, different couponNo
+$splitCoupon = [
+    'success' => true,
+    'pagination' => ['total' => 2],
+    'items' => [
+        ['title' => '雙城遊', 'tourDate' => '2026-07-01', 'price' => 42000, 'departureStr' => '台北', 'couponNo' => 80001],
+        ['title' => '雙城遊', 'tourDate' => '2026-07-02', 'price' => 43000, 'departureStr' => '台北', 'couponNo' => 80002],
+    ],
+    'search_url' => 'https://bonusmee.com/split-coupon',
+];
+$textSplitCoupon = $builder->build($splitCoupon);
+test_assert(preg_match_all('/雙城遊/u', $textSplitCoupon) === 2, 'splitCoupon: two rows');
+
+// title prefix departure when departureStr empty
+$prefixPayload = [
+    'success' => true,
+    'pagination' => ['total' => 1],
+    'items' => [
+        ['title' => '高雄出發│北京自由行五日', 'tourDate' => '2026-05-01', 'price' => 21900, 'couponNo' => 501],
+    ],
+    'search_url' => 'https://bonusmee.com/prefix',
+];
+$textPrefix = $builder->build($prefixPayload);
+test_assert(strpos($textPrefix, '出發地：高雄') !== false, 'prefix: departure parsed from title');
+
+// apiRawLimit 30 input, max 5 merged display rows (10 distinct single-date rows → cap at 5)
+$manyDistinct = ['success' => true, 'pagination' => ['total' => 99], 'items' => [], 'search_url' => 'https://bonusmee.com/many'];
+for ($i = 1; $i <= 10; ++$i) {
+    $manyDistinct['items'][] = [
+        'title' => "獨立行程{$i}",
+        'tourDate' => sprintf('2026-06-%02d', $i),
+        'price' => 10000 + $i,
+        'departureStr' => '台北',
+        'couponNo' => 60000 + $i,
+    ];
+}
+$textMany = $builder->build($manyDistinct, ['maxItems' => 5, 'apiRawLimit' => 30]);
+test_assert(preg_match_all('/^\d+\.\s+/mu', $textMany) === 5, 'many: at most 5 numbered merged rows');
+test_assert(strpos($textMany, '獨立行程6') === false, 'many: sixth merged row excluded');
+
+// Beijing-like: first 5 rows same merge key → one block; sixth distinct → second row (within maxItems 5)
+$beijingLike = [
+    'success' => true,
+    'pagination' => ['total' => 2000],
+    'items' => [
+        ['title' => '文化交流｜京津雙城', 'tourDate' => '2026/07/12', 'price' => 42800, 'departureStr' => '台北', 'couponNo' => 11651],
+        ['title' => '文化交流｜京津雙城', 'tourDate' => '2026/08/23', 'price' => 42800, 'departureStr' => '台北', 'couponNo' => 11651],
+        ['title' => '文化交流｜京津雙城', 'tourDate' => '2026/08/31', 'price' => 42800, 'departureStr' => '台北', 'couponNo' => 11651],
+        ['title' => '文化交流｜京津雙城', 'tourDate' => '2026/09/28', 'price' => 42800, 'departureStr' => '台北', 'couponNo' => 11651],
+        ['title' => '文化交流｜京津雙城', 'tourDate' => '2026/10/19', 'price' => 42800, 'departureStr' => '台北', 'couponNo' => 11651],
+        ['title' => '月滿京秋烤肉趴', 'tourDate' => '2026/09/21', 'price' => 46800, 'departureStr' => '台北', 'couponNo' => 11370],
+    ],
+    'search_url' => 'https://bonusmee.com/bj',
+];
+$textBj = $builder->build($beijingLike, ['maxItems' => 5, 'apiRawLimit' => 30]);
+test_assert(preg_match_all('/^\d+\.\s+/mu', $textBj) === 2, 'beijingLike: merged group + second product → 2 rows');
+test_assert(strpos($textBj, '07/12') !== false && strpos($textBj, '10/19') !== false, 'beijingLike: merged dates');
+test_assert(strpos($textBj, '2. 月滿京秋烤肉趴') !== false, 'beijingLike: second product visible');
+
 // 4. missing search_url
 $noUrl = $normal;
 $noUrl['search_url'] = null;
 $text4 = $builder->build($noUrl);
-test_assert(strpos($text4, '目前未提供搜尋結果連結') !== false, '4: missing url note');
+test_assert(strpos($text4, '目前未提供連結') !== false, '4: missing url note');
 
 // 5. missing item fields
 $sparse = [
@@ -102,6 +216,7 @@ $text5 = $builder->build($sparse);
 test_assert(strpos($text5, '僅有名稱') !== false, '5: title');
 test_assert(strpos($text5, '出團日期：未提供') !== false, '5: missing date');
 test_assert(strpos($text5, '直售價：未提供') !== false, '5: missing price');
+test_assert(strpos($text5, '出發地：未提供') !== false, '5: missing departure');
 
 // 6. price formatting explicit
 test_assert(strpos($text1, 'NT$42,900') !== false, '6: second price');

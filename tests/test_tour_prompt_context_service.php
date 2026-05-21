@@ -31,11 +31,22 @@ function assert_no_sensitive_values(string $text, string $label): void
 /**
  * @return array{client: TourSearchApiClient, called: bool}
  */
+function recordLastTourSearchUrl(string $url): void
+{
+    $q = [];
+    $query = parse_url($url, PHP_URL_QUERY);
+    if (is_string($query) && $query !== '') {
+        parse_str($query, $q);
+    }
+    $GLOBALS['__tour_prompt_last_query'] = $q;
+}
+
 function mockClientWithData(string $keyword): array
 {
     $called = false;
     $client = new TourSearchApiClient($GLOBALS['baseUrl'], 5, static function (string $url, array $headers, int $timeout) use ($keyword, &$called): array {
         $called = true;
+        recordLastTourSearchUrl($url);
         $body = json_encode([
             'success' => true,
             'traceId' => 'SECRET-TRACE-999',
@@ -74,6 +85,7 @@ function mockClientEmpty(): array
     $called = false;
     $client = new TourSearchApiClient($GLOBALS['baseUrl'], 5, static function (string $url, array $headers, int $timeout) use (&$called): array {
         $called = true;
+        recordLastTourSearchUrl($url);
         $body = json_encode([
             'success' => true,
             'traceId' => 'SECRET-TRACE-999',
@@ -104,6 +116,7 @@ function mockClientManyItems(): array
     $called = false;
     $client = new TourSearchApiClient($GLOBALS['baseUrl'], 5, static function (string $url, array $headers, int $timeout) use (&$called): array {
         $called = true;
+        recordLastTourSearchUrl($url);
         $items = [];
         for ($i = 1; $i <= 7; ++$i) {
             $items[] = ['title' => "行程第{$i}筆", 'tourDate' => '2026-08-01', 'price' => 10000 + $i];
@@ -130,6 +143,7 @@ function mockClientManyItems(): array
 
 $service = new TourPromptContextService();
 $GLOBALS['baseUrl'] = $baseUrl;
+$GLOBALS['__tour_prompt_last_query'] = [];
 
 // 1. feature flag off
 $mockOff = mockClientWithData('東京');
@@ -162,6 +176,7 @@ $ctx3 = $service->buildTourContextForPrompt([
     'searchClient' => $mockData['client'],
 ]);
 test_assert($mockData['called'] === true, '3: search client called');
+test_assert((string) ($GLOBALS['__tour_prompt_last_query']['pageSize'] ?? '') === '30', '3: api pageSize 30');
 test_assert(strpos($ctx3, '東京迪士尼親子五日') !== false, '3: tour title');
 test_assert(strpos($ctx3, 'bonusmee.com/view/cloud') !== false, '3: search_url');
 assert_no_sensitive_values($ctx3, '3');
@@ -203,7 +218,8 @@ $ctx7 = $service->buildTourContextForPrompt([
     'maxItems' => 5,
     'searchClient' => $mockMany['client'],
 ]);
-test_assert(substr_count($ctx7, '行程名稱：') === 5, '7: max 5 items');
+test_assert((string) ($GLOBALS['__tour_prompt_last_query']['pageSize'] ?? '') === '30', '7: api pageSize 30');
+test_assert(preg_match_all('/^\d+\.\s+/mu', $ctx7) === 5, '7: max 5 merged display rows');
 test_assert(strpos($ctx7, '行程第6筆') === false, '7: sixth excluded');
 
 // 8. appendTourContext integration
@@ -211,7 +227,7 @@ $basePrompt = '你是測試旅行社 LINE 客服。';
 $merged = AiPromptBuilder::appendTourContext($basePrompt, $ctx3);
 test_assert(strpos($merged, $basePrompt) === 0, '8: base preserved');
 test_assert(strpos($merged, '以下為系統自動整理的旅遊商品搜尋結果資訊') !== false, '8: merge header');
-test_assert(strpos($merged, '請嚴格遵守：') !== false, '8: merge rules');
+test_assert(strpos($merged, '請嚴格遵守（回覆給客人時）：') !== false, '8: merge rules');
 
 if ($failures === 0) {
     echo "OK: TourPromptContextService tests passed.\n";

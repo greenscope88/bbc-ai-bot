@@ -10,12 +10,16 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'gemini_tour_context_builder.php';
  */
 final class TourPromptContextService
 {
+    /** Raw page size for TourSearchApiClient (merge up to this many rows, then cap display in context builder). */
+    public const DEFAULT_API_PAGE_SIZE = 30;
+
     /**
      * @param array{
      *   userText?: string,
      *   sno?: string,
      *   featureEnabled?: bool,
      *   maxItems?: int,
+     *   apiPageSize?: int,
      *   searchClient?: TourSearchApiClient,
      *   intentDetector?: TourQueryIntentDetector,
      *   contextBuilder?: GeminiTourContextBuilder
@@ -42,6 +46,9 @@ final class TourPromptContextService
             $searchClient = $params['searchClient'] ?? new TourSearchApiClient();
             $contextBuilder = $params['contextBuilder'] ?? new GeminiTourContextBuilder();
             $maxItems = isset($params['maxItems']) ? max(1, (int) $params['maxItems']) : 5;
+            $apiPageSize = isset($params['apiPageSize'])
+                ? max(1, min(100, (int) $params['apiPageSize']))
+                : self::DEFAULT_API_PAGE_SIZE;
 
             $intent = $intentDetector->detect($userText);
             if (($intent['is_tour_query'] ?? false) !== true) {
@@ -53,9 +60,12 @@ final class TourPromptContextService
                 return '';
             }
 
-            $apiResult = $searchClient->search($sno, $keyword, 1, $maxItems);
+            $apiResult = $searchClient->search($sno, $keyword, 1, $apiPageSize);
 
-            return $contextBuilder->build($apiResult, ['maxItems' => $maxItems]);
+            return $contextBuilder->build($apiResult, [
+                'maxItems' => $maxItems,
+                'apiRawLimit' => $apiPageSize,
+            ]);
         } catch (\Throwable $e) {
             return '';
         }

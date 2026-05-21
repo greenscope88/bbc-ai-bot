@@ -9,11 +9,10 @@ class TourService
             return ['supported' => true, 'note' => ''];
         }
 
-        $sql = "SELECT is_supported, note
+        $sql = "SELECT TOP 1 is_supported, note
                 FROM tenant_service_limits
                 WHERE sno = :sno AND service_name = :service_name
-                ORDER BY updated_at DESC
-                LIMIT 1";
+                ORDER BY updated_at DESC";
 
         $stmt = $pdo->prepare($sql);
         $stmt->bindValue(':sno', $sno, PDO::PARAM_STR);

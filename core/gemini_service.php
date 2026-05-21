@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 /**
  * Independent Gemini integration module.
- * Returns ['ok' => bool, 'text' => ?string, 'error' => ?string, 'response' => mixed]
+ * Returns ['ok' => bool, 'text' => ?string, 'error' => ?string, 'response' => mixed, 'http_status' => int, 'curl_errno' => int]
  */
 function callGemini(string $message): array
 {
@@ -27,7 +27,7 @@ function callGemini(string $message): array
 
     if ($apiKey === '') {
         logGeminiError('N/A', $requestPayload, null, 'GEMINI_API_KEY is empty');
-        return ['ok' => false, 'text' => null, 'error' => 'GEMINI_API_KEY 未設定', 'response' => null];
+        return ['ok' => false, 'text' => null, 'error' => 'GEMINI_API_KEY 未設定', 'response' => null, 'http_status' => 0, 'curl_errno' => 0];
     }
 
     $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . rawurlencode($apiKey);
@@ -41,13 +41,32 @@ function callGemini(string $message): array
 }
 
 /**
- * @return array{ok: bool, text: ?string, error: ?string, response: mixed}
+ * True when a failed attempt should be retried (503, transport timeout, or any curl error).
+ *
+ * @param array{ok?: bool, http_status?: int, curl_errno?: int} $result
  */
-function callGeminiUrl(string $url, array $requestPayload): array
+function gemini_result_is_retryable(array $result): bool
+{
+    if (($result['ok'] ?? false) === true) {
+        return false;
+    }
+    if ((int) ($result['curl_errno'] ?? 0) !== 0) {
+        return true;
+    }
+
+    return (int) ($result['http_status'] ?? 0) === 503;
+}
+
+/**
+ * Single HTTP attempt (no retry).
+ *
+ * @return array{ok: bool, text: ?string, error: ?string, response: mixed, http_status: int, curl_errno: int}
+ */
+function gemini_http_request_once(string $url, array $requestPayload): array
 {
     $ch = curl_init($url);
     if ($ch === false) {
-        return ['ok' => false, 'text' => null, 'error' => 'curl_init failed', 'response' => null];
+        return ['ok' => false, 'text' => null, 'error' => 'curl_init failed', 'response' => null, 'http_status' => 0, 'curl_errno' => -1];
     }
 
     curl_setopt_array($ch, [
@@ -61,7 +80,7 @@ function callGeminiUrl(string $url, array $requestPayload): array
 
     $raw = curl_exec($ch);
     $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-    $curlErrNo = curl_errno($ch);
+    $curlErrNo = (int) curl_errno($ch);
     $curlErr = curl_error($ch);
     curl_close($ch);
 
@@ -78,7 +97,7 @@ function callGeminiUrl(string $url, array $requestPayload): array
         } else {
             $errorMsg .= ' - status ' . $status;
         }
-        return ['ok' => false, 'text' => null, 'error' => $errorMsg, 'response' => $decoded];
+        return ['ok' => false, 'text' => null, 'error' => $errorMsg, 'response' => $decoded, 'http_status' => $status, 'curl_errno' => $curlErrNo];
     }
 
     $text = null;
@@ -87,10 +106,41 @@ function callGeminiUrl(string $url, array $requestPayload): array
     }
 
     if ($text === null || $text === '') {
-        return ['ok' => false, 'text' => null, 'error' => 'Gemini 回傳內容為空', 'response' => $decoded];
+        return ['ok' => false, 'text' => null, 'error' => 'Gemini 回傳內容為空', 'response' => $decoded, 'http_status' => $status, 'curl_errno' => 0];
     }
 
-    return ['ok' => true, 'text' => $text, 'error' => null, 'response' => $decoded];
+    return ['ok' => true, 'text' => $text, 'error' => null, 'response' => $decoded, 'http_status' => $status, 'curl_errno' => 0];
+}
+
+/**
+ * Up to 3 HTTP attempts: immediate, then after 1s, then after 2s. Retries only on 503 / curl errors (incl. timeout).
+ *
+ * @param callable(string, array): array $httpOnceOverride Optional for tests; defaults to gemini_http_request_once.
+ * @return array{ok: bool, text: ?string, error: ?string, response: mixed, http_status: int, curl_errno: int}
+ */
+function callGeminiUrl(string $url, array $requestPayload, ?callable $httpOnceOverride = null): array
+{
+    $once = $httpOnceOverride ?? static function (string $u, array $p): array {
+        return gemini_http_request_once($u, $p);
+    };
+
+    $last = $once($url, $requestPayload);
+    if ($last['ok']) {
+        return $last;
+    }
+
+    for ($retry = 1; $retry <= 2; $retry++) {
+        if (!gemini_result_is_retryable($last)) {
+            return $last;
+        }
+        usleep($retry === 1 ? 1_000_000 : 2_000_000);
+        $last = $once($url, $requestPayload);
+        if ($last['ok']) {
+            return $last;
+        }
+    }
+
+    return $last;
 }
 
 function readGeminiEnvValue(string $key): string
