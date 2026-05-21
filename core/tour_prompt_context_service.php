@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'tour_query_intent_detector.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'tour_search_api_client.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'tenant_context_resolver.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'gemini_tour_context_builder.php';
 
 /**
@@ -62,12 +63,50 @@ final class TourPromptContextService
 
             $apiResult = $searchClient->search($sno, $keyword, 1, $apiPageSize);
 
-            return $contextBuilder->build($apiResult, [
+            $storeNo = $this->resolveStoreNoForSno($sno);
+
+            $buildOptions = [
                 'maxItems' => $maxItems,
                 'apiRawLimit' => $apiPageSize,
-            ]);
+            ];
+            if ($storeNo !== null) {
+                $buildOptions['storeNo'] = $storeNo;
+            }
+
+            return $contextBuilder->build($apiResult, $buildOptions);
         } catch (\Throwable $e) {
             return '';
         }
+    }
+
+    private function resolveStoreNoForSno(string $sno): ?int
+    {
+        try {
+            $resolver = new TenantContextResolver();
+            $resolved = $resolver->resolve($sno);
+            if (($resolved['ok'] ?? false) !== true) {
+                return null;
+            }
+
+            $ctx = $resolved['tenantContext'] ?? null;
+            if (!is_array($ctx) || !array_key_exists('storeNo', $ctx)) {
+                return null;
+            }
+
+            $v = $ctx['storeNo'];
+            if (is_int($v) && $v > 0) {
+                return $v;
+            }
+
+            if (is_string($v) && preg_match('/^\d+$/', trim($v)) === 1) {
+                $n = (int) trim($v);
+
+                return $n > 0 ? $n : null;
+            }
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        return null;
     }
 }

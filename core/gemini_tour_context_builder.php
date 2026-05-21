@@ -1,12 +1,17 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'tour_detail_url_builder.php';
+
 /**
  * Stage 1-B-14: Build Gemini-ready Chinese context from TourSearchApiClient results.
  * No Gemini API, no DB, no webhook wiring.
  */
 final class GeminiTourContextBuilder
 {
+    private ?int $contextStoreNo = null;
+
+    private ?TourDetailUrlBuilder $detailUrlBuilder = null;
     /** Max raw API items to merge before capping display rows (see TourPromptContextService pageSize). */
     private const DEFAULT_API_RAW_LIMIT = 30;
 
@@ -37,10 +42,19 @@ final class GeminiTourContextBuilder
 
     /**
      * @param array<string, mixed> $apiResult TourSearchApiClient::search() payload
-     * @param array<string, mixed> $options maxItems (int), apiRawLimit (int), title (string), includeInstructions (bool)
+     * @param array<string, mixed> $options maxItems (int), apiRawLimit (int), title (string), includeInstructions (bool), storeNo (int), detailUrlBuilder (TourDetailUrlBuilder)
      */
     public function build(array $apiResult, array $options = []): string
     {
+        $this->contextStoreNo = $this->resolveStoreNoOption($options);
+        if (isset($options['detailUrlBuilder']) && $options['detailUrlBuilder'] instanceof TourDetailUrlBuilder) {
+            $this->detailUrlBuilder = $options['detailUrlBuilder'];
+        } elseif ($this->contextStoreNo !== null) {
+            $this->detailUrlBuilder = new TourDetailUrlBuilder();
+        } else {
+            $this->detailUrlBuilder = null;
+        }
+
         $maxItems = isset($options['maxItems']) ? max(1, (int) $options['maxItems']) : 5;
         $apiRawLimit = isset($options['apiRawLimit']) ? max(1, min(100, (int) $options['apiRawLimit'])) : self::DEFAULT_API_RAW_LIMIT;
         $title = isset($options['title']) && is_string($options['title']) && trim($options['title']) !== ''
@@ -367,7 +381,84 @@ final class GeminiTourContextBuilder
         $block[] = '   直售價：' . $priceLine;
         $block[] = '   出發地：' . $departure;
 
+        $detailUrl = $this->resolveDetailUrlForItem($safe);
+        if ($detailUrl !== null) {
+            $block[] = '   行程內頁：' . $detailUrl;
+        }
+
+        $schLink = $this->resolveSchLinkForItem($safe);
+        if ($schLink !== null) {
+            $block[] = '   行程表：' . $schLink;
+        }
+
         return implode("\n", $block);
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     */
+    private function resolveStoreNoOption(array $options): ?int
+    {
+        if (!array_key_exists('storeNo', $options)) {
+            return null;
+        }
+
+        $v = $options['storeNo'];
+        if (is_int($v) && $v > 0) {
+            return $v;
+        }
+
+        if (is_string($v) && preg_match('/^\d+$/', trim($v)) === 1) {
+            $n = (int) trim($v);
+
+            return $n > 0 ? $n : null;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $safe
+     */
+    private function resolveDetailUrlForItem(array $safe): ?string
+    {
+        if ($this->contextStoreNo === null || $this->detailUrlBuilder === null) {
+            return null;
+        }
+
+        $couponNo = $safe['couponNo'] ?? null;
+        $tourSeqNo = $safe['tourSeqNo'] ?? ($safe['tour_seq_no'] ?? null);
+
+        return $this->detailUrlBuilder->buildDetailUrl($this->contextStoreNo, $couponNo, $tourSeqNo);
+    }
+
+    /**
+     * @param array<string, mixed> $safe
+     */
+    private function resolveSchLinkForItem(array $safe): ?string
+    {
+        if (!array_key_exists('schLink', $safe)) {
+            return null;
+        }
+
+        $v = $safe['schLink'];
+        if (!is_scalar($v)) {
+            return null;
+        }
+
+        $trimmed = trim((string) $v);
+        if ($trimmed === '') {
+            return null;
+        }
+
+        $lower = strtolower($trimmed);
+        foreach (['api_key=', 'traceid=', 'depid='] as $bad) {
+            if (strpos($lower, $bad) !== false) {
+                return null;
+            }
+        }
+
+        return $trimmed;
     }
 
     private function formatDirectSaleDisplay(string $raw): string
@@ -466,9 +557,11 @@ final class GeminiTourContextBuilder
             . "- 第二行縮排：出團日期：僅使用 MM/DD（例如 06/01、06/10）；不要顯示年份（例如 2026）；同一商品多個出團日可合併為「06/01、06/10」。\n"
             . "- 第三行縮排：直售價：沿用參考中的金額與幣別格式，若參考已含「起」字則保留，否則可加上「起」使語意一致。\n"
             . "- 第四行縮排：每筆行程必須保留「出發地：」，格式為「出發地：台北」或「出發地：高雄」等（與參考一致）；不要把出發地和目的地／景區名稱混淆。\n"
+            . "- 若參考中有「行程內頁：」後的 URL，必須逐字保留該行（不可改寫、不可縮短、不可替換成其他網址）。\n"
+            . "- 若參考中有「行程表：」後的 URL，必須逐字保留該行；若參考無此行則不要自行新增行程表連結。\n"
             . "- 若「完整搜尋結果」連結存在於參考中，回覆結尾必須原樣附上該 URL（不可省略）。\n"
             . "- 只引用參考區塊出現過的行程；不得捏造、改寫行程名稱或杜撰日期/價格/出發地。\n"
-            . "- 若無法合併多日期，仍須維持每筆相同欄位順序與排版（編號＋標題＋出團日期＋直售價＋出發地）。\n"
+            . "- 若無法合併多日期，仍須維持每筆相同欄位順序與排版（編號＋標題＋出團日期＋直售價＋出發地；參考若有則接行程內頁、行程表）。\n"
             . "- 不要暴露內部 API、depID、storeNo、provider_id_no、api key、traceId 等敏感欄位。";
     }
 }

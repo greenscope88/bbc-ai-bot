@@ -46,6 +46,8 @@ test_assert(strpos($merged, 'MM/DD') !== false, '4: date format rule');
 test_assert(strpos($merged, '直售價：') !== false, '4: price label');
 test_assert(strpos($merged, '完整搜尋結果') !== false, '4: search url rule');
 test_assert(strpos($merged, GeminiTourContextBuilder::LINE_TOUR_ITEM_SEPARATOR) !== false, '4: LINE item separator rule');
+test_assert(strpos($merged, '行程內頁：') !== false, '4: detail url preserve rule');
+test_assert(strpos($merged, '行程表：') !== false, '4: schedule url preserve rule');
 test_assert(strpos($merged, '不得暴露任何內部系統欄位或敏感資訊') !== false, '4: sensitive rule');
 
 // 5. merger does not inject sensitive values

@@ -71,6 +71,8 @@ $fixture = <<<CTX
    出團日期：2026-06-01
    直售價：NT$33,800 起
    出發地：台北
+   行程內頁：https://bonusmee.com/view/cloud/tourdate_dm.php?trsno=1001
+   行程表：https://example.com/schedule-a.pdf
 
 {$lineSep}
 
@@ -90,6 +92,9 @@ $fb = TourFallbackFormatter::formatFromTourContext($fixture);
 test_assert(strpos($fb, '東京測試行程A') !== false, 'fallback: title');
 test_assert(strpos($fb, '東京測試行程B') !== false, 'fallback: second title');
 test_assert(strpos($fb, '出發地：台北') !== false && strpos($fb, '出發地：高雄') !== false, 'fallback: departure lines');
+test_assert(strpos($fb, '行程內頁：https://bonusmee.com/view/cloud/tourdate_dm.php?trsno=1001') !== false, 'fallback: detail page url');
+test_assert(strpos($fb, '行程表：https://example.com/schedule-a.pdf') !== false, 'fallback: schedule link');
+test_assert(substr_count($fb, '行程表：') === 1, 'fallback: schedule only on item A');
 test_assert(strpos($fb, "{$lineSep}\n\n2. 東京測試行程B") !== false, 'fallback: separator between items');
 test_assert(strpos($fb, '06/01') !== false, 'fallback: date MM/DD');
 test_assert(strpos($fb, '2026') === false, 'fallback: no year in reply');

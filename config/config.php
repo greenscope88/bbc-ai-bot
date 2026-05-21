@@ -85,6 +85,11 @@ return [
         'user' => (isset($env['DB_USER']) ? $env['DB_USER'] : ''),
         'pass' => (isset($env['DB_PASS']) ? $env['DB_PASS'] : ''),
     ],
+    'storefront' => [
+        'bonusmee_data_key' => isset($env['BONUSMEE_STOREFRONT_DATA_KEY'])
+            ? trim((string) $env['BONUSMEE_STOREFRONT_DATA_KEY'])
+            : '',
+    ],
     'gateway' => [
         'host_b' => [
             'http_enabled' => isset($env['GATEWAY_HOSTB_HTTP_ENABLED']) && filter_var($env['GATEWAY_HOSTB_HTTP_ENABLED'], FILTER_VALIDATE_BOOLEAN),

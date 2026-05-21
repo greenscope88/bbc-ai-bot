@@ -49,6 +49,12 @@ final class TourFallbackFormatter
                 $lines[] = '   出團日期：' . self::normalizeDatesDisplay($it['date']);
                 $lines[] = '   直售價：' . $it['price'];
                 $lines[] = '   出發地：' . $it['departure'];
+                if ($it['detail_page'] !== '') {
+                    $lines[] = '   行程內頁：' . $it['detail_page'];
+                }
+                if ($it['schedule_link'] !== '') {
+                    $lines[] = '   行程表：' . $it['schedule_link'];
+                }
                 ++$n;
             }
         }
@@ -77,6 +83,15 @@ final class TourFallbackFormatter
 
     private static function extractSearchUrl(string $body): string
     {
+        $label = '完整搜尋結果：';
+        $labelPos = strpos($body, $label);
+        if ($labelPos !== false) {
+            $after = substr($body, $labelPos + strlen($label));
+            if (preg_match('/https?:\/\/\S+/u', $after, $m) === 1) {
+                return trim($m[0]);
+            }
+        }
+
         $needle = 'https://bonusmee.com';
         $pos = strpos($body, $needle);
         if ($pos === false) {
@@ -142,7 +157,7 @@ final class TourFallbackFormatter
     }
 
     /**
-     * @return list<array{title: string, date: string, price: string, departure: string}>
+     * @return list<array{title: string, date: string, price: string, departure: string, detail_page: string, schedule_link: string}>
      */
     private static function parseItemBlocks(string $body): array
     {
@@ -170,7 +185,9 @@ final class TourFallbackFormatter
                     || mb_strpos($titleCandidate, '直售價', 0, 'UTF-8') === 0
                     || mb_strpos($titleCandidate, '價格', 0, 'UTF-8') === 0
                     || mb_strpos($titleCandidate, '售價', 0, 'UTF-8') === 0
-                    || mb_strpos($titleCandidate, '出發地', 0, 'UTF-8') === 0) {
+                    || mb_strpos($titleCandidate, '出發地', 0, 'UTF-8') === 0
+                    || mb_strpos($titleCandidate, '行程內頁', 0, 'UTF-8') === 0
+                    || mb_strpos($titleCandidate, '行程表', 0, 'UTF-8') === 0) {
                     continue;
                 }
                 if ($current !== null) {
@@ -181,6 +198,8 @@ final class TourFallbackFormatter
                     'date' => '未提供',
                     'price' => '未提供',
                     'departure' => '未提供',
+                    'detail_page' => '',
+                    'schedule_link' => '',
                 ];
                 continue;
             }
@@ -197,6 +216,14 @@ final class TourFallbackFormatter
             }
             if (preg_match('/^出發地：(.+)$/u', $line, $m) === 1) {
                 $current['departure'] = trim($m[1]);
+                continue;
+            }
+            if (preg_match('/^行程內頁：(.+)$/u', $line, $m) === 1) {
+                $current['detail_page'] = trim($m[1]);
+                continue;
+            }
+            if (preg_match('/^行程表：(.+)$/u', $line, $m) === 1) {
+                $current['schedule_link'] = trim($m[1]);
                 continue;
             }
         }

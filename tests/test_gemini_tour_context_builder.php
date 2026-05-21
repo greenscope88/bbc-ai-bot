@@ -5,6 +5,8 @@ declare(strict_types=1);
  * Stage 1-B-14 CLI tests for GeminiTourContextBuilder.
  */
 
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'legacy_storefront_crypto.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tour_detail_url_builder.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'gemini_tour_context_builder.php';
 
 $failures = 0;
@@ -255,6 +257,66 @@ $fail = [
 $textF = $builder->build($fail);
 test_assert(strpos($textF, '未能取得可推薦') !== false, 'fail: generic');
 test_assert(strpos($textF, 'HOSTB_HTTP_DISABLED') === false, 'fail: no error code leak');
+
+// detail_url + schLink when storeNo and crypto available
+$detailCrypto = new LegacyStorefrontCrypto('testkey8');
+$detailBuilder = new TourDetailUrlBuilder($detailCrypto);
+$withLinks = [
+    'success' => true,
+    'pagination' => ['total' => 1],
+    'items' => [
+        [
+            'title' => '連結測試行程',
+            'tourDate' => '2026-06-15',
+            'price' => 19900,
+            'departureStr' => '台北',
+            'couponNo' => 88001,
+            'tourSeqNo' => 99001,
+            'schLink' => 'https://drive.google.com/example-itinerary',
+        ],
+    ],
+    'search_url' => 'https://bonusmee.com/view/cloud/cloud_store_tourdate.php?keyword=link',
+];
+$textLinks = $builder->build($withLinks, [
+    'storeNo' => 6290,
+    'detailUrlBuilder' => $detailBuilder,
+    'maxItems' => 5,
+]);
+test_assert(strpos($textLinks, '行程內頁：') !== false, 'links: detail line');
+test_assert(strpos($textLinks, 'tourdate_dm.php') !== false, 'links: detail url path');
+test_assert(strpos($textLinks, 'trsno=99001') !== false, 'links: plain trsno in url');
+test_assert(strpos($textLinks, '行程表：https://drive.google.com/example-itinerary') !== false, 'links: schLink line');
+test_assert(strpos($textLinks, '完整搜尋結果：') !== false && strpos($textLinks, 'cloud_store_tourdate.php') !== false, 'links: search_url preserved');
+
+$itemNoSch = $withLinks['items'][0];
+$itemNoSch['schLink'] = '';
+$noSchLink = [
+    'success' => true,
+    'pagination' => ['total' => 1],
+    'items' => [$itemNoSch],
+    'search_url' => $withLinks['search_url'],
+];
+$textNoSch = $builder->build($noSchLink, [
+    'storeNo' => 6290,
+    'detailUrlBuilder' => $detailBuilder,
+    'includeInstructions' => false,
+]);
+test_assert(strpos($textNoSch, '行程表：https') === false, 'links: empty schLink omitted');
+
+$itemNoSeq = $withLinks['items'][0];
+unset($itemNoSeq['tourSeqNo']);
+$missingSeq = [
+    'success' => true,
+    'pagination' => ['total' => 1],
+    'items' => [$itemNoSeq],
+    'search_url' => $withLinks['search_url'],
+];
+$textNoDetail = $builder->build($missingSeq, [
+    'storeNo' => 6290,
+    'detailUrlBuilder' => $detailBuilder,
+    'includeInstructions' => false,
+]);
+test_assert(strpos($textNoDetail, '行程內頁：') === false, 'links: missing tourSeqNo no detail');
 
 if ($failures === 0) {
     echo "OK: GeminiTourContextBuilder tests passed.\n";
