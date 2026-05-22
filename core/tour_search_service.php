@@ -308,7 +308,7 @@ final class TourSearchService
      */
     private static function mapItem(array $row): array
     {
-        return [
+        $item = [
             'title' => (string) ($row['couponName'] ?? ''),
             'price' => isset($row['price']) ? (int) $row['price'] : 0,
             'tourDate' => (string) ($row['tourDate'] ?? ''),
@@ -318,6 +318,55 @@ final class TourSearchService
             'departureStr' => (string) ($row['departureStr'] ?? ''),
             'storeName' => (string) ($row['storeName'] ?? ''),
         ];
+
+        if (isset($row['schLink']) && is_scalar($row['schLink'])) {
+            $schLink = trim((string) $row['schLink']);
+            if ($schLink !== '') {
+                $item['schLink'] = $schLink;
+            }
+        }
+
+        if (isset($row['schLinkName']) && is_scalar($row['schLinkName'])) {
+            $schLinkName = trim((string) $row['schLinkName']);
+            if ($schLinkName !== '') {
+                $item['schLinkName'] = $schLinkName;
+            }
+        }
+
+        $schLinks = self::normalizeSchLinksFromRow($row);
+        if ($schLinks !== []) {
+            $item['schLinks'] = $schLinks;
+        }
+
+        return $item;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return list<array{schLinkName: string, schLink: string}>
+     */
+    private static function normalizeSchLinksFromRow(array $row): array
+    {
+        if (!isset($row['schLinks']) || !is_array($row['schLinks'])) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($row['schLinks'] as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            $url = isset($entry['schLink']) && is_scalar($entry['schLink']) ? trim((string) $entry['schLink']) : '';
+            if ($url === '') {
+                continue;
+            }
+            $name = isset($entry['schLinkName']) && is_scalar($entry['schLinkName'])
+                ? trim((string) $entry['schLinkName'])
+                : '';
+            $out[] = ['schLinkName' => $name, 'schLink' => $url];
+        }
+
+        return $out;
     }
 
     /**
