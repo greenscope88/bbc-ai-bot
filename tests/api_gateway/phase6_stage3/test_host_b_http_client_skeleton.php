@@ -141,6 +141,23 @@ t(isset($decoded['msg']) && $decoded['msg'] === '[redacted]', 'Normalizer must r
 $bad = HostBResponseNormalizer::decodeJsonBody('not-json', 't1');
 t(isset($bad['success']) && $bad['success'] === false, 'Invalid JSON must yield failure envelope');
 
+$scheduleJson = json_encode([
+    'status' => 'success',
+    'data' => [
+        [
+            'couponName' => 't',
+            'schLink' => 'https://agt.tw/legacy.pdf',
+            'schLinks' => [['schLinkName' => 'n', 'schLink' => 'https://agt.tw/multi.pdf']],
+        ],
+    ],
+    'api_key' => 'secret-key-value',
+], JSON_THROW_ON_ERROR);
+$sched = HostBResponseNormalizer::decodeJsonBody($scheduleJson, 'trace-sched');
+$row0 = $sched['data'][0] ?? [];
+t(($row0['schLink'] ?? '') === 'https://agt.tw/legacy.pdf', 'Normalizer preserves schLink https URL');
+t(($row0['schLinks'][0]['schLink'] ?? '') === 'https://agt.tw/multi.pdf', 'Normalizer preserves schLinks[].schLink');
+t(!isset($sched['api_key']), 'Normalizer still drops api_key key');
+
 // --- No forbidden IP in production contracts/http ---
 assertNoForbiddenIpInTree($root . 'contracts');
 assertNoForbiddenIpInTree($root . 'http');

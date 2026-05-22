@@ -15,6 +15,14 @@ final class HostBResponseNormalizer
         'upstreamurl', 'upstreamUrl', 'UpstreamUrl',
         'requesturl', 'requestUrl', 'RequestUrl',
         'href', 'url', 'Url', 'uri', 'Uri',
+        'api_key', 'apiKey', 'token', 'password', 'secret', 'authorization',
+    ];
+
+    /** JSON keys whose string values may keep http(s) URLs (tour schedule links for LINE). */
+    private const SCHEDULE_URL_KEYS = [
+        'schlink',
+        'sch_link',
+        'schedulelink',
     ];
 
     /**
@@ -34,7 +42,7 @@ final class HostBResponseNormalizer
             return self::emptyEnvelope($traceId, 'INVALID_JSON', 'Upstream returned non-JSON content.');
         }
 
-        return self::sanitizeValue($decoded, $traceId);
+        return self::sanitizeValue($decoded, $traceId, null);
     }
 
     /**
@@ -43,7 +51,7 @@ final class HostBResponseNormalizer
      */
     public static function sanitizeDecoded(array $payload, string $traceId): array
     {
-        $sanitized = self::sanitizeValue($payload, $traceId);
+        $sanitized = self::sanitizeValue($payload, $traceId, null);
         if (!is_array($sanitized)) {
             return self::emptyEnvelope($traceId, 'INVALID_SHAPE', 'Upstream payload could not be normalized.');
         }
@@ -66,9 +74,10 @@ final class HostBResponseNormalizer
 
     /**
      * @param mixed $value
+     * @param string|null $fieldKey immediate JSON key for this scalar (null for root arrays)
      * @return mixed
      */
-    private static function sanitizeValue($value, string $traceId)
+    private static function sanitizeValue($value, string $traceId, ?string $fieldKey)
     {
         if (is_array($value)) {
             $out = [];
@@ -77,14 +86,14 @@ final class HostBResponseNormalizer
                 if (self::isSensitiveKey($keyStr)) {
                     continue;
                 }
-                $out[$keyStr] = self::sanitizeValue($child, $traceId);
+                $out[$keyStr] = self::sanitizeValue($child, $traceId, $keyStr);
             }
 
             return $out;
         }
 
         if (is_string($value)) {
-            return self::redactString($value);
+            return self::redactString($value, $fieldKey);
         }
 
         return $value;
@@ -102,13 +111,42 @@ final class HostBResponseNormalizer
         return false;
     }
 
-    private static function redactString(string $value): string
+    private static function isScheduleUrlFieldKey(?string $fieldKey): bool
     {
+        if ($fieldKey === null || $fieldKey === '') {
+            return false;
+        }
+
+        return in_array(strtolower($fieldKey), self::SCHEDULE_URL_KEYS, true);
+    }
+
+    private static function redactString(string $value, ?string $fieldKey = null): string
+    {
+        if (self::isScheduleUrlFieldKey($fieldKey)) {
+            if (self::containsSensitiveUrlMaterial($value)) {
+                return '[redacted]';
+            }
+
+            return $value;
+        }
+
         if (self::containsUrl($value) || self::looksLikeSqlError($value) || self::looksLikeStackLine($value)) {
             return '[redacted]';
         }
 
         return $value;
+    }
+
+    private static function containsSensitiveUrlMaterial(string $value): bool
+    {
+        $lower = strtolower($value);
+        foreach (['api_key=', 'traceid=', 'depid=', 'token=', 'password=', 'secret=', 'authorization='] as $bad) {
+            if (strpos($lower, $bad) !== false) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static function containsUrl(string $value): bool
