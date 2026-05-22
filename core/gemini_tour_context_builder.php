@@ -18,6 +18,17 @@ final class GeminiTourContextBuilder
     /** Between numbered tour rows in LINE-facing context (= ×40, ~2× former 20-dash line). */
     public const LINE_TOUR_ITEM_SEPARATOR = '========================================';
 
+    /** Footer label before list search_url (LINE / Gemini / fallback). */
+    public const SEARCH_URL_LABEL = '更多參考行程及出團日期：';
+
+    /** Max MM/DD departure tokens shown per merged tour row. */
+    public const MAX_DEPARTURE_DATES_DISPLAY = 4;
+
+    public const MORE_DEPARTURE_DATES_SUFFIX = '...更多';
+
+    /** Max schLinks rows shown per item (scheme B). */
+    public const MAX_SCH_LINKS_DISPLAY = 2;
+
     /** @var list<string> */
     private const SENSITIVE_KEYS = [
         'api_key',
@@ -144,12 +155,12 @@ final class GeminiTourContextBuilder
     private function appendSearchUrlLines(array &$lines, ?string $searchUrl): void
     {
         if ($searchUrl !== null && $searchUrl !== '') {
-            $lines[] = '完整搜尋結果：';
+            $lines[] = self::SEARCH_URL_LABEL;
             $lines[] = $searchUrl;
             return;
         }
 
-        $lines[] = '完整搜尋結果：目前未提供連結';
+        $lines[] = self::SEARCH_URL_LABEL . '目前未提供連結';
     }
 
     /**
@@ -208,7 +219,7 @@ final class GeminiTourContextBuilder
                     $uniq[] = $d;
                 }
             }
-            $display = $uniq === [] ? '未提供' : implode('、', $uniq);
+            $display = $uniq === [] ? '未提供' : self::formatDepartureDatesDisplay(implode('、', $uniq));
             $out[] = ['item' => $pendingItem, 'dates_display' => $display];
             $pendingItem = null;
             $pendingDates = [];
@@ -231,6 +242,8 @@ final class GeminiTourContextBuilder
             if ($pendingMergeKey === null) {
                 $pendingMergeKey = $mergeKey;
                 $pendingItem = $safe;
+            } else {
+                $pendingItem = $this->mergeItemFieldsForDisplay($pendingItem, $safe);
             }
 
             if ($mmdd !== null) {
@@ -386,12 +399,141 @@ final class GeminiTourContextBuilder
             $block[] = '   行程內頁：' . $detailUrl;
         }
 
-        $schLink = $this->resolveSchLinkForItem($safe);
-        if ($schLink !== null) {
-            $block[] = '   行程表：' . $schLink;
+        foreach (self::formatSchLinksDisplayLines($safe) as $line) {
+            $block[] = '   ' . $line;
         }
 
         return implode("\n", $block);
+    }
+
+    /**
+     * Build LINE-facing 行程表 lines (scheme B: max 2 + 另有 N 筆行程表).
+     *
+     * @param array<string, mixed> $item
+     * @return list<string>
+     */
+    public static function formatSchLinksDisplayLines(array $item): array
+    {
+        $entries = self::normalizeSchLinksList($item);
+        $count = count($entries);
+        if ($count === 0) {
+            return [];
+        }
+
+        if ($count === 1) {
+            return [self::formatSingleSchLinkLine($entries[0])];
+        }
+
+        $lines = ['行程表：'];
+        $shown = array_slice($entries, 0, self::MAX_SCH_LINKS_DISPLAY);
+        foreach ($shown as $i => $entry) {
+            $lines[] = ($i + 1) . '. ' . self::formatSchLinkEntryLabel($entry);
+        }
+        $remaining = $count - count($shown);
+        if ($remaining > 0) {
+            $lines[] = '另有 ' . $remaining . ' 筆行程表';
+        }
+
+        return $lines;
+    }
+
+    /**
+     * @param array{schLinkName: string, schLink: string} $entry
+     */
+    private static function formatSingleSchLinkLine(array $entry): string
+    {
+        $name = trim($entry['schLinkName']);
+        $url = trim($entry['schLink']);
+        if ($name !== '') {
+            return '行程表：' . $name . ' ' . $url;
+        }
+
+        return '行程表：' . $url;
+    }
+
+    /**
+     * @param array{schLinkName: string, schLink: string} $entry
+     */
+    private static function formatSchLinkEntryLabel(array $entry): string
+    {
+        $name = trim($entry['schLinkName']);
+        $url = trim($entry['schLink']);
+        if ($name !== '') {
+            return $name . ' ' . $url;
+        }
+
+        return $url;
+    }
+
+    /**
+     * @param array<string, mixed> $item
+     * @return list<array{schLinkName: string, schLink: string}>
+     */
+    public static function normalizeSchLinksList(array $item): array
+    {
+        $out = [];
+        if (isset($item['schLinks']) && is_array($item['schLinks'])) {
+            foreach ($item['schLinks'] as $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+                $url = isset($row['schLink']) && is_scalar($row['schLink']) ? trim((string) $row['schLink']) : '';
+                if ($url === '' || !self::isSafeExternalUrl($url)) {
+                    continue;
+                }
+                $name = isset($row['schLinkName']) && is_scalar($row['schLinkName']) ? trim((string) $row['schLinkName']) : '';
+                $out[] = ['schLinkName' => $name, 'schLink' => $url];
+            }
+        }
+
+        if ($out === []) {
+            $legacyUrl = self::extractSchLinkValueStatic($item);
+            if ($legacyUrl !== null) {
+                $legacyName = '';
+                if (isset($item['schLinkName']) && is_scalar($item['schLinkName'])) {
+                    $legacyName = trim((string) $item['schLinkName']);
+                }
+                $out[] = ['schLinkName' => $legacyName, 'schLink' => $legacyUrl];
+            }
+        }
+
+        return $out;
+    }
+
+    private static function isSafeExternalUrl(string $url): bool
+    {
+        $lower = strtolower($url);
+        foreach (['api_key=', 'traceid=', 'depid='] as $bad) {
+            if (strpos($lower, $bad) !== false) {
+                return false;
+            }
+        }
+
+        return preg_match('#^https?://#i', $url) === 1;
+    }
+
+    /**
+     * @param array<string, mixed> $item
+     */
+    private static function extractSchLinkValueStatic(array $item): ?string
+    {
+        foreach (['schLink', 'sch_link', 'scheduleLink'] as $key) {
+            if (!array_key_exists($key, $item)) {
+                continue;
+            }
+            $v = $item[$key];
+            if (!is_scalar($v)) {
+                continue;
+            }
+            $trimmed = trim((string) $v);
+            if ($trimmed === '' || !self::isSafeExternalUrl($trimmed)) {
+                continue;
+            }
+
+            return $trimmed;
+        }
+
+        return null;
     }
 
     /**
@@ -433,32 +575,142 @@ final class GeminiTourContextBuilder
     }
 
     /**
-     * @param array<string, mixed> $safe
+     * Cap merged departure dates for LINE display (max 4 + suffix).
      */
-    private function resolveSchLinkForItem(array $safe): ?string
+    public static function formatDepartureDatesDisplay(string $datesJoined): string
     {
-        if (!array_key_exists('schLink', $safe)) {
-            return null;
+        $s = trim($datesJoined);
+        if ($s === '' || $s === '未提供') {
+            return '未提供';
         }
 
-        $v = $safe['schLink'];
-        if (!is_scalar($v)) {
-            return null;
+        if (mb_strpos($s, self::MORE_DEPARTURE_DATES_SUFFIX, 0, 'UTF-8') !== false) {
+            return $s;
         }
 
-        $trimmed = trim((string) $v);
-        if ($trimmed === '') {
-            return null;
-        }
-
-        $lower = strtolower($trimmed);
-        foreach (['api_key=', 'traceid=', 'depid='] as $bad) {
-            if (strpos($lower, $bad) !== false) {
-                return null;
+        $parts = preg_split('/\s*、\s*/u', $s) ?: [];
+        $tokens = [];
+        foreach ($parts as $p) {
+            $p = trim($p);
+            if ($p !== '') {
+                $tokens[] = $p;
             }
         }
 
-        return $trimmed;
+        if (count($tokens) <= self::MAX_DEPARTURE_DATES_DISPLAY) {
+            return implode('、', $tokens);
+        }
+
+        $head = array_slice($tokens, 0, self::MAX_DEPARTURE_DATES_DISPLAY);
+
+        return implode('、', $head) . self::MORE_DEPARTURE_DATES_SUFFIX;
+    }
+
+    /**
+     * When merging multi-date rows, keep schLink / tourSeqNo from any row in the group.
+     *
+     * @param array<string, mixed> $base
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function mergeItemFieldsForDisplay(array $base, array $row): array
+    {
+        $merged = $base;
+
+        $mergedList = self::normalizeSchLinksList($merged);
+        $rowList = self::normalizeSchLinksList($row);
+        $merged['schLinks'] = self::mergeSchLinksLists($mergedList, $rowList);
+        if ($merged['schLinks'] === []) {
+            unset($merged['schLinks']);
+        }
+
+        $link = $this->extractSchLinkValue($row);
+        if ($link !== null && $this->extractSchLinkValue($merged) === null) {
+            $merged['schLink'] = $link;
+        }
+
+        if ($this->scalarPositive($merged['tourSeqNo'] ?? ($merged['tour_seq_no'] ?? null)) === null) {
+            $seq = $this->scalarPositive($row['tourSeqNo'] ?? ($row['tour_seq_no'] ?? null));
+            if ($seq !== null) {
+                $merged['tourSeqNo'] = $seq;
+            }
+        }
+
+        return $merged;
+    }
+
+    /**
+     * @param mixed $value
+     */
+    private function scalarPositive($value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        if (is_int($value) && $value > 0) {
+            return (string) $value;
+        }
+        if (is_string($value) && preg_match('/^\d+$/', trim($value)) === 1 && (int) trim($value) > 0) {
+            return (string) (int) trim($value);
+        }
+
+        return null;
+    }
+
+    /**
+     * Read schLink (and legacy aliases); field names unchanged in API contract.
+     *
+     * @param array<string, mixed> $item
+     */
+    private function extractSchLinkValue(array $item): ?string
+    {
+        foreach (['schLink', 'sch_link', 'scheduleLink'] as $key) {
+            if (!array_key_exists($key, $item)) {
+                continue;
+            }
+            $v = $item[$key];
+            if (!is_scalar($v)) {
+                continue;
+            }
+            $trimmed = trim((string) $v);
+            if ($trimmed === '') {
+                continue;
+            }
+            $lower = strtolower($trimmed);
+            foreach (['api_key=', 'traceid=', 'depid='] as $bad) {
+                if (strpos($lower, $bad) !== false) {
+                    continue 2;
+                }
+            }
+
+            return $trimmed;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $safe
+     */
+    /**
+     * @param list<array{schLinkName: string, schLink: string}> $a
+     * @param list<array{schLinkName: string, schLink: string}> $b
+     * @return list<array{schLinkName: string, schLink: string}>
+     */
+    private static function mergeSchLinksLists(array $a, array $b): array
+    {
+        $seen = [];
+        $out = [];
+        foreach (array_merge($a, $b) as $entry) {
+            $url = $entry['schLink'];
+            if (isset($seen[$url])) {
+                continue;
+            }
+            $seen[$url] = true;
+            $out[] = $entry;
+        }
+
+        return $out;
     }
 
     private function formatDirectSaleDisplay(string $raw): string
@@ -552,14 +804,14 @@ final class GeminiTourContextBuilder
     {
         return "請 Gemini 回覆客人時（LINE 版面優先，務必遵守）：\n"
             . "- 以固定清單呈現行程；每筆前必須有清楚編號 1. 2. 3.（與下方參考列點格式一致）；最多呈現 5 筆合併後行程。\n"
-            . "- 每兩筆行程之間必須保留單獨一行「" . self::LINE_TOUR_ITEM_SEPARATOR . "」分隔線（僅連續「=」組成，與參考文字逐字一致）；勿刪除、勿改成虛線或其他符號；勿在最後一筆行程後再加一道分隔線（「完整搜尋結果：」前不可再出現該分隔線）。\n"
+            . "- 每兩筆行程之間必須保留單獨一行「" . self::LINE_TOUR_ITEM_SEPARATOR . "」分隔線（僅連續「=」組成，與參考文字逐字一致）；勿刪除、勿改成虛線或其他符號；勿在最後一筆行程後再加一道分隔線（「" . self::SEARCH_URL_LABEL . "」前不可再出現該分隔線）。\n"
             . "- 第一行為完整行程標題（單行）；禁止使用「想玩○○？」「想體驗…」這類分類式小標。\n"
-            . "- 第二行縮排：出團日期：僅使用 MM/DD（例如 06/01、06/10）；不要顯示年份（例如 2026）；同一商品多個出團日可合併為「06/01、06/10」。\n"
+            . "- 第二行縮排：出團日期：僅使用 MM/DD（例如 06/01、06/10）；不要顯示年份（例如 2026）；同一商品多個出團日可合併；若參考已含「...更多」須逐字保留，勿展開全部日期。\n"
             . "- 第三行縮排：直售價：沿用參考中的金額與幣別格式，若參考已含「起」字則保留，否則可加上「起」使語意一致。\n"
             . "- 第四行縮排：每筆行程必須保留「出發地：」，格式為「出發地：台北」或「出發地：高雄」等（與參考一致）；不要把出發地和目的地／景區名稱混淆。\n"
             . "- 若參考中有「行程內頁：」後的 URL，必須逐字保留該行（不可改寫、不可縮短、不可替換成其他網址）。\n"
-            . "- 若參考中有「行程表：」後的 URL，必須逐字保留該行；若參考無此行則不要自行新增行程表連結。\n"
-            . "- 若「完整搜尋結果」連結存在於參考中，回覆結尾必須原樣附上該 URL（不可省略）。\n"
+            . "- 若參考中有「行程表：」區塊（含多行 1. 2. 與「另有 N 筆行程表」），必須逐字保留；若參考無行程表則不要自行新增。\n"
+            . "- 若「" . self::SEARCH_URL_LABEL . "」連結存在於參考中，回覆結尾必須原樣附上該 URL（不可省略）。\n"
             . "- 只引用參考區塊出現過的行程；不得捏造、改寫行程名稱或杜撰日期/價格/出發地。\n"
             . "- 若無法合併多日期，仍須維持每筆相同欄位順序與排版（編號＋標題＋出團日期＋直售價＋出發地；參考若有則接行程內頁、行程表）。\n"
             . "- 不要暴露內部 API、depID、storeNo、provider_id_no、api key、traceId 等敏感欄位。";

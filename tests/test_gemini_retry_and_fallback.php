@@ -81,7 +81,7 @@ $fixture = <<<CTX
    直售價：NT$24,888 起
    出發地：高雄
 
-完整搜尋結果：
+更多參考行程及出團日期：
 https://bonusmee.com/view/cloud/cloud_store_tourdate.php?keyword=test
 
 請 Gemini 回覆客人時：
@@ -95,12 +95,49 @@ test_assert(strpos($fb, '出發地：台北') !== false && strpos($fb, '出發�
 test_assert(strpos($fb, '行程內頁：https://bonusmee.com/view/cloud/tourdate_dm.php?trsno=1001') !== false, 'fallback: detail page url');
 test_assert(strpos($fb, '行程表：https://example.com/schedule-a.pdf') !== false, 'fallback: schedule link');
 test_assert(substr_count($fb, '行程表：') === 1, 'fallback: schedule only on item A');
+
+$fixtureMultiSch = <<<CTX
+【旅遊產品搜尋結果】
+1. 多表測試行程
+   出團日期：06/01
+   直售價：NT$12,000 起
+   出發地：台北
+   行程表：
+   1. 表甲 https://agt.tw/a
+   2. 表乙 https://agt.tw/b
+   另有 2 筆行程表
+
+更多參考行程及出團日期：
+https://bonusmee.com/view/cloud/cloud_store_tourdate.php?keyword=multi
+
+請 Gemini
+CTX;
+$fbMulti = TourFallbackFormatter::formatFromTourContext($fixtureMultiSch);
+test_assert(strpos($fbMulti, "   行程表：\n   1. 表甲 https://agt.tw/a") !== false, 'fallback: multi schedule header and line1');
+test_assert(strpos($fbMulti, '   2. 表乙 https://agt.tw/b') !== false, 'fallback: multi schedule line2');
+test_assert(strpos($fbMulti, '   另有 2 筆行程表') !== false, 'fallback: multi schedule remaining');
 test_assert(strpos($fb, "{$lineSep}\n\n2. 東京測試行程B") !== false, 'fallback: separator between items');
 test_assert(strpos($fb, '06/01') !== false, 'fallback: date MM/DD');
 test_assert(strpos($fb, '2026') === false, 'fallback: no year in reply');
 test_assert(strpos($fb, 'NT$33,800') !== false || strpos($fb, '33,800') !== false, 'fallback: price');
 test_assert(strpos($fb, 'https://bonusmee.com/view/cloud/cloud_store_tourdate.php') !== false, 'fallback: url');
-test_assert(strpos($fb, '完整搜尋結果：') !== false, 'fallback: search label');
+test_assert(strpos($fb, GeminiTourContextBuilder::SEARCH_URL_LABEL) !== false, 'fallback: search label');
+
+$fixtureDatesCap = <<<CTX
+1. 多日行程
+   出團日期：05/21、05/28、06/04、06/11、06/18
+   直售價：NT$10,000 起
+   出發地：台北
+
+更多參考行程及出團日期：
+https://bonusmee.com/view/cloud/cloud_store_tourdate.php?keyword=cap
+
+請 Gemini
+CTX;
+$fbCap = TourFallbackFormatter::formatFromTourContext($fixtureDatesCap);
+test_assert(strpos($fbCap, '05/21') !== false && strpos($fbCap, '06/11') !== false, 'fallback: cap shows fourth date');
+test_assert(strpos($fbCap, '06/18') === false, 'fallback: cap hides fifth date');
+test_assert(strpos($fbCap, '...更多') !== false, 'fallback: cap suffix');
 test_assert(strpos($fb, 'AI錯誤') === false, 'fallback: no AI error label');
 test_assert(strpos($fb, '503') === false, 'fallback: no 503');
 
@@ -111,7 +148,7 @@ $fixturePriceAlias = <<<'CTX'
    價格：NT$12,000
    出發地：台中
 
-完整搜尋結果：
+更多參考行程及出團日期：
 https://bonusmee.com/view/test
 
 請 Gemini 回覆客人時：

@@ -46,14 +46,16 @@ final class TourFallbackFormatter
                     $lines[] = '';
                 }
                 $lines[] = $n . '. ' . $it['title'];
-                $lines[] = '   出團日期：' . self::normalizeDatesDisplay($it['date']);
+                $lines[] = '   出團日期：' . GeminiTourContextBuilder::formatDepartureDatesDisplay(
+                    self::normalizeDatesDisplay($it['date'])
+                );
                 $lines[] = '   直售價：' . $it['price'];
                 $lines[] = '   出發地：' . $it['departure'];
                 if ($it['detail_page'] !== '') {
                     $lines[] = '   行程內頁：' . $it['detail_page'];
                 }
-                if ($it['schedule_link'] !== '') {
-                    $lines[] = '   行程表：' . $it['schedule_link'];
+                foreach ($it['schedule_lines'] as $sl) {
+                    $lines[] = '   ' . $sl;
                 }
                 ++$n;
             }
@@ -61,7 +63,7 @@ final class TourFallbackFormatter
 
         if ($url !== '') {
             $lines[] = '';
-            $lines[] = '完整搜尋結果：';
+            $lines[] = GeminiTourContextBuilder::SEARCH_URL_LABEL;
             $lines[] = $url;
         }
 
@@ -83,9 +85,11 @@ final class TourFallbackFormatter
 
     private static function extractSearchUrl(string $body): string
     {
-        $label = '完整搜尋結果：';
-        $labelPos = strpos($body, $label);
-        if ($labelPos !== false) {
+        foreach ([GeminiTourContextBuilder::SEARCH_URL_LABEL, '完整搜尋結果：'] as $label) {
+            $labelPos = strpos($body, $label);
+            if ($labelPos === false) {
+                continue;
+            }
             $after = substr($body, $labelPos + strlen($label));
             if (preg_match('/https?:\/\/\S+/u', $after, $m) === 1) {
                 return trim($m[0]);
@@ -157,7 +161,7 @@ final class TourFallbackFormatter
     }
 
     /**
-     * @return list<array{title: string, date: string, price: string, departure: string, detail_page: string, schedule_link: string}>
+     * @return list<array{title: string, date: string, price: string, departure: string, detail_page: string, schedule_lines: list<string>}>
      */
     private static function parseItemBlocks(string $body): array
     {
@@ -173,6 +177,14 @@ final class TourFallbackFormatter
             if (preg_match('/^-{20}$/', $line) === 1
                 || (preg_match('/^=+$/', $line) === 1 && strlen($line) >= 20)) {
                 continue;
+            }
+            if ($current !== null && !empty($current['schedule_mode'])) {
+                if (preg_match('/^另有\s+\d+\s+筆行程表$/u', $line) === 1
+                    || preg_match('/^\d+\.\s+.+$/u', $line) === 1) {
+                    $current['schedule_lines'][] = $line;
+                    continue;
+                }
+                $current['schedule_mode'] = false;
             }
             $titleCandidate = '';
             if (preg_match('/^\d+\.\s*行程名稱：(.+)$/u', $line, $m) === 1) {
@@ -199,7 +211,8 @@ final class TourFallbackFormatter
                     'price' => '未提供',
                     'departure' => '未提供',
                     'detail_page' => '',
-                    'schedule_link' => '',
+                    'schedule_lines' => [],
+                    'schedule_mode' => false,
                 ];
                 continue;
             }
@@ -222,8 +235,16 @@ final class TourFallbackFormatter
                 $current['detail_page'] = trim($m[1]);
                 continue;
             }
+            if ($line === '行程表：') {
+                $current['schedule_mode'] = true;
+                $current['schedule_lines'][] = '行程表：';
+                continue;
+            }
             if (preg_match('/^行程表：(.+)$/u', $line, $m) === 1) {
-                $current['schedule_link'] = trim($m[1]);
+                $rest = trim($m[1]);
+                if ($rest !== '') {
+                    $current['schedule_lines'][] = '行程表：' . $rest;
+                }
                 continue;
             }
         }
