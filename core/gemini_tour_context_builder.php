@@ -19,15 +19,18 @@ final class GeminiTourContextBuilder
     public const LINE_TOUR_ITEM_SEPARATOR = '========================================';
 
     /** Footer label before list search_url (LINE / Gemini / fallback). */
-    public const SEARCH_URL_LABEL = '更多參考行程及出團日期：';
+    public const SEARCH_URL_LABEL = '更多行程 & 出團日：';
+
+    /** Departure dates line label (LINE / Gemini / fallback). */
+    public const DEPARTURE_DATE_LABEL = '最近出團：';
+
+    /** Tour detail page line label (LINE / Gemini / fallback). */
+    public const DETAIL_URL_LABEL = '詳細內容：';
 
     /** Max MM/DD departure tokens shown per merged tour row. */
     public const MAX_DEPARTURE_DATES_DISPLAY = 4;
 
     public const MORE_DEPARTURE_DATES_SUFFIX = '...更多';
-
-    /** Max schLinks rows shown per item (scheme B). */
-    public const MAX_SCH_LINKS_DISPLAY = 2;
 
     /** @var list<string> */
     private const SENSITIVE_KEYS = [
@@ -390,13 +393,13 @@ final class GeminiTourContextBuilder
 
         $block = [];
         $block[] = $index . '. ' . $name;
-        $block[] = '   出團日期：' . $datesDisplay;
+        $block[] = '   ' . self::DEPARTURE_DATE_LABEL . $datesDisplay;
         $block[] = '   直售價：' . $priceLine;
         $block[] = '   出發地：' . $departure;
 
         $detailUrl = $this->resolveDetailUrlForItem($safe);
         if ($detailUrl !== null) {
-            $block[] = '   行程內頁：' . $detailUrl;
+            $block[] = '   ' . self::DETAIL_URL_LABEL . $detailUrl;
         }
 
         foreach (self::formatSchLinksDisplayLines($safe) as $line) {
@@ -407,7 +410,7 @@ final class GeminiTourContextBuilder
     }
 
     /**
-     * Build LINE-facing 行程表 lines (scheme B: max 2 + 另有 N 筆行程表).
+     * Build LINE-facing 行程表 lines (URL only; all schLinks when count >= 2).
      *
      * @param array<string, mixed> $item
      * @return list<string>
@@ -421,48 +424,15 @@ final class GeminiTourContextBuilder
         }
 
         if ($count === 1) {
-            return [self::formatSingleSchLinkLine($entries[0])];
+            return ['行程表：' . trim($entries[0]['schLink'])];
         }
 
         $lines = ['行程表：'];
-        $shown = array_slice($entries, 0, self::MAX_SCH_LINKS_DISPLAY);
-        foreach ($shown as $i => $entry) {
-            $lines[] = ($i + 1) . '. ' . self::formatSchLinkEntryLabel($entry);
-        }
-        $remaining = $count - count($shown);
-        if ($remaining > 0) {
-            $lines[] = '另有 ' . $remaining . ' 筆行程表';
+        foreach ($entries as $i => $entry) {
+            $lines[] = ($i + 1) . '. ' . trim($entry['schLink']);
         }
 
         return $lines;
-    }
-
-    /**
-     * @param array{schLinkName: string, schLink: string} $entry
-     */
-    private static function formatSingleSchLinkLine(array $entry): string
-    {
-        $name = trim($entry['schLinkName']);
-        $url = trim($entry['schLink']);
-        if ($name !== '') {
-            return '行程表：' . $name . ' ' . $url;
-        }
-
-        return '行程表：' . $url;
-    }
-
-    /**
-     * @param array{schLinkName: string, schLink: string} $entry
-     */
-    private static function formatSchLinkEntryLabel(array $entry): string
-    {
-        $name = trim($entry['schLinkName']);
-        $url = trim($entry['schLink']);
-        if ($name !== '') {
-            return $name . ' ' . $url;
-        }
-
-        return $url;
     }
 
     /**
@@ -806,14 +776,14 @@ final class GeminiTourContextBuilder
             . "- 以固定清單呈現行程；每筆前必須有清楚編號 1. 2. 3.（與下方參考列點格式一致）；最多呈現 5 筆合併後行程。\n"
             . "- 每兩筆行程之間必須保留單獨一行「" . self::LINE_TOUR_ITEM_SEPARATOR . "」分隔線（僅連續「=」組成，與參考文字逐字一致）；勿刪除、勿改成虛線或其他符號；勿在最後一筆行程後再加一道分隔線（「" . self::SEARCH_URL_LABEL . "」前不可再出現該分隔線）。\n"
             . "- 第一行為完整行程標題（單行）；禁止使用「想玩○○？」「想體驗…」這類分類式小標。\n"
-            . "- 第二行縮排：出團日期：僅使用 MM/DD（例如 06/01、06/10）；不要顯示年份（例如 2026）；同一商品多個出團日可合併；若參考已含「...更多」須逐字保留，勿展開全部日期。\n"
+            . "- 第二行縮排：「" . self::DEPARTURE_DATE_LABEL . "」僅使用 MM/DD（例如 06/01、06/10）；不要顯示年份（例如 2026）；同一商品多個出團日可合併；若參考已含「...更多」須逐字保留，勿展開全部日期。\n"
             . "- 第三行縮排：直售價：沿用參考中的金額與幣別格式，若參考已含「起」字則保留，否則可加上「起」使語意一致。\n"
             . "- 第四行縮排：每筆行程必須保留「出發地：」，格式為「出發地：台北」或「出發地：高雄」等（與參考一致）；不要把出發地和目的地／景區名稱混淆。\n"
-            . "- 若參考中有「行程內頁：」後的 URL，必須逐字保留該行（不可改寫、不可縮短、不可替換成其他網址）。\n"
-            . "- 若參考中有「行程表：」區塊（含多行 1. 2. 與「另有 N 筆行程表」），必須逐字保留；若參考無行程表則不要自行新增。\n"
+            . "- 若參考中有「" . self::DETAIL_URL_LABEL . "」後的 URL，必須逐字保留該行（不可改寫、不可縮短、不可替換成其他網址）。\n"
+            . "- 若參考中有「行程表：」區塊（單筆為「行程表：https://...」；多筆為「行程表：」後接「1. https://...」等，僅 URL、不含名稱標籤），必須逐字保留；若參考無行程表則不要自行新增。\n"
             . "- 若「" . self::SEARCH_URL_LABEL . "」連結存在於參考中，回覆結尾必須原樣附上該 URL（不可省略）。\n"
             . "- 只引用參考區塊出現過的行程；不得捏造、改寫行程名稱或杜撰日期/價格/出發地。\n"
-            . "- 若無法合併多日期，仍須維持每筆相同欄位順序與排版（編號＋標題＋出團日期＋直售價＋出發地；參考若有則接行程內頁、行程表）。\n"
+            . "- 若無法合併多日期，仍須維持每筆相同欄位順序與排版（編號＋標題＋最近出團＋直售價＋出發地；參考若有則接詳細內容、行程表）。\n"
             . "- 不要暴露內部 API、depID、storeNo、provider_id_no、api key、traceId 等敏感欄位。";
     }
 }

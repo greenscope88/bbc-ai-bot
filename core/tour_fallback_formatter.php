@@ -46,13 +46,13 @@ final class TourFallbackFormatter
                     $lines[] = '';
                 }
                 $lines[] = $n . '. ' . $it['title'];
-                $lines[] = '   出團日期：' . GeminiTourContextBuilder::formatDepartureDatesDisplay(
+                $lines[] = '   ' . GeminiTourContextBuilder::DEPARTURE_DATE_LABEL . GeminiTourContextBuilder::formatDepartureDatesDisplay(
                     self::normalizeDatesDisplay($it['date'])
                 );
                 $lines[] = '   直售價：' . $it['price'];
                 $lines[] = '   出發地：' . $it['departure'];
                 if ($it['detail_page'] !== '') {
-                    $lines[] = '   行程內頁：' . $it['detail_page'];
+                    $lines[] = '   ' . GeminiTourContextBuilder::DETAIL_URL_LABEL . $it['detail_page'];
                 }
                 foreach ($it['schedule_lines'] as $sl) {
                     $lines[] = '   ' . $sl;
@@ -85,7 +85,7 @@ final class TourFallbackFormatter
 
     private static function extractSearchUrl(string $body): string
     {
-        foreach ([GeminiTourContextBuilder::SEARCH_URL_LABEL, '完整搜尋結果：'] as $label) {
+        foreach ([GeminiTourContextBuilder::SEARCH_URL_LABEL, '更多參考行程及出團日期：', '完整搜尋結果：'] as $label) {
             $labelPos = strpos($body, $label);
             if ($labelPos === false) {
                 continue;
@@ -179,7 +179,7 @@ final class TourFallbackFormatter
                 continue;
             }
             if ($current !== null && !empty($current['schedule_mode'])) {
-                if (preg_match('/^另有\s+\d+\s+筆行程表$/u', $line) === 1
+                if (preg_match('/^\d+\.\s+https?:\/\//iu', $line) === 1
                     || preg_match('/^\d+\.\s+.+$/u', $line) === 1) {
                     $current['schedule_lines'][] = $line;
                     continue;
@@ -193,11 +193,13 @@ final class TourFallbackFormatter
                 $titleCandidate = trim($m[1]);
             }
             if ($titleCandidate !== '') {
-                if (mb_strpos($titleCandidate, '出團日期', 0, 'UTF-8') === 0
+                if (mb_strpos($titleCandidate, '最近出團', 0, 'UTF-8') === 0
+                    || mb_strpos($titleCandidate, '出團日期', 0, 'UTF-8') === 0
                     || mb_strpos($titleCandidate, '直售價', 0, 'UTF-8') === 0
                     || mb_strpos($titleCandidate, '價格', 0, 'UTF-8') === 0
                     || mb_strpos($titleCandidate, '售價', 0, 'UTF-8') === 0
                     || mb_strpos($titleCandidate, '出發地', 0, 'UTF-8') === 0
+                    || mb_strpos($titleCandidate, '詳細內容', 0, 'UTF-8') === 0
                     || mb_strpos($titleCandidate, '行程內頁', 0, 'UTF-8') === 0
                     || mb_strpos($titleCandidate, '行程表', 0, 'UTF-8') === 0) {
                     continue;
@@ -219,7 +221,7 @@ final class TourFallbackFormatter
             if ($current === null) {
                 continue;
             }
-            if (preg_match('/^出團日期：(.+)$/u', $line, $m) === 1) {
+            if (preg_match('/^(?:最近出團|出團日期)：(.+)$/u', $line, $m) === 1) {
                 $current['date'] = trim($m[1]);
                 continue;
             }
@@ -231,7 +233,7 @@ final class TourFallbackFormatter
                 $current['departure'] = trim($m[1]);
                 continue;
             }
-            if (preg_match('/^行程內頁：(.+)$/u', $line, $m) === 1) {
+            if (preg_match('/^(?:詳細內容|行程內頁)：(.+)$/u', $line, $m) === 1) {
                 $current['detail_page'] = trim($m[1]);
                 continue;
             }

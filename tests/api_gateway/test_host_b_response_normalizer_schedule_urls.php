@@ -75,12 +75,14 @@ $apiShape = [
 $ctx = (new GeminiTourContextBuilder())->build($apiShape, ['includeInstructions' => false, 'maxItems' => 5]);
 t(strpos($ctx, '行程表：') !== false, '7: context has 行程表 block');
 t(strpos($ctx, 'https://agt.tw/sch-1') !== false, '8: context has schedule URL');
-t(strpos($ctx, '另有 2 筆行程表') !== false, '9: context has 另有 N 筆');
+t(strpos($ctx, '   3. https://agt.tw/sch-3') !== false, '9: context has all schedule urls');
+t(strpos($ctx, '另有') === false, '9: no 另有 N 筆');
 t(strpos($ctx, 'https://bonusmee.com/view/cloud/cloud_store_tourdate.php') !== false, '10: search_url preserved');
 
 $fb = TourFallbackFormatter::formatFromTourContext($ctx);
 t(strpos($fb, '行程表：') !== false, '11: fallback has 行程表');
-t(strpos($fb, '另有 2 筆行程表') !== false, '12: fallback has 另有 N 筆');
+t(strpos($fb, '   4. https://agt.tw/sch-4') !== false, '12: fallback has fourth schedule url');
+t(strpos($fb, '另有') === false, '12: fallback no 另有 N 筆');
 
 if ($failures === 0) {
     echo "OK: HostBResponseNormalizer schedule URL tests passed.\n";

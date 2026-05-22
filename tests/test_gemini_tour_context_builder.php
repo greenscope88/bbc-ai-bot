@@ -219,7 +219,7 @@ $sparse = [
 ];
 $text5 = $builder->build($sparse);
 test_assert(strpos($text5, '僅有名稱') !== false, '5: title');
-test_assert(strpos($text5, '出團日期：未提供') !== false, '5: missing date');
+test_assert(strpos($text5, GeminiTourContextBuilder::DEPARTURE_DATE_LABEL . '未提供') !== false, '5: missing date');
 test_assert(strpos($text5, '直售價：未提供') !== false, '5: missing price');
 test_assert(strpos($text5, '出發地：未提供') !== false, '5: missing departure');
 
@@ -285,7 +285,7 @@ $textLinks = $builder->build($withLinks, [
     'detailUrlBuilder' => $detailBuilder,
     'maxItems' => 5,
 ]);
-test_assert(strpos($textLinks, '行程內頁：') !== false, 'links: detail line');
+test_assert(strpos($textLinks, GeminiTourContextBuilder::DETAIL_URL_LABEL) !== false, 'links: detail line');
 test_assert(strpos($textLinks, 'tourdate_dm.php') !== false, 'links: detail url path');
 test_assert(strpos($textLinks, 'trsno=99001') !== false, 'links: plain trsno in url');
 test_assert(strpos($textLinks, '行程表：https://drive.google.com/example-itinerary') !== false, 'links: schLink line');
@@ -367,9 +367,9 @@ $textNoDetail = $builder->build($missingSeq, [
     'detailUrlBuilder' => $detailBuilder,
     'includeInstructions' => false,
 ]);
-test_assert(strpos($textNoDetail, '行程內頁：') === false, 'links: missing tourSeqNo no detail');
+test_assert(strpos($textNoDetail, GeminiTourContextBuilder::DETAIL_URL_LABEL) === false, 'links: missing tourSeqNo no detail');
 
-// schLinks[] scheme B — A: couponNo 11849 style (4 links → show 2 + 另有 2)
+// schLinks[] — A: couponNo 11849 style (4 links → show all URLs, no names)
 $schLinksFour = [
     'success' => true,
     'pagination' => ['total' => 1],
@@ -392,10 +392,11 @@ $schLinksFour = [
     'search_url' => 'https://bonusmee.com/sch-four',
 ];
 $textSchFour = $builder->build($schLinksFour, ['includeInstructions' => false]);
-test_assert(strpos($textSchFour, "   行程表：\n   1. 一日遊行程表 https://agt.tw/sch-1") !== false, 'schLinks A: line 1');
-test_assert(strpos($textSchFour, '   2. 二日遊行程表 https://agt.tw/sch-2') !== false, 'schLinks A: line 2');
-test_assert(strpos($textSchFour, '   另有 2 筆行程表') !== false, 'schLinks A: remaining count');
-test_assert(strpos($textSchFour, 'sch-3') === false && strpos($textSchFour, 'sch-4') === false, 'schLinks A: hidden links 3-4');
+test_assert(strpos($textSchFour, "   行程表：\n   1. https://agt.tw/sch-1") !== false, 'schLinks A: line 1 url only');
+test_assert(strpos($textSchFour, '   2. https://agt.tw/sch-2') !== false, 'schLinks A: line 2 url only');
+test_assert(strpos($textSchFour, '   3. https://agt.tw/sch-3') !== false, 'schLinks A: line 3 url only');
+test_assert(strpos($textSchFour, '   4. https://agt.tw/sch-4') !== false, 'schLinks A: line 4 url only');
+test_assert(strpos($textSchFour, '一日遊行程表') === false && strpos($textSchFour, '另有') === false, 'schLinks A: no names or 另有');
 test_assert(strpos($textSchFour, 'https://bonusmee.com/sch-four') !== false, 'schLinks A: search_url preserved');
 
 // schLinks[] — B: couponNo 11665 style (1 link)
@@ -440,11 +441,12 @@ $schLinksEmpty = [
 $textSchEmpty = $builder->build($schLinksEmpty, ['includeInstructions' => false]);
 test_assert(strpos($textSchEmpty, '行程表') === false, 'schLinks C: no schedule block');
 
-// static formatter: single with name
+// static formatter: single with name (name omitted in display)
 $linesNamed = GeminiTourContextBuilder::formatSchLinksDisplayLines([
     'schLinks' => [['schLinkName' => 'PDF表', 'schLink' => 'https://example.com/p.pdf']],
 ]);
-test_assert(count($linesNamed) === 1 && $linesNamed[0] === '行程表：PDF表 https://example.com/p.pdf', 'formatSchLinks: named single');
+test_assert(count($linesNamed) === 1 && $linesNamed[0] === '行程表：https://example.com/p.pdf', 'formatSchLinks: url only single');
+test_assert(strpos($linesNamed[0], 'PDF表') === false, 'formatSchLinks: no schLinkName');
 
 // merge schLinks from second row
 $mergeSchLinksArr = [
