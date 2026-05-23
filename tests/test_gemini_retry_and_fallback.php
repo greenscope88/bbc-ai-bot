@@ -89,16 +89,18 @@ https://bonusmee.com/view/cloud/cloud_store_tourdate.php?keyword=test
 CTX;
 
 $fb = TourFallbackFormatter::formatFromTourContext($fixture);
-test_assert(strpos($fb, '🚩東京測試行程A') !== false, 'fallback: title with flag');
-test_assert(strpos($fb, '🚩東京測試行程B') !== false, 'fallback: second title with flag');
+test_assert(strpos($fb, '🚩 東京測試行程A') !== false, 'fallback: title with flag');
+test_assert(strpos($fb, '🚩 東京測試行程B') !== false, 'fallback: second title with flag');
 test_assert(strpos($fb, '1. 🚩') === false, 'fallback: no numbered product prefix');
-test_assert(strpos($fb, '💰售價：') !== false, 'fallback: 售價 label');
-test_assert(strpos($fb, '💰直售價：') === false, 'fallback: no 直售價 label');
-test_assert(strpos($fb, '🛫出發地：台北') !== false && strpos($fb, '🛫出發地：高雄') !== false, 'fallback: departure lines');
-test_assert(strpos($fb, '📄詳細內容：https://bonusmee.com/view/cloud/tourdate_dm.php?trsno=1001') !== false, 'fallback: detail page url');
-test_assert(strpos($fb, '🗓️行程表：https://example.com/schedule-a.pdf') !== false, 'fallback: schedule link');
+test_assert(strpos($fb, '💰 售價：') !== false, 'fallback: 售價 label');
+test_assert(strpos($fb, '💰直售價：') === false && strpos($fb, '💰 直售價：') === false, 'fallback: no 直售價 label');
+test_assert(strpos($fb, '🛫 出發地：台北') !== false && strpos($fb, '🛫 出發地：高雄') !== false, 'fallback: departure lines');
+test_assert(strpos($fb, '📄 詳細內容：https://bonusmee.com/view/cloud/tourdate_dm.php?trsno=1001') !== false, 'fallback: detail page url');
+test_assert(strpos($fb, '🗓️ 行程表：https://example.com/schedule-a.pdf') !== false, 'fallback: schedule link');
 test_assert(strpos($fb, '精彩行程點我') === false, 'fallback: no schedule name label');
-test_assert(substr_count($fb, '🗓️行程表：') === 1, 'fallback: schedule only on item A');
+test_assert(substr_count($fb, '🗓️ 行程表：') === 1, 'fallback: schedule only on item A');
+test_assert(strpos($fb, "   📅") === false && strpos($fb, "   💰") === false, 'fallback: no indent before emoji lines');
+test_assert(substr_count($fb, '─────────────────') >= 2, 'fallback: item separators after each product');
 
 $fixtureMultiSch = <<<CTX
 【旅遊產品搜尋結果】
@@ -117,12 +119,12 @@ https://bonusmee.com/view/cloud/cloud_store_tourdate.php?keyword=multi
 請 Gemini
 CTX;
 $fbMulti = TourFallbackFormatter::formatFromTourContext($fixtureMultiSch);
-test_assert(strpos($fbMulti, "   🗓️行程表：\n   1. https://agt.tw/a") !== false, 'fallback: multi schedule header and line1');
-test_assert(strpos($fbMulti, '   2. https://agt.tw/b') !== false, 'fallback: multi schedule line2');
-test_assert(strpos($fbMulti, '   3. https://agt.tw/c') !== false, 'fallback: multi schedule line3');
+test_assert(strpos($fbMulti, "🗓️ 行程表：\n1. https://agt.tw/a") !== false, 'fallback: multi schedule header and line1');
+test_assert(strpos($fbMulti, '2. https://agt.tw/b') !== false, 'fallback: multi schedule line2');
+test_assert(strpos($fbMulti, '3. https://agt.tw/c') !== false, 'fallback: multi schedule line3');
 test_assert(strpos($fbMulti, '另有') === false, 'fallback: no 另有 N 筆');
-test_assert(strpos($fb, "{$lineSep}\n\n🚩東京測試行程B") !== false, 'fallback: separator between items');
-test_assert(strpos($fb, '━━━━━━━━━━━━━━━━━━━') !== false, 'fallback: footer divider');
+test_assert(strpos($fb, "─────────────────\n🚩 東京測試行程B") !== false, 'fallback: separator between items');
+test_assert(strpos($fb, '━━━━━━━━━━━━━━━━━━━') === false, 'fallback: no heavy footer divider');
 test_assert(strpos($fb, '06/01') !== false, 'fallback: date MM/DD');
 test_assert(strpos($fb, '2026') === false, 'fallback: no year in reply');
 test_assert(strpos($fb, 'NT$33,800') !== false || strpos($fb, '33,800') !== false, 'fallback: price');
@@ -163,7 +165,7 @@ CTX;
 $fb2 = TourFallbackFormatter::formatFromTourContext($fixturePriceAlias);
 test_assert(strpos($fb2, '測試B') !== false, 'fallback: title price-alias');
 test_assert(strpos($fb2, 'NT$12,000') !== false || strpos($fb2, '12,000') !== false, 'fallback: 價格 line');
-test_assert(strpos($fb2, '🛫出發地：台中') !== false, 'fallback: departure price-alias');
+test_assert(strpos($fb2, '🛫 出發地：台中') !== false, 'fallback: departure price-alias');
 
 $fixtureSell = <<<'CTX'
 1. 測試C
@@ -178,7 +180,7 @@ https://bonusmee.com/x
 CTX;
 $fb3 = TourFallbackFormatter::formatFromTourContext($fixtureSell);
 test_assert(strpos($fb3, '8888') !== false, 'fallback: 售價 line');
-test_assert(strpos($fb3, '🛫出發地：未提供') !== false, 'fallback: departure 售價 fixture');
+test_assert(strpos($fb3, '🛫 出發地：未提供') !== false, 'fallback: departure 售價 fixture');
 
 $fixtureNoPrice = <<<'CTX'
 1. 測試D
@@ -193,7 +195,7 @@ https://bonusmee.com/y
 CTX;
 $fb4 = TourFallbackFormatter::formatFromTourContext($fixtureNoPrice);
 test_assert(strpos($fb4, '測試D') !== false, 'fallback: no-price title');
-test_assert(strpos($fb4, '💰售價：未提供') !== false, 'fallback: 售價未提供');
+test_assert(strpos($fb4, '💰 售價：未提供') !== false, 'fallback: 售價未提供');
 test_assert(strpos($fb4, '💰直售價：') === false, 'fallback: no 直售價 label on no-price item');
 
 // --- callGeminiUrl: immediate success (mock) ---

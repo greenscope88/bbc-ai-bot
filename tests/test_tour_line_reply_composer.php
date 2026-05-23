@@ -51,13 +51,15 @@ function buildMultiSchContext(): string
 
 function assertNewLabels(string $text, string $label): void
 {
-    test_assert(strpos($text, '🚩') !== false, $label . ': product flag');
+    test_assert(strpos($text, '🚩 ') !== false, $label . ': product flag with space');
     test_assert(strpos($text, '1. 🚩') === false, $label . ': no numbered product prefix');
-    test_assert(strpos($text, '📅最近出團：') !== false, $label . ': 最近出團');
-    test_assert(strpos($text, '💰售價：') !== false, $label . ': 售價 label');
+    test_assert(strpos($text, '📅 最近出團：') !== false, $label . ': 最近出團');
+    test_assert(strpos($text, '💰 售價：') !== false, $label . ': 售價 label');
     test_assert(strpos($text, '💰直售價：') === false, $label . ': no 直售價 label');
     test_assert(strpos($text, GeminiTourContextBuilder::SEARCH_URL_LABEL) !== false, $label . ': footer');
-    test_assert(strpos($text, '━━━━━━━━━━━━━━━━━━━') !== false, $label . ': footer divider');
+    test_assert(strpos($text, '─────────────────') !== false, $label . ': item separator');
+    test_assert(strpos($text, '━━━━━━━━━━━━━━━━━━━') === false, $label . ': no heavy footer divider');
+    test_assert(strpos($text, "   📅") === false, $label . ': no indent before emoji');
     test_assert(strpos($text, '出團日期：') === false, $label . ': no 出團日期');
     test_assert(strpos($text, '行程內頁：') === false, $label . ': no 行程內頁');
     test_assert(strpos($text, '更多參考行程及出團日期：') === false, $label . ': no old footer');
@@ -77,7 +79,7 @@ test_assert($fixed['used_tour_fallback'] === false, 'fixed: not fallback');
 test_assert($fixed['ai_ok'] === true, 'fixed: ai_ok');
 test_assert($geminiCalled === false, 'fixed: gemini not called when context present');
 assertNewLabels($fixed['reply_text'], 'fixed');
-test_assert(strpos($fixed['reply_text'], '🚩釜山四表') !== false, 'fixed: title with flag');
+test_assert(strpos($fixed['reply_text'], '🚩 釜山四表') !== false, 'fixed: title with flag');
 test_assert(strpos($fixed['reply_text'], '1. https://agt.tw/sch-1') !== false, 'fixed: sch url 1');
 test_assert(strpos($fixed['reply_text'], '2. https://agt.tw/sch-2') !== false, 'fixed: sch url 2');
 test_assert(strpos($fixed['reply_text'], '3. https://agt.tw/sch-3') !== false, 'fixed: sch url 3');

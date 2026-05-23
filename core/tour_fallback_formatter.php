@@ -9,17 +9,16 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'gemini_tour_context_builder.php';
  */
 final class TourFallbackFormatter
 {
-    /** Same string as Gemini tour context numbered blocks. */
-    private const LINE_TOUR_ITEM_SEPARATOR = GeminiTourContextBuilder::LINE_TOUR_ITEM_SEPARATOR;
+    /** LINE fixed-list product separator (output only; context may use ======== from builder). */
+    private const LINE_ITEM_SEPARATOR = '─────────────────';
 
-    /** LINE fixed-list output labels (emoji); input context still uses plain labels from GeminiTourContextBuilder. */
+    /** LINE fixed-list output labels (emoji + space before text); input context uses plain labels from GeminiTourContextBuilder. */
     private const LINE_TITLE_FLAG = '🚩';
-    private const LINE_DEPARTURE_LABEL = '📅最近出團：';
-    private const LINE_PRICE_LABEL = '💰售價：';
-    private const LINE_ORIGIN_LABEL = '🛫出發地：';
-    private const LINE_DETAIL_LABEL = '📄詳細內容：';
-    private const LINE_SCHEDULE_LABEL = '🗓️行程表：';
-    private const LINE_FOOTER_DIVIDER = '━━━━━━━━━━━━━━━━━━━';
+    private const LINE_DEPARTURE_LABEL = '📅 最近出團：';
+    private const LINE_PRICE_LABEL = '💰 售價：';
+    private const LINE_ORIGIN_LABEL = '🛫 出發地：';
+    private const LINE_DETAIL_LABEL = '📄 詳細內容：';
+    private const LINE_SCHEDULE_LABEL = '🗓️ 行程表：';
 
     /**
      * Build a customer-visible message from tour context text (Gemini adjunct block).
@@ -48,30 +47,26 @@ final class TourFallbackFormatter
             }
         } else {
             $sliceItems = array_slice($items, 0, 5);
-            foreach ($sliceItems as $idx => $it) {
-                if ($idx > 0) {
-                    $lines[] = self::LINE_TOUR_ITEM_SEPARATOR;
-                    $lines[] = '';
-                }
-                $lines[] = self::LINE_TITLE_FLAG . $it['title'];
+            foreach ($sliceItems as $it) {
+                $lines[] = self::LINE_TITLE_FLAG . ' ' . $it['title'];
                 $lines[] = '';
-                $lines[] = '   ' . self::LINE_DEPARTURE_LABEL . GeminiTourContextBuilder::formatDepartureDatesDisplay(
+                $lines[] = self::LINE_DEPARTURE_LABEL . GeminiTourContextBuilder::formatDepartureDatesDisplay(
                     self::normalizeDatesDisplay($it['date'])
                 );
-                $lines[] = '   ' . self::LINE_PRICE_LABEL . $it['price'];
-                $lines[] = '   ' . self::LINE_ORIGIN_LABEL . $it['departure'];
+                $lines[] = self::LINE_PRICE_LABEL . $it['price'];
+                $lines[] = self::LINE_ORIGIN_LABEL . $it['departure'];
                 if ($it['detail_page'] !== '') {
-                    $lines[] = '   ' . self::LINE_DETAIL_LABEL . $it['detail_page'];
+                    $lines[] = self::LINE_DETAIL_LABEL . $it['detail_page'];
                 }
                 foreach ($it['schedule_lines'] as $sl) {
-                    $lines[] = '   ' . self::formatScheduleOutputLine($sl);
+                    $lines[] = self::formatScheduleOutputLine($sl);
                 }
+                $lines[] = self::LINE_ITEM_SEPARATOR;
             }
         }
 
         if ($url !== '') {
             $lines[] = '';
-            $lines[] = self::LINE_FOOTER_DIVIDER;
             $lines[] = GeminiTourContextBuilder::SEARCH_URL_LABEL;
             $lines[] = $url;
         }
@@ -184,12 +179,12 @@ final class TourFallbackFormatter
                 continue;
             }
             if (preg_match('/^-{20}$/', $line) === 1
+                || preg_match('/^─+$/u', $line) === 1
                 || (preg_match('/^=+$/', $line) === 1 && strlen($line) >= 20)) {
                 continue;
             }
             if ($current !== null && !empty($current['schedule_mode'])) {
-                if (preg_match('/^\d+\.\s+https?:\/\//iu', $line) === 1
-                    || preg_match('/^\d+\.\s+.+$/u', $line) === 1) {
+                if (preg_match('/^\d+\.\s+https?:\/\//iu', $line) === 1) {
                     $current['schedule_lines'][] = $line;
                     continue;
                 }
