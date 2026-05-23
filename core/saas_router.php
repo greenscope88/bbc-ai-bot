@@ -10,6 +10,7 @@ require_once __DIR__ . '/line_service.php';
 require_once __DIR__ . '/usage_tracker.php';
 require_once __DIR__ . '/gemini_service.php';
 require_once __DIR__ . '/tour_fallback_formatter.php';
+require_once __DIR__ . '/tour_line_reply_composer.php';
 require_once __DIR__ . '/tour_prompt_context_service.php';
 require_once __DIR__ . '/tour_prompt_feature_gate.php';
 
@@ -177,21 +178,14 @@ class SaaSRouter
             $prompt = AiPromptBuilder::appendTourContext($prompt, $tourContext);
         }
 
-        $geminiResult = callGemini($prompt);
-        $usedTourFallback = false;
-        if ($geminiResult['ok']) {
-            $replyText = (string) $geminiResult['text'];
-        } elseif ($tourContext !== '') {
-            $fallbackText = TourFallbackFormatter::formatFromTourContext($tourContext);
-            if ($fallbackText !== '') {
-                $replyText = $fallbackText;
-                $usedTourFallback = true;
-            } else {
-                $replyText = '您好，目前系統較忙碌，請稍後再試，或聯繫客服為您服務。';
-            }
-        } else {
-            $replyText = '您好，目前系統較忙碌，請稍後再試，或聯繫客服為您服務。';
-        }
+        $composed = TourLineReplyComposer::resolve(
+            $prompt,
+            $tourContext,
+            static fn (): array => callGemini($prompt)
+        );
+        $replyText = $composed['reply_text'];
+        $usedTourFallback = $composed['used_tour_fallback'];
+        $usedFixedTourList = $composed['used_fixed_tour_list'];
 
         $lineReplyRes = LineService::replyToLine($lineReplyUrl, $lineToken, $replyToken, $replyText);
         self::appendWebhookLog('line_api_response', [
@@ -206,7 +200,9 @@ class SaaSRouter
             'intent' => $intent,
             'line_reply_status' => $lineReplyRes['status'],
             'elapsed_ms' => (int) ((microtime(true) - $start) * 1000),
-            'ai_ok' => $geminiResult['ok'] || $usedTourFallback,
+            'ai_ok' => $composed['ai_ok'],
+            'used_fixed_tour_list' => $usedFixedTourList,
+            'used_tour_fallback' => $usedTourFallback,
         ]);
 
         return ['ok' => true, 'message' => 'completed'];
