@@ -10,7 +10,7 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'gemini_tour_context_builder.php';
 final class TourFallbackFormatter
 {
     /** LINE fixed-list product separator (output only; context may use ======== from builder). */
-    private const LINE_ITEM_SEPARATOR = '─────────────────';
+    private const LINE_ITEM_SEPARATOR = '──────────────';
 
     /** LINE fixed-list output labels (emoji + space before text); input context uses plain labels from GeminiTourContextBuilder. */
     private const LINE_TITLE_FLAG = '🚩';

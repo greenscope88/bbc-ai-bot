@@ -100,7 +100,7 @@ test_assert(strpos($fb, '🗓️ 行程表：https://example.com/schedule-a.pdf'
 test_assert(strpos($fb, '精彩行程點我') === false, 'fallback: no schedule name label');
 test_assert(substr_count($fb, '🗓️ 行程表：') === 1, 'fallback: schedule only on item A');
 test_assert(strpos($fb, "   📅") === false && strpos($fb, "   💰") === false, 'fallback: no indent before emoji lines');
-test_assert(substr_count($fb, '─────────────────') >= 2, 'fallback: item separators after each product');
+test_assert(substr_count($fb, '──────────────') >= 2, 'fallback: item separators after each product');
 
 $fixtureMultiSch = <<<CTX
 【旅遊產品搜尋結果】
@@ -123,7 +123,7 @@ test_assert(strpos($fbMulti, "🗓️ 行程表：\n1. https://agt.tw/a") !== fa
 test_assert(strpos($fbMulti, '2. https://agt.tw/b') !== false, 'fallback: multi schedule line2');
 test_assert(strpos($fbMulti, '3. https://agt.tw/c') !== false, 'fallback: multi schedule line3');
 test_assert(strpos($fbMulti, '另有') === false, 'fallback: no 另有 N 筆');
-test_assert(strpos($fb, "─────────────────\n🚩 東京測試行程B") !== false, 'fallback: separator between items');
+test_assert(strpos($fb, "──────────────\n🚩 東京測試行程B") !== false, 'fallback: separator between items');
 test_assert(strpos($fb, '━━━━━━━━━━━━━━━━━━━') === false, 'fallback: no heavy footer divider');
 test_assert(strpos($fb, '06/01') !== false, 'fallback: date MM/DD');
 test_assert(strpos($fb, '2026') === false, 'fallback: no year in reply');

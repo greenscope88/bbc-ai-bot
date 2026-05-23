@@ -57,7 +57,7 @@ function assertNewLabels(string $text, string $label): void
     test_assert(strpos($text, '💰 售價：') !== false, $label . ': 售價 label');
     test_assert(strpos($text, '💰直售價：') === false, $label . ': no 直售價 label');
     test_assert(strpos($text, GeminiTourContextBuilder::SEARCH_URL_LABEL) !== false, $label . ': footer');
-    test_assert(strpos($text, '─────────────────') !== false, $label . ': item separator');
+    test_assert(strpos($text, '──────────────') !== false, $label . ': item separator');
     test_assert(strpos($text, '━━━━━━━━━━━━━━━━━━━') === false, $label . ': no heavy footer divider');
     test_assert(strpos($text, "   📅") === false, $label . ': no indent before emoji');
     test_assert(strpos($text, '出團日期：') === false, $label . ': no 出團日期');
