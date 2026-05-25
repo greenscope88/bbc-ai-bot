@@ -19,12 +19,21 @@ final class ShortUrlService
 
     private ?string $publicBaseOverride;
 
-    public function __construct(?bool $enabledOverride = null, ?string $publicBaseOverride = null)
-    {
+    private ?bool $itemLinksEnabledOverride;
+
+    public function __construct(
+        ?bool $enabledOverride = null,
+        ?string $publicBaseOverride = null,
+        ?bool $itemLinksEnabledOverride = null
+    ) {
         $this->enabledOverride = $enabledOverride;
         $this->publicBaseOverride = $publicBaseOverride;
+        $this->itemLinksEnabledOverride = $itemLinksEnabledOverride;
     }
 
+    /**
+     * Phase 1A: search_url ("更多行程 & 出團日") — gated by SHORT_URL_ENABLED only.
+     */
     public function toPublicShortUrl(string $longUrl): string
     {
         $longUrl = trim($longUrl);
@@ -32,12 +41,34 @@ final class ShortUrlService
             return $longUrl;
         }
 
-        if (!$this->isEnabled()) {
+        if (!$this->isSearchUrlEnabled()) {
             return $longUrl;
         }
 
+        return $this->encodeToPublicShortUrl($longUrl, 'search_url');
+    }
+
+    /**
+     * Phase 1B-A: per-item "詳細內容" links — gated by SHORT_URL_ITEM_LINKS_ENABLED only.
+     */
+    public function toPublicShortUrlForItemLink(string $longUrl): string
+    {
+        $longUrl = trim($longUrl);
+        if ($longUrl === '') {
+            return $longUrl;
+        }
+
+        if (!$this->isItemLinksEnabled()) {
+            return $longUrl;
+        }
+
+        return $this->encodeToPublicShortUrl($longUrl, 'item_link');
+    }
+
+    private function encodeToPublicShortUrl(string $longUrl, string $kind): string
+    {
         if (!$this->bootLegacyShortUrlStack()) {
-            $this->logOutcome(false, $longUrl, null, 'shorturl_stack_unavailable');
+            $this->logOutcome(false, $longUrl, null, 'shorturl_stack_unavailable', null, $kind);
 
             return $longUrl;
         }
@@ -45,30 +76,30 @@ final class ShortUrlService
         try {
             $ret = [];
             if (!ShortUrl_Add($longUrl, $ret)) {
-                $this->logOutcome(false, $longUrl, null, 'shorturl_add_returned_false');
+                $this->logOutcome(false, $longUrl, null, 'shorturl_add_returned_false', null, $kind);
 
                 return $longUrl;
             }
 
             $code = isset($ret['code']) ? trim((string) $ret['code']) : '';
             if ($code === '') {
-                $this->logOutcome(false, $longUrl, null, 'shorturl_empty_code');
+                $this->logOutcome(false, $longUrl, null, 'shorturl_empty_code', null, $kind);
 
                 return $longUrl;
             }
 
             $short = rtrim($this->resolvePublicBase(), '/') . '/' . $code;
-            $this->logOutcome(true, $longUrl, $code, null);
+            $this->logOutcome(true, $longUrl, $code, null, null, $kind);
 
             return $short;
         } catch (\Throwable $e) {
-            $this->logOutcome(false, $longUrl, null, 'shorturl_exception', $e->getMessage());
+            $this->logOutcome(false, $longUrl, null, 'shorturl_exception', $e->getMessage(), $kind);
 
             return $longUrl;
         }
     }
 
-    private function isEnabled(): bool
+    private function isSearchUrlEnabled(): bool
     {
         if ($this->enabledOverride !== null) {
             return $this->enabledOverride;
@@ -80,6 +111,20 @@ final class ShortUrlService
         }
 
         return (bool) app_config_get('short_url.enabled', false);
+    }
+
+    private function isItemLinksEnabled(): bool
+    {
+        if ($this->itemLinksEnabledOverride !== null) {
+            return $this->itemLinksEnabledOverride;
+        }
+
+        $fromEnv = getenv('SHORT_URL_ITEM_LINKS_ENABLED');
+        if ($fromEnv !== false && $fromEnv !== '') {
+            return self::parseTruthy($fromEnv);
+        }
+
+        return (bool) app_config_get('short_url.item_links_enabled', false);
     }
 
     private function resolvePublicBase(): string
@@ -152,9 +197,11 @@ final class ShortUrlService
         string $longUrl,
         ?string $code,
         ?string $errorSummary,
-        ?string $exceptionMessage = null
+        ?string $exceptionMessage = null,
+        string $kind = 'search_url'
     ): void {
         $context = [
+            'kind' => $kind,
             'success' => $success,
             'long_url_hash' => substr(hash('sha256', $longUrl), 0, 16),
         ];

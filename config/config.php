@@ -92,6 +92,8 @@ return [
     ],
     'short_url' => [
         'enabled' => isset($env['SHORT_URL_ENABLED']) && filter_var($env['SHORT_URL_ENABLED'], FILTER_VALIDATE_BOOLEAN),
+        'item_links_enabled' => isset($env['SHORT_URL_ITEM_LINKS_ENABLED'])
+            && filter_var($env['SHORT_URL_ITEM_LINKS_ENABLED'], FILTER_VALIDATE_BOOLEAN),
         'public_base' => isset($env['SHORT_URL_PUBLIC_BASE']) && trim((string) $env['SHORT_URL_PUBLIC_BASE']) !== ''
             ? rtrim(trim((string) $env['SHORT_URL_PUBLIC_BASE']), '/') . '/'
             : 'https://bbcshops.com/',

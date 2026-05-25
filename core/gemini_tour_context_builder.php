@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'tour_detail_url_builder.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'short_url_service.php';
 
 /**
  * Stage 1-B-14: Build Gemini-ready Chinese context from TourSearchApiClient results.
@@ -541,7 +542,12 @@ final class GeminiTourContextBuilder
         $couponNo = $safe['couponNo'] ?? null;
         $tourSeqNo = $safe['tourSeqNo'] ?? ($safe['tour_seq_no'] ?? null);
 
-        return $this->detailUrlBuilder->buildDetailUrl($this->contextStoreNo, $couponNo, $tourSeqNo);
+        $longUrl = $this->detailUrlBuilder->buildDetailUrl($this->contextStoreNo, $couponNo, $tourSeqNo);
+        if ($longUrl === null) {
+            return null;
+        }
+
+        return (new ShortUrlService())->toPublicShortUrlForItemLink($longUrl);
     }
 
     /**
