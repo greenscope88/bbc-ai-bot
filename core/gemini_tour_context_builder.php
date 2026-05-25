@@ -425,12 +425,12 @@ final class GeminiTourContextBuilder
         }
 
         if ($count === 1) {
-            return ['行程表：' . trim($entries[0]['schLink'])];
+            return ['行程表：' . self::resolveScheduleDisplayUrl(trim($entries[0]['schLink']))];
         }
 
         $lines = ['行程表：'];
         foreach ($entries as $i => $entry) {
-            $lines[] = ($i + 1) . '. ' . trim($entry['schLink']);
+            $lines[] = ($i + 1) . '. ' . self::resolveScheduleDisplayUrl(trim($entry['schLink']));
         }
 
         return $lines;
@@ -505,6 +505,11 @@ final class GeminiTourContextBuilder
         }
 
         return null;
+    }
+
+    private static function resolveScheduleDisplayUrl(string $url): string
+    {
+        return (new ShortUrlService())->toPublicShortUrlForScheduleLink($url);
     }
 
     /**

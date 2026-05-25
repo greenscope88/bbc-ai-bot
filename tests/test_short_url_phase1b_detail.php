@@ -29,6 +29,7 @@ function env_snapshot(): array
     return [
         'SHORT_URL_ENABLED' => getenv('SHORT_URL_ENABLED'),
         'SHORT_URL_ITEM_LINKS_ENABLED' => getenv('SHORT_URL_ITEM_LINKS_ENABLED'),
+        'SHORT_URL_SCHEDULE_LINKS_ENABLED' => getenv('SHORT_URL_SCHEDULE_LINKS_ENABLED'),
         'SHORT_URL_PUBLIC_BASE' => getenv('SHORT_URL_PUBLIC_BASE'),
     ];
 }
@@ -100,11 +101,13 @@ if ($detailIsShort) {
     fwrite(STDOUT, "INFO: detail short URL in context\n");
 }
 
-// 3. 行程表 unchanged (external long URL)
-test_assert(strpos($textOn, '行程表：https://drive.google.com/example-itinerary') !== false, '3: schedule URL stays long');
+// 3. 行程表 unchanged when SCHEDULE flag off (Phase 1B-B isolated)
+putenv('SHORT_URL_SCHEDULE_LINKS_ENABLED=0');
+$textScheduleOff = $builder->build($withLinks, $buildOptions);
+test_assert(strpos($textScheduleOff, '行程表：https://drive.google.com/example-itinerary') !== false, '3: schedule URL stays long when SCHEDULE off');
 test_assert(
-    preg_match('/行程表：\s*https:\/\/bbcshops\.com\//u', $textOn) !== 1,
-    '3: schedule not shortened to bbcshops'
+    preg_match('/行程表：\s*https:\/\/bbcshops\.com\//u', $textScheduleOff) !== 1,
+    '3: schedule not shortened to bbcshops when SCHEDULE off'
 );
 
 // 4. Phase 1A isolation: search_url uses SHORT_URL_ENABLED only

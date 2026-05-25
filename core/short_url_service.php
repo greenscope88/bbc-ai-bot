@@ -21,14 +21,18 @@ final class ShortUrlService
 
     private ?bool $itemLinksEnabledOverride;
 
+    private ?bool $scheduleLinksEnabledOverride;
+
     public function __construct(
         ?bool $enabledOverride = null,
         ?string $publicBaseOverride = null,
-        ?bool $itemLinksEnabledOverride = null
+        ?bool $itemLinksEnabledOverride = null,
+        ?bool $scheduleLinksEnabledOverride = null
     ) {
         $this->enabledOverride = $enabledOverride;
         $this->publicBaseOverride = $publicBaseOverride;
         $this->itemLinksEnabledOverride = $itemLinksEnabledOverride;
+        $this->scheduleLinksEnabledOverride = $scheduleLinksEnabledOverride;
     }
 
     /**
@@ -63,6 +67,49 @@ final class ShortUrlService
         }
 
         return $this->encodeToPublicShortUrl($longUrl, 'item_link');
+    }
+
+    /**
+     * Phase 1B-B: LINE 行程表 — only drive.google.com / docs.google.com; fail-open otherwise.
+     */
+    public function toPublicShortUrlForScheduleLink(string $longUrl): string
+    {
+        $longUrl = trim($longUrl);
+        if ($longUrl === '') {
+            return $longUrl;
+        }
+
+        if (!$this->isScheduleLinksEnabled()) {
+            return $longUrl;
+        }
+
+        if (!self::isEligibleGoogleScheduleUrl($longUrl)) {
+            return $longUrl;
+        }
+
+        return $this->encodeToPublicShortUrl($longUrl, 'schedule_link');
+    }
+
+    /**
+     * Whether URL host is allowlisted for schedule short links (no feature-flag check).
+     */
+    public static function isEligibleGoogleScheduleUrl(string $url): bool
+    {
+        $url = trim($url);
+        if ($url === '' || preg_match('#^https?://#i', $url) !== 1) {
+            return false;
+        }
+
+        $host = self::parseUrlHost($url);
+        if ($host === null) {
+            return false;
+        }
+
+        if ($host === 'bbcshops.com' || $host === 'www.bbcshops.com') {
+            return false;
+        }
+
+        return $host === 'drive.google.com' || $host === 'docs.google.com';
     }
 
     private function encodeToPublicShortUrl(string $longUrl, string $kind): string
@@ -125,6 +172,30 @@ final class ShortUrlService
         }
 
         return (bool) app_config_get('short_url.item_links_enabled', false);
+    }
+
+    private function isScheduleLinksEnabled(): bool
+    {
+        if ($this->scheduleLinksEnabledOverride !== null) {
+            return $this->scheduleLinksEnabledOverride;
+        }
+
+        $fromEnv = getenv('SHORT_URL_SCHEDULE_LINKS_ENABLED');
+        if ($fromEnv !== false && $fromEnv !== '') {
+            return self::parseTruthy($fromEnv);
+        }
+
+        return (bool) app_config_get('short_url.schedule_links_enabled', false);
+    }
+
+    private static function parseUrlHost(string $url): ?string
+    {
+        $parts = parse_url($url);
+        if (!is_array($parts) || !isset($parts['host']) || !is_string($parts['host'])) {
+            return null;
+        }
+
+        return strtolower($parts['host']);
     }
 
     private function resolvePublicBase(): string
