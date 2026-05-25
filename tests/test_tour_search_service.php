@@ -51,8 +51,15 @@ test_assert($r1['items'] === [], '1: empty items');
 $r2 = TourSearchService::search('unknown_sno_00000001', $stagingKeyword);
 test_assert(($r2['errorCode'] ?? '') === 'TENANT_NOT_FOUND', '2: tenant not found');
 
-// search_url unit check (no HTTP)
+// search_url unit check (no HTTP); force long URL (SHORT_URL_ENABLED=0)
+$prevShortFlag = getenv('SHORT_URL_ENABLED');
+putenv('SHORT_URL_ENABLED=0');
 $url = TourSearchService::buildSearchUrl($stagingSno, $stagingKeyword);
+if ($prevShortFlag === false) {
+    putenv('SHORT_URL_ENABLED');
+} else {
+    putenv('SHORT_URL_ENABLED=' . $prevShortFlag);
+}
 test_assert(strpos($url, 'sno=' . rawurlencode($stagingSno)) !== false, 'url: contains sno');
 test_assert(strpos($url, 'keyword=' . rawurlencode($stagingKeyword)) !== false, 'url: contains keyword');
 test_assert(strpos($url, 'openExternalBrowser=1') !== false, 'url: openExternalBrowser');

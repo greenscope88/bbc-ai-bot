@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'bootstrap.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tenant_context_resolver.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'short_url_service.php';
 
 $prodRoot = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'api_gateway' . DIRECTORY_SEPARATOR . 'production';
 require_once $prodRoot . DIRECTORY_SEPARATOR . 'ServiceRegistry.php';
@@ -259,7 +260,9 @@ final class TourSearchService
             PHP_QUERY_RFC3986
         );
 
-        return self::SEARCH_URL_BASE . '?' . $query;
+        $longUrl = self::SEARCH_URL_BASE . '?' . $query;
+
+        return (new ShortUrlService())->toPublicShortUrl($longUrl);
     }
 
     /**

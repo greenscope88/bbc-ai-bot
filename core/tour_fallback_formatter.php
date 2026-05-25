@@ -100,18 +100,19 @@ final class TourFallbackFormatter
             }
         }
 
-        $needle = 'https://bonusmee.com';
-        $pos = strpos($body, $needle);
-        if ($pos === false) {
-            return '';
-        }
-        $rest = substr($body, $pos);
-        $token = strtok($rest, " \t\r\n");
-        if (!is_string($token)) {
-            return '';
+        if (preg_match('/https?:\/\/(?:www\.)?(?:bbcshops|bonusmee)\.com\/[A-Za-z0-9]+/u', $body, $shortMatch) === 1) {
+            return trim($shortMatch[0]);
         }
 
-        return trim($token);
+        if (preg_match('/https?:\/\/[^\s]*cloud_store_tourdate\.php[^\s]*/u', $body, $longMatch) === 1) {
+            return trim(rtrim($longMatch[0], '.,;)]'));
+        }
+
+        if (preg_match('/https?:\/\/\S+/u', $body, $anyMatch) === 1) {
+            return trim(rtrim($anyMatch[0], '.,;)]'));
+        }
+
+        return '';
     }
 
     /**

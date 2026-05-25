@@ -90,6 +90,12 @@ return [
             ? trim((string) $env['BONUSMEE_STOREFRONT_DATA_KEY'])
             : '',
     ],
+    'short_url' => [
+        'enabled' => isset($env['SHORT_URL_ENABLED']) && filter_var($env['SHORT_URL_ENABLED'], FILTER_VALIDATE_BOOLEAN),
+        'public_base' => isset($env['SHORT_URL_PUBLIC_BASE']) && trim((string) $env['SHORT_URL_PUBLIC_BASE']) !== ''
+            ? rtrim(trim((string) $env['SHORT_URL_PUBLIC_BASE']), '/') . '/'
+            : 'https://bbcshops.com/',
+    ],
     'gateway' => [
         'host_b' => [
             'http_enabled' => isset($env['GATEWAY_HOSTB_HTTP_ENABLED']) && filter_var($env['GATEWAY_HOSTB_HTTP_ENABLED'], FILTER_VALIDATE_BOOLEAN),
