@@ -118,5 +118,11 @@ return [
                 ? strtolower(trim((string) $env['GATEWAY_RATE_LIMIT_PERSISTENCE_MODE']))
                 : 'disabled',
         ],
+        'hybrid_search' => [
+            'enabled' => false,
+            'allowed_sno' => [],
+            'allowed_channels' => [],
+            'dry_run_log_enabled' => true,
+        ],
     ],
 ];

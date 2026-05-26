@@ -172,6 +172,8 @@ class SaaSRouter
         $tourContext = (new TourPromptContextService())->buildTourContextForPrompt([
             'userText' => $userMessage,
             'sno' => (string) ($tenant['sno'] ?? ''),
+            'channelId' => $channelId !== '' ? $channelId : null,
+            'traceId' => $traceId,
             'featureEnabled' => $enableTourPromptContext,
         ]);
         if ($tourContext !== '') {

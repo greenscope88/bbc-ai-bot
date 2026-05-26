@@ -48,9 +48,27 @@ final class TourSearchApiClient
         int $pageSize = 5,
         ?string $traceId = null
     ): array {
+        $page = max(1, $page);
+        $pageSize = max(1, min(100, $pageSize));
+
+        return $this->searchWithParams($sno, [
+            'keyword' => trim($keyword),
+            'page' => $page,
+            'pageSize' => $pageSize,
+        ], $traceId);
+    }
+
+    /**
+     * Phase 2-C: search with allowlisted client params (keyword required).
+     *
+     * @param array<string, string|int> $clientParams
+     * @return array<string, mixed>
+     */
+    public function searchWithParams(string $sno, array $clientParams, ?string $traceId = null): array
+    {
         try {
             $normalizedSno = trim($sno);
-            $normalizedKeyword = trim($keyword);
+            $normalizedKeyword = trim((string) ($clientParams['keyword'] ?? ''));
 
             if ($normalizedSno === '') {
                 return $this->failureResult(
@@ -74,11 +92,17 @@ final class TourSearchApiClient
                 );
             }
 
-            $page = max(1, $page);
-            $pageSize = max(1, min(100, $pageSize));
+            $page = max(1, (int) ($clientParams['page'] ?? 1));
+            $pageSize = max(1, min(100, (int) ($clientParams['pageSize'] ?? 5)));
             $tid = $traceId !== null ? trim($traceId) : '';
 
-            $url = $this->buildRequestUrl($normalizedSno, $normalizedKeyword, $page, $pageSize, $tid !== '' ? $tid : null);
+            $url = $this->buildRequestUrlFromParams(
+                $normalizedSno,
+                $clientParams,
+                $page,
+                $pageSize,
+                $tid !== '' ? $tid : null
+            );
             $headers = [];
             if ($tid !== '') {
                 $headers['X-Trace-Id'] = $tid;
@@ -156,12 +180,50 @@ final class TourSearchApiClient
         int $pageSize = 5,
         ?string $traceId = null
     ): string {
+        return $this->buildRequestUrlFromParams($sno, [
+            'keyword' => trim($keyword),
+            'page' => max(1, $page),
+            'pageSize' => max(1, min(100, $pageSize)),
+        ], max(1, $page), max(1, min(100, $pageSize)), $traceId);
+    }
+
+    /**
+     * @param array<string, string|int> $clientParams
+     */
+    public function buildRequestUrlFromParams(
+        string $sno,
+        array $clientParams,
+        int $page = 1,
+        int $pageSize = 5,
+        ?string $traceId = null
+    ): string {
+        $allowed = ['keyword', 'destination', 'country', 'city', 'dateFrom', 'dateTo'];
         $query = [
             'sno' => trim($sno),
-            'keyword' => trim($keyword),
             'page' => (string) max(1, $page),
             'pageSize' => (string) max(1, min(100, $pageSize)),
         ];
+
+        foreach ($allowed as $key) {
+            if (!array_key_exists($key, $clientParams)) {
+                continue;
+            }
+            $value = $clientParams[$key];
+            if (is_int($value)) {
+                $query[$key] = (string) $value;
+                continue;
+            }
+            if (is_string($value)) {
+                $trimmed = trim($value);
+                if ($trimmed !== '') {
+                    $query[$key] = $trimmed;
+                }
+            }
+        }
+
+        if (!isset($query['keyword'])) {
+            $query['keyword'] = trim((string) ($clientParams['keyword'] ?? ''));
+        }
 
         $tid = $traceId !== null ? trim($traceId) : '';
         if ($tid !== '') {
