@@ -1,8 +1,12 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'TravelIntentLexicon.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'TourIntentDecisionLogger.php';
+
 /**
  * Stage 1-B-13 tour search intent + keyword extraction (rule-based, no API/DB/Gemini).
+ * Phase 2-C.1: travel intent lexicon (date/area/budget composites).
  */
 final class TourQueryIntentDetector
 {
@@ -143,9 +147,15 @@ final class TourQueryIntentDetector
     /**
      * @return array{
      *   is_tour_query: bool,
+     *   intent: string,
      *   keyword: string|null,
      *   confidence: float,
-     *   reason: string
+     *   reason: string,
+     *   intent_source: string,
+     *   matched_lexicon: string|null,
+     *   matched_date: bool,
+     *   matched_area: string|null,
+     *   matched_budget: bool
      * }
      */
     public function detect(string $message): array
@@ -156,33 +166,101 @@ final class TourQueryIntentDetector
 
         $text = trim($message);
         if ($text === '') {
-            return $this->result(false, null, 0.0, 'empty_message');
+            return $this->finalize($this->result(false, null, 0.0, 'empty_message'), $text);
         }
 
         $lower = mb_strtolower($text, 'UTF-8');
 
         if ($this->matchesExclusion($lower)) {
-            return $this->result(false, null, 0.05, 'excluded_non_tour_topic');
+            return $this->finalize($this->result(false, null, 0.05, 'excluded_non_tour_topic'), $text);
         }
 
         $bareKeyword = $this->detectBareDestinationKeyword($text);
         if ($bareKeyword !== null) {
-            return $this->result(true, $bareKeyword, 0.85, 'bare_destination_name');
+            return $this->finalize($this->result(true, $bareKeyword, 0.85, 'bare_destination_name', [
+                'intent_source' => 'bare_destination_name',
+                'matched_lexicon' => $bareKeyword,
+                'matched_date' => TravelIntentLexicon::hasDateSignal($text),
+                'matched_area' => $bareKeyword,
+                'matched_budget' => TravelIntentLexicon::hasBudgetSignal($text),
+            ]), $text);
         }
 
-        $tourScore = $this->scoreTourIntent($lower);
+        $lexicon = TravelIntentLexicon::analyze($text);
+        if (($lexicon['is_tour_search'] ?? false) === true) {
+            $keyword = $this->extractKeyword($text);
+            if ($keyword === '' && !empty($lexicon['destination'])) {
+                $keyword = (string) $lexicon['destination'];
+            }
+            if ($keyword !== '') {
+                $confidence = 0.88;
+                if ($lexicon['has_date'] ?? false) {
+                    $confidence += 0.04;
+                }
+                if ($lexicon['has_budget'] ?? false) {
+                    $confidence += 0.03;
+                }
+
+                return $this->finalize($this->result(
+                    true,
+                    $keyword,
+                    min(0.99, $confidence),
+                    (string) ($lexicon['reason'] ?? 'lexicon_destination'),
+                    [
+                        'intent_source' => (string) ($lexicon['reason'] ?? 'lexicon'),
+                        'matched_lexicon' => $lexicon['matched_lexicon'] ?? $lexicon['destination'] ?? null,
+                        'matched_date' => (bool) ($lexicon['has_date'] ?? false),
+                        'matched_area' => $lexicon['destination'] ?? null,
+                        'matched_budget' => (bool) ($lexicon['has_budget'] ?? false),
+                    ]
+                ), $text);
+            }
+        }
+
+        $tourScore = $this->scoreTourIntent($lower, $text);
         if ($tourScore <= 0) {
-            return $this->result(false, null, 0.1, 'no_tour_search_signal');
+            return $this->finalize($this->result(false, null, 0.1, 'no_tour_search_signal'), $text);
         }
 
         $keyword = $this->extractKeyword($text);
         if ($keyword === '') {
-            return $this->result(false, null, 0.35, 'tour_signal_without_keyword');
+            return $this->finalize($this->result(false, null, 0.35, 'tour_signal_without_keyword'), $text);
         }
 
         $confidence = min(0.99, 0.55 + $tourScore);
 
-        return $this->result(true, $keyword, $confidence, 'tour_search_detected');
+        return $this->finalize($this->result(true, $keyword, $confidence, 'tour_search_detected', [
+            'intent_source' => 'tour_markers',
+            'matched_lexicon' => TravelIntentLexicon::findLongestDestination($text),
+            'matched_date' => TravelIntentLexicon::hasDateSignal($text),
+            'matched_area' => TravelIntentLexicon::findLongestDestination($text),
+            'matched_budget' => TravelIntentLexicon::hasBudgetSignal($text),
+        ]), $text);
+    }
+
+    /**
+     * @param array<string, mixed> $result
+     * @return array<string, mixed>
+     */
+    private function finalize(array $result, string $message): array
+    {
+        if (TourIntentDecisionLogger::isLoggingEnabled()) {
+            TourIntentDecisionLogger::log([
+                'message' => $message,
+                'is_tour_query' => $result['is_tour_query'] ?? false,
+                'intent' => $result['intent'] ?? 'non_tour',
+                'keyword' => $result['keyword'] ?? null,
+                'confidence' => $result['confidence'] ?? 0,
+                'reason' => $result['reason'] ?? '',
+                'intent_source' => $result['intent_source'] ?? null,
+                'matched_lexicon' => $result['matched_lexicon'] ?? null,
+                'matched_date' => $result['matched_date'] ?? false,
+                'matched_area' => $result['matched_area'] ?? null,
+                'matched_budget' => $result['matched_budget'] ?? false,
+            ]);
+        }
+
+        return $result;
     }
 
     private function matchesExclusion(string $lower): bool
@@ -238,7 +316,7 @@ final class TourQueryIntentDetector
         return $working;
     }
 
-    private function scoreTourIntent(string $lower): float
+    private function scoreTourIntent(string $lower, string $text): float
     {
         $score = 0.0;
 
@@ -246,6 +324,25 @@ final class TourQueryIntentDetector
             if (mb_strpos($lower, mb_strtolower($marker, 'UTF-8')) !== false) {
                 $score += 0.35;
             }
+        }
+
+        foreach (TravelIntentLexicon::TOUR_PRODUCT_TERMS as $marker) {
+            if (mb_strpos($lower, mb_strtolower($marker, 'UTF-8')) !== false) {
+                $score += 0.25;
+                break;
+            }
+        }
+
+        if (TravelIntentLexicon::findLongestDestination($text) !== null) {
+            $score += 0.4;
+        }
+
+        if (TravelIntentLexicon::hasDateSignal($text)) {
+            $score += 0.2;
+        }
+
+        if (TravelIntentLexicon::hasBudgetSignal($text)) {
+            $score += 0.15;
         }
 
         if (preg_match('/\d+\s*日/u', $lower) || mb_strpos($lower, '五日') !== false) {
@@ -275,6 +372,9 @@ final class TourQueryIntentDetector
     private function extractKeyword(string $text): string
     {
         $working = trim($text);
+        $working = $this->stripDeparturePrefix($working);
+        $working = $this->stripLeadingDateTokens($working);
+        $working = $this->stripTrailingBudgetTokens($working);
         $working = $this->stripLeadingMonthQualifier($working);
         $working = $this->stripLeadingPriceModifiers($working);
 
@@ -289,6 +389,8 @@ final class TourQueryIntentDetector
             foreach ($prefixes as $prefix) {
                 if (mb_strpos($working, $prefix, 0, 'UTF-8') === 0) {
                     $working = trim(mb_substr($working, mb_strlen($prefix, 'UTF-8'), null, 'UTF-8'));
+                    $working = $this->stripLeadingDateTokens($working);
+                    $working = $this->stripTrailingBudgetTokens($working);
                     $working = $this->stripLeadingMonthQualifier($working);
                     $working = $this->stripLeadingPriceModifiers($working);
                     $prefixChanged = true;
@@ -308,6 +410,8 @@ final class TourQueryIntentDetector
             foreach ($moods as $mood) {
                 if ($mood !== '' && mb_strpos($working, $mood, 0, 'UTF-8') === 0) {
                     $working = trim(mb_substr($working, mb_strlen($mood, 'UTF-8'), null, 'UTF-8'));
+                    $working = $this->stripLeadingDateTokens($working);
+                    $working = $this->stripTrailingBudgetTokens($working);
                     $working = $this->stripLeadingMonthQualifier($working);
                     $working = $this->stripLeadingPriceModifiers($working);
                     $moodChanged = true;
@@ -316,7 +420,6 @@ final class TourQueryIntentDetector
             }
         }
 
-        // 有沒有 may remain; strip full phrase at start repeatedly.
         $changed = true;
         while ($changed) {
             $changed = false;
@@ -370,7 +473,8 @@ final class TourQueryIntentDetector
             }
         }
 
-        // e.g. 東京五日 → 東京 (keep 大阪五日遊 intact — ends with 遊, not 日)
+        $working = $this->stripTrailingBudgetTokens($working);
+        $working = $this->stripTrailingStyleTerms($working);
         $working = preg_replace('/(?:\d+|[一二三四五六七八九十百千兩]+)\s*日$/u', '', $working) ?? $working;
         $working = trim($working);
 
@@ -378,14 +482,99 @@ final class TourQueryIntentDetector
         $working = preg_replace('/^[，。！？、；："\']+|[，。！？、；："\']+$/u', '', $working) ?? $working;
         $working = trim($working);
 
+        if ($working === '') {
+            $fallback = TravelIntentLexicon::findLongestDestination($text);
+            if ($fallback !== null) {
+                return $fallback;
+            }
+        }
+
         $working = $this->collapseRepeatedSingleCharKeyword($working);
 
         return $working;
     }
 
     /**
-     * 安全剝除「的」助詞（位於兩個漢字之間），避免盲刪 substring 造成字元重疊（例：韓國 → 韓韓）。
+     * 剝除句首日期語意（六月底、六月初、6月…）。
      */
+    private function stripLeadingDateTokens(string $text): string
+    {
+        $working = $text;
+        for ($iter = 0; $iter < 12; ++$iter) {
+            $before = $working;
+            $working = preg_replace(
+                '/^(\d{1,2}|[一二三四五六七八九十百千兩]{1,3})月(底|初|中|份)?/u',
+                '',
+                $working
+            ) ?? $working;
+            $working = preg_replace(
+                '/^(\d{1,2}|[一二三四五六七八九十]{1,3})月(\d{1,2}|[一二三四五六七八九十]{1,3})日/u',
+                '',
+                $working
+            ) ?? $working;
+            $working = trim($working);
+            if ($working === $before) {
+                break;
+            }
+        }
+
+        return $working;
+    }
+
+    /**
+     * 剝除句尾預算語意（三萬以下、五萬以內…）。
+     */
+    private function stripDeparturePrefix(string $text): string
+    {
+        $trimmed = preg_replace('/^(台北|高雄|台中|桃園|松山|花蓮|台南)出發/u', '', trim($text)) ?? trim($text);
+
+        return trim($trimmed);
+    }
+
+    /**
+     * 剝除句尾旅遊風格詞（親子、蜜月…）便於關鍵字收斂至目的地。
+     */
+    private function stripTrailingStyleTerms(string $text): string
+    {
+        /** @var list<string> */
+        $styles = ['親子', '蜜月', '賞櫻', '賞楓', '滑雪'];
+        $working = trim($text);
+        $changed = true;
+        while ($changed) {
+            $changed = false;
+            foreach ($styles as $style) {
+                $len = mb_strlen($style, 'UTF-8');
+                $charLen = mb_strlen($working, 'UTF-8');
+                if ($len > 0 && $charLen > $len && mb_substr($working, $charLen - $len, null, 'UTF-8') === $style) {
+                    $working = trim(mb_substr($working, 0, $charLen - $len, 'UTF-8'));
+                    $changed = true;
+                    break;
+                }
+            }
+        }
+
+        return $working;
+    }
+
+    private function stripTrailingBudgetTokens(string $text): string
+    {
+        $working = trim($text);
+        for ($iter = 0; $iter < 8; ++$iter) {
+            $before = $working;
+            $working = preg_replace(
+                '/(?:預算)?(?:\d+|[一二三四五六七八九十兩]{1,3})?\s*萬(?:元)?(?:以下|以內|內|左右)?$/u',
+                '',
+                $working
+            ) ?? $working;
+            $working = trim($working);
+            if ($working === $before) {
+                break;
+            }
+        }
+
+        return $working;
+    }
+
     private function stripSandwichedParticleDe(string $text): string
     {
         $working = $text;
@@ -401,9 +590,6 @@ final class TourQueryIntentDetector
         return $working;
     }
 
-    /**
-     * 若整段 keyword 為同一字元重複（例如錯誤處理後的「韓韓」），收斂為單一字元。
-     */
     private function collapseRepeatedSingleCharKeyword(string $text): string
     {
         $len = mb_strlen($text, 'UTF-8');
@@ -420,9 +606,6 @@ final class TourQueryIntentDetector
         return $first;
     }
 
-    /**
-     * 剝除句首「便宜的／便宜」等價格修飾（可重複），便於「便宜的韓國旅遊」→ 先從「便宜…」開頭處理。
-     */
     private function stripLeadingPriceModifiers(string $text): string
     {
         $working = $text;
@@ -445,9 +628,6 @@ final class TourQueryIntentDetector
         return $working;
     }
 
-    /**
-     * 剝除句首「六月份／6月／六月」等時間限定，便於「你們有沒有六月份東京旅遊的行程」→ 東京。
-     */
     private function stripLeadingMonthQualifier(string $text): string
     {
         $working = $text;
@@ -466,15 +646,22 @@ final class TourQueryIntentDetector
     }
 
     /**
-     * @return array{is_tour_query: bool, keyword: string|null, confidence: float, reason: string}
+     * @param array{intent_source?: string, matched_lexicon?: ?string, matched_date?: bool, matched_area?: ?string, matched_budget?: bool} $meta
+     * @return array<string, mixed>
      */
-    private function result(bool $isTourQuery, ?string $keyword, float $confidence, string $reason): array
+    private function result(bool $isTourQuery, ?string $keyword, float $confidence, string $reason, array $meta = []): array
     {
         return [
             'is_tour_query' => $isTourQuery,
+            'intent' => $isTourQuery ? 'tour_search' : 'non_tour',
             'keyword' => $keyword,
             'confidence' => round($confidence, 2),
             'reason' => $reason,
+            'intent_source' => $meta['intent_source'] ?? $reason,
+            'matched_lexicon' => $meta['matched_lexicon'] ?? null,
+            'matched_date' => (bool) ($meta['matched_date'] ?? false),
+            'matched_area' => $meta['matched_area'] ?? null,
+            'matched_budget' => (bool) ($meta['matched_budget'] ?? false),
         ];
     }
 }

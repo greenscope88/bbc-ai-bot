@@ -123,6 +123,7 @@ return [
             'allowed_sno' => [],
             'allowed_channels' => [],
             'dry_run_log_enabled' => true,
+            'intent_log_enabled' => true,
         ],
     ],
 ];
