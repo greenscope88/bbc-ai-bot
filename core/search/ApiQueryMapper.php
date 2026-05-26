@@ -3,13 +3,14 @@ declare(strict_types=1);
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'SearchCondition.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'SearchConditionCanonicalizer.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'HostBTourSearchParamMapper.php';
 
 /**
- * Maps SearchCondition → Host B tour.search client params (allowlist-safe). No SQL/DB.
+ * Maps SearchCondition → internal gateway client params, then Host B wire params. No SQL/DB.
  */
 final class ApiQueryMapper
 {
-    /** Mirrors TourSearchRequestBuilder::HOST_B_QUERY_ALLOWLIST (search fields only). */
+    /** Internal/gateway keys (SearchUrlBuilder / dry-run; not sent verbatim to Host B). */
     public const ALLOWED_QUERY_KEYS = [
         'keyword',
         'destination',
@@ -19,6 +20,7 @@ final class ApiQueryMapper
         'dateTo',
         'priceMax',
         'priceMin',
+        'departureCity',
         'page',
         'pageSize',
     ];
@@ -72,10 +74,37 @@ final class ApiQueryMapper
             $params['priceMin'] = (int) $canonical['budget_min'];
         }
 
+        $departureCity = $condition->getDepartureCity();
+        if ($departureCity !== null && trim($departureCity) !== '') {
+            $params['departureCity'] = trim($departureCity);
+        }
+
         $params['page'] = isset($options['page']) ? max(1, (int) $options['page']) : 1;
         $params['pageSize'] = isset($options['pageSize']) ? max(1, min(100, (int) $options['pageSize'])) : 20;
 
         return $params;
+    }
+
+    /**
+     * Host B wire params (TourDateS, AmountMax, Departure, …). Phase 2-C.4.
+     *
+     * @param array<string, mixed> $options same as toClientParams()
+     * @return array<string, string|int>
+     */
+    public function toHostBParams(SearchCondition $condition, array $options = []): array
+    {
+        return HostBTourSearchParamMapper::toHostBQueryParams(
+            $this->toClientParams($condition, $options)
+        );
+    }
+
+    /**
+     * @param array<string, string|int> $internalParams
+     * @return array<string, string|int>
+     */
+    public function hostbMappingAudit(array $internalParams): array
+    {
+        return HostBTourSearchParamMapper::mappingAudit($internalParams);
     }
 
     /**

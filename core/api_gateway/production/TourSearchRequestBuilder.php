@@ -6,6 +6,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'ServiceRegistry.php';
 
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HostBTourSearchParamMapper.php';
+
 
 
 /**
@@ -42,13 +44,15 @@ final class TourSearchRequestBuilder
 
         'city',
 
-        'dateFrom',
+        'TourDateS',
 
-        'dateTo',
+        'TourDateE',
 
-        'priceMax',
+        'AmountMax',
 
-        'priceMin',
+        'AmountMin',
+
+        'Departure',
 
         'page',
 
@@ -134,7 +138,7 @@ final class TourSearchRequestBuilder
 
         self::assertTenantContextForInternalValidation($tenantContext);
 
-
+        $clientParams = HostBTourSearchParamMapper::toHostBQueryParams($clientParams);
 
         $method = isset($spec['method']) ? (string) $spec['method'] : '';
 

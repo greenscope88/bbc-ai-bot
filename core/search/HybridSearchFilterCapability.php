@@ -6,22 +6,23 @@ declare(strict_types=1);
  */
 final class HybridSearchFilterCapability
 {
-    /** @var list<string> */
+    /** @var list<string> Host B wire keys (Phase 2-C.4). */
     public const HOST_B_ALLOWLIST_KEYS = [
         'sno',
         'keyword',
         'destination',
         'country',
         'city',
-        'dateFrom',
-        'dateTo',
-        'priceMax',
-        'priceMin',
+        'TourDateS',
+        'TourDateE',
+        'AmountMax',
+        'AmountMin',
+        'Departure',
         'page',
         'pageSize',
     ];
 
-    /** @var list<string> */
+    /** @var list<string> Logical keys on gateway URL / internal mapper output. */
     public const GATEWAY_CLIENT_URL_KEYS = [
         'keyword',
         'destination',
@@ -31,6 +32,7 @@ final class HybridSearchFilterCapability
         'dateTo',
         'priceMax',
         'priceMin',
+        'departureCity',
     ];
 
     /**
@@ -39,7 +41,10 @@ final class HybridSearchFilterCapability
     public static function allowlistReport(): array
     {
         $report = [];
-        foreach (['dateFrom', 'dateTo', 'priceMax', 'priceMin', 'destination', 'country', 'city'] as $key) {
+        foreach (
+            ['TourDateS', 'TourDateE', 'AmountMax', 'AmountMin', 'Departure', 'destination', 'country', 'city']
+            as $key
+        ) {
             $report[$key] = in_array($key, self::HOST_B_ALLOWLIST_KEYS, true);
         }
 
@@ -52,12 +57,18 @@ final class HybridSearchFilterCapability
      */
     public static function paramsOnWire(array $apiParams): array
     {
+        require_once __DIR__ . DIRECTORY_SEPARATOR . 'HostBTourSearchParamMapper.php';
+
+        $hostb = HostBTourSearchParamMapper::toHostBQueryParams($apiParams);
         $out = [];
-        foreach (self::GATEWAY_CLIENT_URL_KEYS as $key) {
-            if (!array_key_exists($key, $apiParams)) {
+        foreach (self::HOST_B_ALLOWLIST_KEYS as $key) {
+            if ($key === 'sno' || $key === 'page' || $key === 'pageSize') {
                 continue;
             }
-            $value = $apiParams[$key];
+            if (!array_key_exists($key, $hostb)) {
+                continue;
+            }
+            $value = $hostb[$key];
             if (is_int($value) || (is_string($value) && trim($value) !== '')) {
                 $out[$key] = $value;
             }

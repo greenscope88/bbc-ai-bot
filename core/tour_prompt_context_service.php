@@ -309,7 +309,17 @@ final class TourPromptContextService
 
 
 
-            $apiParams = $apiMapper->toClientParams($condition, [
+            $apiParamsInternal = $apiMapper->toClientParams($condition, [
+
+                'page' => 1,
+
+                'pageSize' => $apiPageSize,
+
+                'include_sno' => $sno,
+
+            ]);
+
+            $apiParams = $apiMapper->toHostBParams($condition, [
 
                 'page' => 1,
 
@@ -337,7 +347,7 @@ final class TourPromptContextService
 
                     $condition,
 
-                    $apiParams,
+                    $apiParamsInternal,
 
                     [],
 
@@ -383,7 +393,7 @@ final class TourPromptContextService
                 $traceId,
                 $sno,
                 $condition->toArray(),
-                $apiParams,
+                $apiParamsInternal,
                 $requestUrl,
                 $apiResult
             );
@@ -428,7 +438,7 @@ final class TourPromptContextService
 
                 $condition,
 
-                $apiParams,
+                $apiParamsInternal,
 
                 $searchUrlParams,
 

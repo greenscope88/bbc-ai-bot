@@ -11,15 +11,17 @@ $sno = 'e1fd133c7e8e45a1';
 $client = new TourSearchApiClient();
 
 $condition = (new HybridSearchConditionBuilder())->parse('六月底東京三萬以下', ['reference_date' => $ref]);
-$params = (new ApiQueryMapper())->toClientParams($condition, ['include_sno' => $sno, 'page' => 1, 'pageSize' => 30]);
+$mapper = new ApiQueryMapper();
+$params = $mapper->toHostBParams($condition, ['include_sno' => $sno, 'page' => 1, 'pageSize' => 30]);
 $url = $client->buildRequestUrlFromParams($sno, $params, 1, 30);
 
 parse_str((string) parse_url($url, PHP_URL_QUERY), $q);
 
 hybrid_test_assert(strpos($url, 'bonusmee.com/api/gateway/tour/search.php') !== false, 'url: gateway path');
 hybrid_test_assert(($q['keyword'] ?? '') === '東京', 'url: keyword');
-hybrid_test_assert(($q['dateFrom'] ?? '') === '2026-06-21', 'url: dateFrom');
-hybrid_test_assert(($q['dateTo'] ?? '') === '2026-06-30', 'url: dateTo');
-hybrid_test_assert(($q['priceMax'] ?? '') === '30000', 'url: priceMax');
+hybrid_test_assert(($q['TourDateS'] ?? '') === '2026-06-21', 'url: TourDateS');
+hybrid_test_assert(($q['TourDateE'] ?? '') === '2026-06-30', 'url: TourDateE');
+hybrid_test_assert(($q['AmountMax'] ?? '') === '30000', 'url: AmountMax');
+hybrid_test_assert(!isset($q['dateFrom']) && !isset($q['priceMax']), 'url: no legacy keys');
 
 hybrid_test_finish('Hybrid search request URL');

@@ -6,10 +6,11 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPA
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'api_gateway' . DIRECTORY_SEPARATOR . 'production' . DIRECTORY_SEPARATOR . 'TourSearchRequestBuilder.php';
 
 $report = HybridSearchFilterCapability::allowlistReport();
-hybrid_test_assert($report['dateFrom'] === true, 'capability: allowlist dateFrom');
-hybrid_test_assert($report['dateTo'] === true, 'capability: allowlist dateTo');
-hybrid_test_assert($report['priceMax'] === true, 'capability: allowlist priceMax');
-hybrid_test_assert($report['priceMin'] === true, 'capability: allowlist priceMin');
+hybrid_test_assert($report['TourDateS'] === true, 'capability: allowlist TourDateS');
+hybrid_test_assert($report['TourDateE'] === true, 'capability: allowlist TourDateE');
+hybrid_test_assert($report['AmountMax'] === true, 'capability: allowlist AmountMax');
+hybrid_test_assert($report['AmountMin'] === true, 'capability: allowlist AmountMin');
+hybrid_test_assert($report['Departure'] === true, 'capability: allowlist Departure');
 
 $violations = HybridSearchFilterCapability::detectViolations(
     [

@@ -197,7 +197,10 @@ final class TourSearchApiClient
         int $pageSize = 5,
         ?string $traceId = null
     ): string {
-        $allowed = ['keyword', 'destination', 'country', 'city', 'dateFrom', 'dateTo', 'priceMax', 'priceMin'];
+        require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HostBTourSearchParamMapper.php';
+
+        $clientParams = HostBTourSearchParamMapper::toHostBQueryParams($clientParams);
+        $allowed = HostBTourSearchParamMapper::HOST_B_WIRE_ALLOWLIST;
         $query = [
             'sno' => trim($sno),
             'page' => (string) max(1, $page),

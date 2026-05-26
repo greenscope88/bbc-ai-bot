@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'HybridSearchFilterCapability.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'HostBTourSearchParamMapper.php';
 
 /**
  * Phase 2-C.2: API param + response sample debug log (no PII/secrets).
@@ -69,6 +70,8 @@ final class HybridSearchApiDebugLogger
             'sno' => $sno,
             'search_condition' => $searchConditionArray,
             'api_params' => $apiParams,
+            'hostb_param_mapping' => HostBTourSearchParamMapper::mappingAudit($apiParams),
+            'hostb_params' => HostBTourSearchParamMapper::toHostBQueryParams($apiParams),
             'request_url' => $requestUrl,
             'allowlist_report' => HybridSearchFilterCapability::allowlistReport(),
             'params_on_wire' => HybridSearchFilterCapability::paramsOnWire($apiParams),
