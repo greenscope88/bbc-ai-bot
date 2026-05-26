@@ -21,6 +21,7 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'S
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridSearchFeatureGate.php';
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridSearchDryRunLogger.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridSearchApiDebugLogger.php';
 
 
 
@@ -368,6 +369,23 @@ final class TourPromptContextService
 
                 $traceId !== '' ? $traceId : null
 
+            );
+
+            $requestUrl = $searchClient->buildRequestUrlFromParams(
+                $sno,
+                $apiParams,
+                (int) ($apiParams['page'] ?? 1),
+                (int) ($apiParams['pageSize'] ?? $apiPageSize),
+                $traceId !== '' ? $traceId : null
+            );
+
+            HybridSearchApiDebugLogger::logSearchRoundtrip(
+                $traceId,
+                $sno,
+                $condition->toArray(),
+                $apiParams,
+                $requestUrl,
+                $apiResult
             );
 
 

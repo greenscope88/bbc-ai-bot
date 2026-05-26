@@ -17,6 +17,8 @@ final class ApiQueryMapper
         'city',
         'dateFrom',
         'dateTo',
+        'priceMax',
+        'priceMin',
         'page',
         'pageSize',
     ];
@@ -62,6 +64,14 @@ final class ApiQueryMapper
             $params['dateTo'] = $canonical['dateTo'];
         }
 
+        if ($canonical['budget_max'] !== null && (int) $canonical['budget_max'] > 0) {
+            $params['priceMax'] = (int) $canonical['budget_max'];
+        }
+
+        if ($canonical['budget_min'] !== null && (int) $canonical['budget_min'] > 0) {
+            $params['priceMin'] = (int) $canonical['budget_min'];
+        }
+
         $params['page'] = isset($options['page']) ? max(1, (int) $options['page']) : 1;
         $params['pageSize'] = isset($options['pageSize']) ? max(1, min(100, (int) $options['pageSize'])) : 20;
 
@@ -69,9 +79,9 @@ final class ApiQueryMapper
     }
 
     /**
-     * Budget is not on Host B allowlist yet — exposed for logging/tests only.
+     * Budget mapping audit (budget_* → priceMax/priceMin on wire).
      *
-     * @return array{budget_min: ?int, budget_max: ?int, area_fallback: bool}
+     * @return array{budget_min: ?int, budget_max: ?int, area_fallback: bool, maps_to_priceMax: bool, maps_to_priceMin: bool}
      */
     public function metaOnly(SearchCondition $condition): array
     {
@@ -81,6 +91,8 @@ final class ApiQueryMapper
             'budget_min' => $canonical['budget_min'],
             'budget_max' => $canonical['budget_max'],
             'area_fallback' => $canonical['area_fallback'],
+            'maps_to_priceMax' => $canonical['budget_max'] !== null && (int) $canonical['budget_max'] > 0,
+            'maps_to_priceMin' => $canonical['budget_min'] !== null && (int) $canonical['budget_min'] > 0,
         ];
     }
 }

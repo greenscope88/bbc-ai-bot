@@ -124,6 +124,7 @@ return [
             'allowed_channels' => [],
             'dry_run_log_enabled' => true,
             'intent_log_enabled' => true,
+            'api_debug_log_enabled' => true,
         ],
     ],
 ];

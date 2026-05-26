@@ -14,7 +14,13 @@ hybrid_test_assert($params['keyword'] === '東京', 'api: keyword 東京');
 hybrid_test_assert($params['dateFrom'] === '2026-06-21', 'api: dateFrom');
 hybrid_test_assert($params['dateTo'] === '2026-06-30', 'api: dateTo');
 hybrid_test_assert($params['destination'] === '東京', 'api: destination');
-hybrid_test_assert(!isset($params['priceMax']) && !isset($params['budget_max']), 'api: no budget on allowlist');
+hybrid_test_assert(!isset($params['priceMax']), 'api: no priceMax without budget');
+
+$cBudget = (new HybridSearchConditionBuilder())->parse('六月底東京三萬以下', ['reference_date' => $ref]);
+$pBudget = $mapper->toClientParams($cBudget);
+hybrid_test_assert(($pBudget['priceMax'] ?? 0) === 30000, 'api: priceMax from budget_max');
+$metaBudget = $mapper->metaOnly($cBudget);
+hybrid_test_assert($metaBudget['maps_to_priceMax'] === true, 'api meta: maps_to_priceMax');
 
 $cEurope = (new HybridSearchConditionBuilder())->parse('歐洲', ['reference_date' => $ref]);
 $pEurope = $mapper->toClientParams($cEurope);

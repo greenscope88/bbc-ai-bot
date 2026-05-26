@@ -197,7 +197,7 @@ final class TourSearchApiClient
         int $pageSize = 5,
         ?string $traceId = null
     ): string {
-        $allowed = ['keyword', 'destination', 'country', 'city', 'dateFrom', 'dateTo'];
+        $allowed = ['keyword', 'destination', 'country', 'city', 'dateFrom', 'dateTo', 'priceMax', 'priceMin'];
         $query = [
             'sno' => trim($sno),
             'page' => (string) max(1, $page),

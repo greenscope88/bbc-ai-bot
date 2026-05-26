@@ -46,6 +46,10 @@ final class TourSearchRequestBuilder
 
         'dateTo',
 
+        'priceMax',
+
+        'priceMin',
+
         'page',
 
         'pageSize',

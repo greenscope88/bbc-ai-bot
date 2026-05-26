@@ -1,0 +1,25 @@
+<?php
+declare(strict_types=1);
+
+require_once __DIR__ . DIRECTORY_SEPARATOR . '_test_helpers.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridSearchConditionBuilder.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'ApiQueryMapper.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tour_search_api_client.php';
+
+$ref = new DateTimeImmutable('2026-05-26', new DateTimeZone('Asia/Taipei'));
+$sno = 'e1fd133c7e8e45a1';
+$client = new TourSearchApiClient();
+
+$condition = (new HybridSearchConditionBuilder())->parse('六月底東京三萬以下', ['reference_date' => $ref]);
+$params = (new ApiQueryMapper())->toClientParams($condition, ['include_sno' => $sno, 'page' => 1, 'pageSize' => 30]);
+$url = $client->buildRequestUrlFromParams($sno, $params, 1, 30);
+
+parse_str((string) parse_url($url, PHP_URL_QUERY), $q);
+
+hybrid_test_assert(strpos($url, 'bonusmee.com/api/gateway/tour/search.php') !== false, 'url: gateway path');
+hybrid_test_assert(($q['keyword'] ?? '') === '東京', 'url: keyword');
+hybrid_test_assert(($q['dateFrom'] ?? '') === '2026-06-21', 'url: dateFrom');
+hybrid_test_assert(($q['dateTo'] ?? '') === '2026-06-30', 'url: dateTo');
+hybrid_test_assert(($q['priceMax'] ?? '') === '30000', 'url: priceMax');
+
+hybrid_test_finish('Hybrid search request URL');
