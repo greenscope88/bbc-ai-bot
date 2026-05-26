@@ -166,8 +166,11 @@ $prefixPayload = [
     ],
     'search_url' => 'https://bonusmee.com/prefix',
 ];
-$textPrefix = $builder->build($prefixPayload);
+$textPrefix = $builder->build($prefixPayload, [
+    'referenceDate' => new DateTimeImmutable('2026-05-01', new DateTimeZone('Asia/Taipei')),
+]);
 test_assert(strpos($textPrefix, '出發地：高雄') !== false, 'prefix: departure parsed from title');
+test_assert(strpos($textPrefix, '05/01') !== false, 'prefix: date visible on reference day');
 
 // apiRawLimit 30 input, max 5 merged display rows (10 distinct single-date rows → cap at 5)
 $manyDistinct = ['success' => true, 'pagination' => ['total' => 99], 'items' => [], 'search_url' => 'https://bonusmee.com/many'];
@@ -198,11 +201,95 @@ $beijingLike = [
     ],
     'search_url' => 'https://bonusmee.com/bj',
 ];
-$textBj = $builder->build($beijingLike, ['maxItems' => 5, 'apiRawLimit' => 30]);
+$textBj = $builder->build($beijingLike, [
+    'maxItems' => 5,
+    'apiRawLimit' => 30,
+    'referenceDate' => new DateTimeImmutable('2026-05-26', new DateTimeZone('Asia/Taipei')),
+]);
 test_assert(preg_match_all('/^\d+\.\s+/mu', $textBj) === 2, 'beijingLike: merged group + second product → 2 rows');
-test_assert(strpos($textBj, '07/12') !== false && strpos($textBj, '10/19') === false, 'beijingLike: fifth date hidden');
-test_assert(strpos($textBj, '...更多') !== false, 'beijingLike: more dates suffix');
+test_assert(strpos($textBj, '07/12') !== false && strpos($textBj, '10/19') !== false, 'beijingLike: all five merged dates shown (cap 6)');
+test_assert(strpos($textBj, '10/19...') === false, 'beijingLike: no suffix for five dates');
 test_assert(strpos($textBj, '2. 月滿京秋烤肉趴') !== false, 'beijingLike: second product visible');
+
+// Phase 2-C.9: expiry filter (reference 2026-05-26)
+$refMay26 = new DateTimeImmutable('2026-05-26', new DateTimeZone('Asia/Taipei'));
+$expiryMix = [
+    'success' => true,
+    'pagination' => ['total' => 4],
+    'items' => [
+        ['title' => '東京團', 'tourDate' => '2026/05/01', 'price' => 10000, 'departureStr' => '台北', 'couponNo' => 91001],
+        ['title' => '東京團', 'tourDate' => '2026/05/03', 'price' => 10000, 'departureStr' => '台北', 'couponNo' => 91001],
+        ['title' => '東京團', 'tourDate' => '2026/06/01', 'price' => 10000, 'departureStr' => '台北', 'couponNo' => 91001],
+        ['title' => '東京團', 'tourDate' => '2026/06/03', 'price' => 10000, 'departureStr' => '台北', 'couponNo' => 91001],
+    ],
+    'search_url' => 'https://bonusmee.com/expiry',
+];
+$textExpiry = $builder->build($expiryMix, ['referenceDate' => $refMay26, 'includeInstructions' => false]);
+test_assert(strpos($textExpiry, '05/01') === false && strpos($textExpiry, '05/03') === false, 'c9: past dates hidden');
+test_assert(strpos($textExpiry, '06/01') !== false && strpos($textExpiry, '06/03') !== false, 'c9: future dates shown');
+
+// exactly 6 future dates — no suffix
+$sixDates = [
+    'success' => true,
+    'pagination' => ['total' => 6],
+    'items' => [],
+    'search_url' => 'https://bonusmee.com/six',
+];
+for ($d = 1; $d <= 6; ++$d) {
+    $sixDates['items'][] = [
+        'title' => '六日團',
+        'tourDate' => sprintf('2026-06-%02d', $d),
+        'price' => 1,
+        'departureStr' => '台北',
+        'couponNo' => 91002,
+    ];
+}
+$textSix = $builder->build($sixDates, ['referenceDate' => $refMay26, 'includeInstructions' => false]);
+test_assert(strpos($textSix, '06/01') !== false && strpos($textSix, '06/06') !== false, 'c9: six dates shown');
+test_assert(strpos($textSix, GeminiTourContextBuilder::DEPARTURE_DATE_LABEL . '06/01、06/02、06/03、06/04、06/05、06/06') !== false, 'c9: six dates joined');
+test_assert(strpos($textSix, '06/06...') === false, 'c9: no ellipsis at six');
+
+// 7 future dates — sixth + ...
+$sevenDates = ['success' => true, 'pagination' => ['total' => 7], 'items' => [], 'search_url' => 'https://bonusmee.com/seven'];
+for ($d = 1; $d <= 7; ++$d) {
+    $sevenDates['items'][] = [
+        'title' => '七日團',
+        'tourDate' => sprintf('2026-06-%02d', $d),
+        'price' => 1,
+        'departureStr' => '台北',
+        'couponNo' => 91003,
+    ];
+}
+$textSeven = $builder->build($sevenDates, ['referenceDate' => $refMay26, 'includeInstructions' => false]);
+test_assert(strpos($textSeven, '06/06...') !== false, 'c9: seventh date truncated with ellipsis');
+test_assert(strpos($textSeven, '06/07') === false, 'c9: seventh date not shown');
+
+// cross-year full dates
+$crossYear = [
+    'success' => true,
+    'pagination' => ['total' => 2],
+    'items' => [
+        ['title' => '跨年團', 'tourDate' => '2026/12/28', 'price' => 1, 'departureStr' => '台北', 'couponNo' => 91004],
+        ['title' => '跨年團', 'tourDate' => '2027/01/05', 'price' => 1, 'departureStr' => '台北', 'couponNo' => 91004],
+    ],
+    'search_url' => 'https://bonusmee.com/cross',
+];
+$textCross = $builder->build($crossYear, ['referenceDate' => $refMay26, 'includeInstructions' => false]);
+test_assert(strpos($textCross, '12/28') !== false && strpos($textCross, '01/05') !== false, 'c9: cross-year both shown');
+
+// all dates expired → 未提供
+$allExpired = [
+    'success' => true,
+    'pagination' => ['total' => 2],
+    'items' => [
+        ['title' => '過期團', 'tourDate' => '2026-04-01', 'price' => 1, 'departureStr' => '台北', 'couponNo' => 91005],
+        ['title' => '過期團', 'tourDate' => '2026-05-01', 'price' => 1, 'departureStr' => '台北', 'couponNo' => 91005],
+    ],
+    'search_url' => 'https://bonusmee.com/expired',
+];
+$textAllExpired = $builder->build($allExpired, ['referenceDate' => $refMay26, 'includeInstructions' => false]);
+test_assert(strpos($textAllExpired, GeminiTourContextBuilder::DEPARTURE_DATE_LABEL . '未提供') !== false, 'c9: all expired → 未提供');
+test_assert(strpos($textAllExpired, '04/01') === false, 'c9: no expired mm/dd leak');
 
 // 4. missing search_url
 $noUrl = $normal;
@@ -320,10 +407,11 @@ $textMergeSch = $builder->build($mergeSchLink, [
     'storeNo' => 6290,
     'detailUrlBuilder' => $detailBuilder,
     'includeInstructions' => false,
+    'referenceDate' => new DateTimeImmutable('2026-05-20', new DateTimeZone('Asia/Taipei')),
 ]);
 test_assert(strpos($textMergeSch, '行程表：https://example.com/merged-schedule.pdf') !== false, 'mergeSch: schLink from second row');
 
-// exactly 4 dates — no suffix
+// exactly 4 dates on reference day — no suffix
 $fourDates = [
     'success' => true,
     'pagination' => ['total' => 4],
@@ -335,9 +423,13 @@ $fourDates = [
     ],
     'search_url' => 'https://bonusmee.com/four',
 ];
-$textFour = $builder->build($fourDates, ['maxItems' => 5, 'includeInstructions' => false]);
+$textFour = $builder->build($fourDates, [
+    'maxItems' => 5,
+    'includeInstructions' => false,
+    'referenceDate' => new DateTimeImmutable('2026-05-01', new DateTimeZone('Asia/Taipei')),
+]);
 test_assert(strpos($textFour, '05/01') !== false && strpos($textFour, '05/04') !== false, 'fourDates: all four shown');
-test_assert(strpos($textFour, '...更多') === false, 'fourDates: no suffix at four');
+test_assert(strpos($textFour, '...') === false || strpos($textFour, '06/06...') === false, 'fourDates: no suffix at four');
 
 $itemNoSch = $withLinks['items'][0];
 $itemNoSch['schLink'] = '';

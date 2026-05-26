@@ -13,8 +13,14 @@ final class GeminiTourContextBuilder
     private ?int $contextStoreNo = null;
 
     private ?TourDetailUrlBuilder $detailUrlBuilder = null;
+
+    /** @var DateTimeImmutable|null set per build(); Asia/Taipei calendar day for expiry filter */
+    private $referenceDate = null;
+
     /** Max raw API items to merge before capping display rows (see TourPromptContextService pageSize). */
     private const DEFAULT_API_RAW_LIMIT = 30;
+
+    private const DISPLAY_TIMEZONE = 'Asia/Taipei';
 
     /** Between numbered tour rows in LINE-facing context (= ×40, ~2× former 20-dash line). */
     public const LINE_TOUR_ITEM_SEPARATOR = '========================================';
@@ -28,10 +34,10 @@ final class GeminiTourContextBuilder
     /** Tour detail page line label (LINE / Gemini / fallback). */
     public const DETAIL_URL_LABEL = '詳細內容：';
 
-    /** Max MM/DD departure tokens shown per merged tour row. */
-    public const MAX_DEPARTURE_DATES_DISPLAY = 4;
+    /** Max MM/DD departure tokens shown per merged tour row (Phase 2-C.9). */
+    public const MAX_DEPARTURE_DATES_DISPLAY = 6;
 
-    public const MORE_DEPARTURE_DATES_SUFFIX = '...更多';
+    public const MORE_DEPARTURE_DATES_SUFFIX = '...';
 
     /** @var list<string> */
     private const SENSITIVE_KEYS = [
@@ -57,10 +63,11 @@ final class GeminiTourContextBuilder
 
     /**
      * @param array<string, mixed> $apiResult TourSearchApiClient::search() payload
-     * @param array<string, mixed> $options maxItems (int), apiRawLimit (int), title (string), includeInstructions (bool), storeNo (int), detailUrlBuilder (TourDetailUrlBuilder)
+     * @param array<string, mixed> $options maxItems (int), apiRawLimit (int), title (string), includeInstructions (bool), storeNo (int), detailUrlBuilder (TourDetailUrlBuilder), referenceDate (DateTimeImmutable)
      */
     public function build(array $apiResult, array $options = []): string
     {
+        $this->referenceDate = $this->resolveReferenceDateOption($options);
         $this->contextStoreNo = $this->resolveStoreNoOption($options);
         if (isset($options['detailUrlBuilder']) && $options['detailUrlBuilder'] instanceof TourDetailUrlBuilder) {
             $this->detailUrlBuilder = $options['detailUrlBuilder'];
@@ -205,30 +212,10 @@ final class GeminiTourContextBuilder
 
         /** @var array<string, mixed>|null $pendingItem */
         $pendingItem = null;
-        /** @var list<string> $pendingDates */
-        $pendingDates = [];
+        /** @var list<string> $pendingIsoDates YYYY-MM-DD (on/after reference day) */
+        $pendingIsoDates = [];
         /** @var string|null $pendingMergeKey */
         $pendingMergeKey = null;
-
-        $flush = static function () use (&$out, &$pendingItem, &$pendingDates, &$pendingMergeKey): void {
-            if ($pendingItem === null || $pendingMergeKey === null) {
-                return;
-            }
-            $uniq = [];
-            foreach ($pendingDates as $d) {
-                if ($d === '') {
-                    continue;
-                }
-                if (!in_array($d, $uniq, true)) {
-                    $uniq[] = $d;
-                }
-            }
-            $display = $uniq === [] ? '未提供' : self::formatDepartureDatesDisplay(implode('、', $uniq));
-            $out[] = ['item' => $pendingItem, 'dates_display' => $display];
-            $pendingItem = null;
-            $pendingDates = [];
-            $pendingMergeKey = null;
-        };
 
         foreach ($slice as $item) {
             if (!is_array($item)) {
@@ -237,10 +224,14 @@ final class GeminiTourContextBuilder
             $safe = $this->stripSensitiveKeys($item);
             $mergeKey = $this->mergeGroupKey($safe);
             $rawDate = $this->fieldValue($safe, ['tourDate', 'departure_date', '出團日期']);
-            $mmdd = $this->formatDateAsMmDd($rawDate);
+            $hasExplicitYear = false;
+            $isoDate = $this->parseTourDateToIso($rawDate, $hasExplicitYear);
 
             if ($pendingMergeKey !== null && $mergeKey !== $pendingMergeKey) {
-                $flush();
+                $this->flushMergedDisplayGroup($out, $pendingItem, $pendingIsoDates, $pendingMergeKey);
+                $pendingItem = null;
+                $pendingIsoDates = [];
+                $pendingMergeKey = null;
             }
 
             if ($pendingMergeKey === null) {
@@ -250,14 +241,48 @@ final class GeminiTourContextBuilder
                 $pendingItem = $this->mergeItemFieldsForDisplay($pendingItem, $safe);
             }
 
-            if ($mmdd !== null) {
-                $pendingDates[] = $mmdd;
+            if ($isoDate !== null && (!$hasExplicitYear || $this->isTourDateOnOrAfterToday($isoDate))) {
+                $pendingIsoDates[] = $isoDate;
             }
         }
 
-        $flush();
+        $this->flushMergedDisplayGroup($out, $pendingItem, $pendingIsoDates, $pendingMergeKey);
 
         return $out;
+    }
+
+    /**
+     * @param list<array{item: array<string, mixed>, dates_display: string}> $out
+     * @param list<string> $pendingIsoDates
+     */
+    private function flushMergedDisplayGroup(
+        array &$out,
+        ?array $pendingItem,
+        array $pendingIsoDates,
+        ?string $pendingMergeKey
+    ): void {
+        if ($pendingItem === null || $pendingMergeKey === null) {
+            return;
+        }
+
+        $uniq = [];
+        foreach ($pendingIsoDates as $iso) {
+            if ($iso === '' || in_array($iso, $uniq, true)) {
+                continue;
+            }
+            $uniq[] = $iso;
+        }
+        sort($uniq);
+
+        $mmddTokens = [];
+        foreach ($uniq as $iso) {
+            $mmddTokens[] = $this->isoDateToMmDd($iso);
+        }
+
+        $display = $mmddTokens === []
+            ? '未提供'
+            : self::formatDepartureDatesDisplay(implode('、', $mmddTokens));
+        $out[] = ['item' => $pendingItem, 'dates_display' => $display];
     }
 
     /**
@@ -354,30 +379,93 @@ final class GeminiTourContextBuilder
     }
 
     /**
-     * Normalize a single date token to MM/DD (no year). Returns null when not parseable / 未提供.
+     * Parse tourDate to ISO calendar date (YYYY-MM-DD) when year is known; used before expiry filter.
      */
-    private function formatDateAsMmDd(string $raw): ?string
+    private function parseTourDateToIso(string $raw, bool &$hasExplicitYear = false): ?string
     {
+        $hasExplicitYear = false;
         $s = trim($raw);
         if ($s === '' || $s === '未提供') {
             return null;
         }
 
-        // 2026-06-01, 2026/6/1, 2026.06.01, 2026年6月1日
         if (preg_match('/^(\d{4})[-\/\.\s年](\d{1,2})[-\/\.\s月](\d{1,2})/u', $s, $m) === 1) {
-            return sprintf('%02d/%02d', (int) $m[2], (int) $m[3]);
+            $hasExplicitYear = true;
+
+            return sprintf('%04d-%02d-%02d', (int) $m[1], (int) $m[2], (int) $m[3]);
         }
 
-        // Already MM/DD or M/D
         if (preg_match('/^(\d{1,2})[\/\-.](\d{1,2})\b/u', $s, $m) === 1) {
-            return sprintf('%02d/%02d', (int) $m[1], (int) $m[2]);
+            $ref = $this->referenceDate ?? $this->defaultReferenceDate();
+            $year = (int) $ref->format('Y');
+            $iso = sprintf('%04d-%02d-%02d', $year, (int) $m[1], (int) $m[2]);
+            if ($iso < $ref->format('Y-m-d')) {
+                $iso = sprintf('%04d-%02d-%02d', $year + 1, (int) $m[1], (int) $m[2]);
+            }
+
+            return $iso;
         }
 
         if (preg_match('/(\d{1,2})\s*月\s*(\d{1,2})\s*日/u', $s, $m) === 1) {
-            return sprintf('%02d/%02d', (int) $m[1], (int) $m[2]);
+            $ref = $this->referenceDate ?? $this->defaultReferenceDate();
+            $year = (int) $ref->format('Y');
+            $iso = sprintf('%04d-%02d-%02d', $year, (int) $m[1], (int) $m[2]);
+            if ($iso < $ref->format('Y-m-d')) {
+                $iso = sprintf('%04d-%02d-%02d', $year + 1, (int) $m[1], (int) $m[2]);
+            }
+
+            return $iso;
         }
 
         return null;
+    }
+
+    private function isTourDateOnOrAfterToday(string $isoDate): bool
+    {
+        $ref = $this->referenceDate ?? $this->defaultReferenceDate();
+        $today = $ref->format('Y-m-d');
+
+        return $isoDate >= $today;
+    }
+
+    private function isoDateToMmDd(string $isoDate): string
+    {
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $isoDate, $m) !== 1) {
+            return $isoDate;
+        }
+
+        return sprintf('%02d/%02d', (int) $m[2], (int) $m[3]);
+    }
+
+    /**
+     * Normalize a single date token to MM/DD (no year). Returns null when not parseable / 未提供.
+     */
+    private function formatDateAsMmDd(string $raw): ?string
+    {
+        $ignored = false;
+        $iso = $this->parseTourDateToIso($raw, $ignored);
+        if ($iso === null) {
+            return null;
+        }
+
+        return $this->isoDateToMmDd($iso);
+    }
+
+    private function defaultReferenceDate(): DateTimeImmutable
+    {
+        return new DateTimeImmutable('today', new DateTimeZone(self::DISPLAY_TIMEZONE));
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     */
+    private function resolveReferenceDateOption(array $options): DateTimeImmutable
+    {
+        if (isset($options['referenceDate']) && $options['referenceDate'] instanceof DateTimeImmutable) {
+            return $options['referenceDate']->setTimezone(new DateTimeZone(self::DISPLAY_TIMEZONE));
+        }
+
+        return $this->defaultReferenceDate();
     }
 
     /**
@@ -556,7 +644,7 @@ final class GeminiTourContextBuilder
     }
 
     /**
-     * Cap merged departure dates for LINE display (max 4 + suffix).
+     * Cap merged departure dates for LINE display (max 6 + suffix).
      */
     public static function formatDepartureDatesDisplay(string $datesJoined): string
     {
@@ -569,11 +657,16 @@ final class GeminiTourContextBuilder
             return $s;
         }
 
+        $legacyMore = '...更多';
+        if (mb_strpos($s, $legacyMore, 0, 'UTF-8') !== false) {
+            return $s;
+        }
+
         $parts = preg_split('/\s*、\s*/u', $s) ?: [];
         $tokens = [];
         foreach ($parts as $p) {
             $p = trim($p);
-            if ($p !== '') {
+            if ($p !== '' && $p !== $legacyMore) {
                 $tokens[] = $p;
             }
         }
@@ -787,7 +880,7 @@ final class GeminiTourContextBuilder
             . "- 以固定清單呈現行程；每筆前必須有清楚編號 1. 2. 3.（與下方參考列點格式一致）；最多呈現 5 筆合併後行程。\n"
             . "- 每兩筆行程之間必須保留單獨一行「" . self::LINE_TOUR_ITEM_SEPARATOR . "」分隔線（僅連續「=」組成，與參考文字逐字一致）；勿刪除、勿改成虛線或其他符號；勿在最後一筆行程後再加一道分隔線（「" . self::SEARCH_URL_LABEL . "」前不可再出現該分隔線）。\n"
             . "- 第一行為完整行程標題（單行）；禁止使用「想玩○○？」「想體驗…」這類分類式小標。\n"
-            . "- 第二行縮排：「" . self::DEPARTURE_DATE_LABEL . "」僅使用 MM/DD（例如 06/01、06/10）；不要顯示年份（例如 2026）；同一商品多個出團日可合併；若參考已含「...更多」須逐字保留，勿展開全部日期。\n"
+            . "- 第二行縮排：「" . self::DEPARTURE_DATE_LABEL . "」僅使用 MM/DD（例如 06/01、06/10）；不要顯示年份（例如 2026）；不得顯示今天以前的過期出團日；同一商品最多顯示 " . self::MAX_DEPARTURE_DATES_DISPLAY . " 個出團日；若參考已含尾端「" . self::MORE_DEPARTURE_DATES_SUFFIX . "」須逐字保留，勿展開全部日期。\n"
             . "- 第三行縮排：直售價：沿用參考中的金額與幣別格式，若參考已含「起」字則保留，否則可加上「起」使語意一致。\n"
             . "- 第四行縮排：每筆行程必須保留「出發地：」，格式為「出發地：台北」或「出發地：高雄」等（與參考一致）；不要把出發地和目的地／景區名稱混淆。\n"
             . "- 若參考中有「" . self::DETAIL_URL_LABEL . "」後的 URL，必須逐字保留該行（不可改寫、不可縮短、不可替換成其他網址）。\n"
