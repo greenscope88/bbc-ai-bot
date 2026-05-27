@@ -1,12 +1,64 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'logger.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'tenant' . DIRECTORY_SEPARATOR . 'ConfigTenantRegistry.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'tenant' . DIRECTORY_SEPARATOR . 'ResolvedTenant.php';
+
 class TenantResolver
 {
+    /**
+     * @return array{sno: string, company_name: string, ai_tone: string, travel_specialties: string, price_catalog_json: string, channel_id: string}
+     */
     public static function resolve(PDO $pdo, array $event, array $config): array
     {
         $channelId = isset($event['destination']) ? (string) $event['destination'] : '';
 
+        $registryTenant = self::resolveViaRegistry($channelId);
+        if ($registryTenant !== null) {
+            return $registryTenant;
+        }
+
+        return self::resolveViaLegacy($pdo, $event, $config, $channelId);
+    }
+
+    /**
+     * Phase 2A Stage 2: ConfigTenantRegistry first (same outward tenant[] shape).
+     *
+     * @return array{sno: string, company_name: string, ai_tone: string, travel_specialties: string, price_catalog_json: string, channel_id: string}|null
+     */
+    private static function resolveViaRegistry(string $channelId): ?array
+    {
+        if ($channelId === '') {
+            return null;
+        }
+
+        try {
+            $registry = new ConfigTenantRegistry();
+            $resolved = $registry->resolveByChannel($channelId);
+            if ($resolved === null || $resolved->getSno() === '') {
+                self::logRegistryResolve($channelId, false, null, 'registry_miss');
+
+                return null;
+            }
+
+            self::logRegistryResolve($channelId, true, $resolved, 'registry');
+
+            return self::tenantArrayFromResolved($resolved, $channelId);
+        } catch (\Throwable $e) {
+            self::logRegistryResolve($channelId, false, null, 'registry_error', $e->getMessage());
+
+            return null;
+        }
+    }
+
+    /**
+     * Legacy: tenant_context_map.php then SQL tenant_profiles.
+     *
+     * @return array{sno: string, company_name: string, ai_tone: string, travel_specialties: string, price_catalog_json: string, channel_id: string}
+     */
+    private static function resolveViaLegacy(PDO $pdo, array $event, array $config, string $channelId): array
+    {
         $mapPath = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'tenant_context_map.php';
         if ($channelId !== '' && is_file($mapPath)) {
             /** @var mixed $loaded */
@@ -15,6 +67,8 @@ class TenantResolver
                 $entry = $loaded[$channelId];
                 $mappedSno = isset($entry['sno']) ? trim((string) $entry['sno']) : '';
                 if ($mappedSno !== '') {
+                    self::logRegistryResolve($channelId, false, null, 'legacy_map');
+
                     return [
                         'sno' => $mappedSno,
                         'company_name' => isset($entry['company_name']) ? (string) $entry['company_name'] : '旅行社客服',
@@ -39,11 +93,9 @@ class TenantResolver
                 WHERE c.channel_id = :channel_id";
 
         $stmt = $pdo->prepare($sql);
-        $stmt->bindValue(':channel_id', $channelId, PDO::PARAM_STR);
-        $stmt->execute();
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($stmt === false) {
+            self::logRegistryResolve($channelId, false, null, 'legacy_db_prepare_failed');
 
-        if (!is_array($row)) {
             return [
                 'sno' => '',
                 'company_name' => '旅行社客服',
@@ -54,6 +106,65 @@ class TenantResolver
             ];
         }
 
+        $stmt->bindValue(':channel_id', $channelId, PDO::PARAM_STR);
+        $stmt->execute();
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!is_array($row)) {
+            self::logRegistryResolve($channelId, false, null, 'legacy_empty');
+
+            return [
+                'sno' => '',
+                'company_name' => '旅行社客服',
+                'ai_tone' => '親切',
+                'travel_specialties' => '綜合旅遊',
+                'price_catalog_json' => '{}',
+                'channel_id' => $channelId,
+            ];
+        }
+
+        self::logRegistryResolve($channelId, false, null, 'legacy_db');
+
         return $row;
+    }
+
+    /**
+     * @return array{sno: string, company_name: string, ai_tone: string, travel_specialties: string, price_catalog_json: string, channel_id: string}
+     */
+    private static function tenantArrayFromResolved(ResolvedTenant $resolved, string $channelId): array
+    {
+        $profile = $resolved->getProfile();
+
+        return [
+            'sno' => $resolved->getSno(),
+            'company_name' => isset($profile['company_name']) ? (string) $profile['company_name'] : '旅行社客服',
+            'ai_tone' => isset($profile['ai_tone']) ? (string) $profile['ai_tone'] : '親切',
+            'travel_specialties' => isset($profile['travel_specialties']) ? (string) $profile['travel_specialties'] : '綜合旅遊',
+            'price_catalog_json' => isset($profile['price_catalog_json']) ? (string) $profile['price_catalog_json'] : '{}',
+            'channel_id' => $channelId !== '' ? $channelId : $resolved->getLineChannelId(),
+        ];
+    }
+
+    private static function logRegistryResolve(
+        string $channelId,
+        bool $registryHit,
+        ?ResolvedTenant $resolved,
+        string $source,
+        ?string $error = null
+    ): void {
+        $context = [
+            'registry_hit' => $registryHit,
+            'channel_id' => $channelId,
+            'source' => $source,
+        ];
+        if ($resolved !== null) {
+            $context['tenant_key'] = $resolved->getTenantKey();
+            $context['sno'] = $resolved->getSno();
+        }
+        if ($error !== null && $error !== '') {
+            $context['error'] = $error;
+        }
+
+        Logger::log('saas_router.log', 'tenant_registry_resolve', $context);
     }
 }

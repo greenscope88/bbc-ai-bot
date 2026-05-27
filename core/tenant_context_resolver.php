@@ -1,162 +1,263 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'logger.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'tenant' . DIRECTORY_SEPARATOR . 'ConfigTenantRegistry.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'tenant' . DIRECTORY_SEPARATOR . 'ResolvedTenant.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'tenant' . DIRECTORY_SEPARATOR . 'TenantRegistryInterface.php';
+
 /**
  * Resolves Host B API Gateway tenantContext from static sno map (Stage 1-B-1).
+ * Phase 2A Stage 2: ConfigTenantRegistry first, then legacy tenant_context_map.php.
  * No .env, no database, no Host B HTTP calls.
  */
 final class TenantContextResolver
 {
-  private const FORBIDDEN_MOCK_PROVIDER_ID = 1;
+    private const FORBIDDEN_MOCK_PROVIDER_ID = 1;
 
-  /** @var array<string, array<string, mixed>>|null */
-  private ?array $mapOverride;
+    /** @var array<string, array<string, mixed>>|null */
+    private ?array $mapOverride;
 
-  private string $configPath;
+    private string $configPath;
 
-  /**
-   * @param array<string, array<string, mixed>>|null $mapOverride Optional in-memory map (tests only).
-   */
-  public function __construct(?array $mapOverride = null, ?string $configPath = null)
-  {
-    $this->mapOverride = $mapOverride;
-    $this->configPath = $configPath ?? dirname(__DIR__) . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'tenant_context_map.php';
-  }
+    private ?TenantRegistryInterface $registry;
 
-  /**
-   * @return array{
-   *   ok: bool,
-   *   errorCode: string|null,
-   *   message: string|null,
-   *   tenantContext: array<string, mixed>|null
-   * }
-   */
-  public function resolve(string $sno): array
-  {
-    try {
-      $normalizedSno = trim($sno);
-      if ($normalizedSno === '') {
-        return $this->error('MISSING_SNO', 'Missing required sno.');
-      }
-
-      $load = $this->loadMap();
-      if (!($load['ok'] ?? false)) {
-        return $load;
-      }
-
-      /** @var array<string, array<string, mixed>> $map */
-      $map = $load['map'];
-
-      if (!array_key_exists($normalizedSno, $map)) {
-        return $this->error('TENANT_NOT_FOUND', 'No tenant context mapping found for sno.');
-      }
-
-      $row = $map[$normalizedSno];
-      if (!is_array($row)) {
-        return $this->error('TENANT_CONTEXT_CONFIG_INVALID', 'Tenant row must be an array.');
-      }
-
-      if (!$this->hasRequiredScalar($row, 'depID')) {
-        return $this->error('TENANT_MAPPING_INCOMPLETE_DEPID', 'Tenant mapping is missing depID.');
-      }
-
-      if (!$this->hasRequiredScalar($row, 'storeNo')) {
-        return $this->error('TENANT_MAPPING_INCOMPLETE_STORENO', 'Tenant mapping is missing storeNo.');
-      }
-
-      if (!$this->hasRequiredScalar($row, 'store_uid')) {
-        return $this->error('TENANT_MAPPING_INCOMPLETE_STORE_UID', 'Tenant mapping is missing store_uid.');
-      }
-
-      $provider = $row['provider_id_no'] ?? null;
-      if ($provider === null || $provider === '') {
-        return $this->error('TENANT_MAPPING_INCOMPLETE_PROVIDER', 'Tenant mapping is missing provider_id_no.');
-      }
-
-      if ((int) $provider === self::FORBIDDEN_MOCK_PROVIDER_ID) {
-        return $this->error(
-          'TENANT_MAPPING_INCOMPLETE_PROVIDER',
-          'provider_id_no must be confirmed by BuySmart / Host B; mock value 1 is not allowed.'
-        );
-      }
-
-      return [
-        'ok' => true,
-        'errorCode' => null,
-        'message' => null,
-        'tenantContext' => [
-          'sno' => $normalizedSno,
-          'depID' => $this->toInt($row['depID']),
-          'storeNo' => $this->toInt($row['storeNo']),
-          'store_uid' => $this->toInt($row['store_uid']),
-          'provider_id_no' => $this->toInt($row['provider_id_no']),
-        ],
-      ];
-    } catch (\Throwable $e) {
-      return $this->error('TENANT_CONTEXT_CONFIG_INVALID', 'Tenant context resolver failed: ' . $e->getMessage());
-    }
-  }
-
-  /**
-   * @return array{ok: bool, errorCode: string|null, message: string|null, tenantContext: null}|array{ok: true, map: array<string, array<string, mixed>>}
-   */
-  private function loadMap(): array
-  {
-    if ($this->mapOverride !== null) {
-      return ['ok' => true, 'map' => $this->mapOverride];
+    /**
+     * @param array<string, array<string, mixed>>|null $mapOverride Optional in-memory map (tests only).
+     */
+    public function __construct(
+        ?array $mapOverride = null,
+        ?string $configPath = null,
+        ?TenantRegistryInterface $registry = null
+    ) {
+        $this->mapOverride = $mapOverride;
+        $this->configPath = $configPath ?? dirname(__DIR__) . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'tenant_context_map.php';
+        $this->registry = $registry;
     }
 
-    if (!is_file($this->configPath)) {
-      return $this->error('TENANT_CONTEXT_CONFIG_MISSING', 'Tenant context map file is missing.');
+    /**
+     * @return array{
+     *   ok: bool,
+     *   errorCode: string|null,
+     *   message: string|null,
+     *   tenantContext: array<string, mixed>|null
+     * }
+     */
+    public function resolve(string $sno): array
+    {
+        try {
+            $normalizedSno = trim($sno);
+            if ($normalizedSno === '') {
+                return $this->error('MISSING_SNO', 'Missing required sno.');
+            }
+
+            $registryResult = $this->resolveViaRegistry($normalizedSno);
+            if ($registryResult !== null) {
+                return $registryResult;
+            }
+
+            return $this->resolveViaLegacyMap($normalizedSno);
+        } catch (\Throwable $e) {
+            return $this->error('TENANT_CONTEXT_CONFIG_INVALID', 'Tenant context resolver failed: ' . $e->getMessage());
+        }
     }
 
-    $loaded = require $this->configPath;
-    if (!is_array($loaded)) {
-      return $this->error('TENANT_CONTEXT_CONFIG_INVALID', 'Tenant context map must return an array.');
+    /**
+     * @return array{ok: bool, errorCode: string|null, message: string|null, tenantContext: array<string, mixed>|null}|null
+     */
+    private function resolveViaRegistry(string $normalizedSno): ?array
+    {
+        try {
+            $registry = $this->registry ?? new ConfigTenantRegistry();
+            $resolved = $registry->resolveBySno($normalizedSno);
+            if ($resolved === null) {
+                $this->logRegistryResolve($normalizedSno, false, null, 'registry_miss');
+
+                return null;
+            }
+
+            $row = [
+                'depID' => $resolved->getDepId(),
+                'storeNo' => $resolved->getStoreNo(),
+                'store_uid' => $resolved->getStoreUid(),
+                'provider_id_no' => $resolved->getProviderIdNo(),
+            ];
+
+            $validated = $this->validateAndBuildContext($normalizedSno, $row);
+            if (($validated['ok'] ?? false) !== true) {
+                $this->logRegistryResolve($normalizedSno, false, $resolved, 'registry_invalid', (string) ($validated['message'] ?? ''));
+
+                return null;
+            }
+
+            $this->logRegistryResolve($normalizedSno, true, $resolved, 'registry');
+
+            return $validated;
+        } catch (\Throwable $e) {
+            $this->logRegistryResolve($normalizedSno, false, null, 'registry_error', $e->getMessage());
+
+            return null;
+        }
     }
 
-    return ['ok' => true, 'map' => $loaded];
-  }
+    /**
+     * @return array{ok: bool, errorCode: string|null, message: string|null, tenantContext: array<string, mixed>|null}
+     */
+    private function resolveViaLegacyMap(string $normalizedSno): array
+    {
+        $load = $this->loadMap();
+        if (!($load['ok'] ?? false)) {
+            return $load;
+        }
 
-  /**
-   * @param array<string, mixed> $row
-   */
-  private function hasRequiredScalar(array $row, string $key): bool
-  {
-    if (!array_key_exists($key, $row)) {
-      return false;
+        /** @var array<string, array<string, mixed>> $map */
+        $map = $load['map'];
+
+        if (!array_key_exists($normalizedSno, $map)) {
+            $this->logRegistryResolve($normalizedSno, false, null, 'legacy_not_found');
+
+            return $this->error('TENANT_NOT_FOUND', 'No tenant context mapping found for sno.');
+        }
+
+        $row = $map[$normalizedSno];
+        if (!is_array($row)) {
+            return $this->error('TENANT_CONTEXT_CONFIG_INVALID', 'Tenant row must be an array.');
+        }
+
+        $result = $this->validateAndBuildContext($normalizedSno, $row);
+        if (($result['ok'] ?? false) === true) {
+            $this->logRegistryResolve($normalizedSno, false, null, 'legacy_map');
+        }
+
+        return $result;
     }
 
-    $value = $row[$key];
-    if ($value === null) {
-      return false;
+    /**
+     * @param array<string, mixed> $row
+     * @return array{ok: bool, errorCode: string|null, message: string|null, tenantContext: array<string, mixed>|null}
+     */
+    private function validateAndBuildContext(string $normalizedSno, array $row): array
+    {
+        if (!$this->hasRequiredScalar($row, 'depID')) {
+            return $this->error('TENANT_MAPPING_INCOMPLETE_DEPID', 'Tenant mapping is missing depID.');
+        }
+
+        if (!$this->hasRequiredScalar($row, 'storeNo')) {
+            return $this->error('TENANT_MAPPING_INCOMPLETE_STORENO', 'Tenant mapping is missing storeNo.');
+        }
+
+        if (!$this->hasRequiredScalar($row, 'store_uid')) {
+            return $this->error('TENANT_MAPPING_INCOMPLETE_STORE_UID', 'Tenant mapping is missing store_uid.');
+        }
+
+        $provider = $row['provider_id_no'] ?? null;
+        if ($provider === null || $provider === '') {
+            return $this->error('TENANT_MAPPING_INCOMPLETE_PROVIDER', 'Tenant mapping is missing provider_id_no.');
+        }
+
+        if ((int) $provider === self::FORBIDDEN_MOCK_PROVIDER_ID) {
+            return $this->error(
+                'TENANT_MAPPING_INCOMPLETE_PROVIDER',
+                'provider_id_no must be confirmed by BuySmart / Host B; mock value 1 is not allowed.'
+            );
+        }
+
+        return [
+            'ok' => true,
+            'errorCode' => null,
+            'message' => null,
+            'tenantContext' => [
+                'sno' => $normalizedSno,
+                'depID' => $this->toInt($row['depID']),
+                'storeNo' => $this->toInt($row['storeNo']),
+                'store_uid' => $this->toInt($row['store_uid']),
+                'provider_id_no' => $this->toInt($row['provider_id_no']),
+            ],
+        ];
     }
 
-    if (is_string($value) && trim($value) === '') {
-      return false;
+    /**
+     * @return array{ok: bool, errorCode: string|null, message: string|null, tenantContext: null}|array{ok: true, map: array<string, array<string, mixed>>}
+     */
+    private function loadMap(): array
+    {
+        if ($this->mapOverride !== null) {
+            return ['ok' => true, 'map' => $this->mapOverride];
+        }
+
+        if (!is_file($this->configPath)) {
+            return $this->error('TENANT_CONTEXT_CONFIG_MISSING', 'Tenant context map file is missing.');
+        }
+
+        $loaded = require $this->configPath;
+        if (!is_array($loaded)) {
+            return $this->error('TENANT_CONTEXT_CONFIG_INVALID', 'Tenant context map must return an array.');
+        }
+
+        return ['ok' => true, 'map' => $loaded];
     }
 
-    return true;
-  }
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function hasRequiredScalar(array $row, string $key): bool
+    {
+        if (!array_key_exists($key, $row)) {
+            return false;
+        }
 
-  /**
-   * @param mixed $value
-   */
-  private function toInt($value): int
-  {
-    return (int) $value;
-  }
+        $value = $row[$key];
+        if ($value === null) {
+            return false;
+        }
 
-  /**
-   * @return array{ok: false, errorCode: string, message: string, tenantContext: null}
-   */
-  private function error(string $errorCode, string $message): array
-  {
-    return [
-      'ok' => false,
-      'errorCode' => $errorCode,
-      'message' => $message,
-      'tenantContext' => null,
-    ];
-  }
+        if (is_string($value) && trim($value) === '') {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * @param mixed $value
+     */
+    private function toInt($value): int
+    {
+        return (int) $value;
+    }
+
+    private function logRegistryResolve(
+        string $sno,
+        bool $registryHit,
+        ?ResolvedTenant $resolved,
+        string $source,
+        ?string $detail = null
+    ): void {
+        $context = [
+            'registry_hit' => $registryHit,
+            'sno' => $sno,
+            'source' => $source,
+        ];
+        if ($resolved !== null) {
+            $context['tenant_key'] = $resolved->getTenantKey();
+        }
+        if ($detail !== null && $detail !== '') {
+            $context['detail'] = $detail;
+        }
+
+        Logger::log('saas_router.log', 'tenant_context_registry_resolve', $context);
+    }
+
+    /**
+     * @return array{ok: false, errorCode: string, message: string, tenantContext: null}
+     */
+    private function error(string $errorCode, string $message): array
+    {
+        return [
+            'ok' => false,
+            'errorCode' => $errorCode,
+            'message' => $message,
+            'tenantContext' => null,
+        ];
+    }
 }
