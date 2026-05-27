@@ -1,0 +1,279 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * Stage 1-B-7 — Public API entry: GET tour search (Host A).
+ *
+ * URL: https://bonusmee.com/api/gateway/tour/search.php
+ * Consumers: LINE OA, Gemini AI, Web frontend, other SaaS modules.
+ */
+
+ini_set('display_errors', '0');
+ini_set('display_startup_errors', '0');
+error_reporting(E_ALL);
+
+header('Content-Type: application/json; charset=utf-8');
+
+const BBC_AI_BOT_ROOT = 'C:\\bbc-ai-bot';
+
+/**
+ * @return array<string, mixed>
+ */
+function gateway_public_json_envelope(
+    bool $success,
+    string $traceId,
+    string $sno,
+    string $keyword,
+    ?array $pagination,
+    array $items,
+    ?string $searchUrl,
+    ?array $error
+): array {
+    return [
+        'success' => $success,
+        'traceId' => $traceId,
+        'sno' => $sno,
+        'keyword' => $keyword,
+        'pagination' => $pagination,
+        'items' => $items,
+        'search_url' => $searchUrl,
+        'error' => $error,
+    ];
+}
+
+/**
+ * @return never
+ */
+function gateway_public_emit_json(array $payload, int $httpStatus = 200): void
+{
+    if ($httpStatus !== 200) {
+        http_response_code($httpStatus);
+    }
+
+    $traceId = isset($payload['traceId']) && is_string($payload['traceId']) ? $payload['traceId'] : '';
+    if ($traceId !== '') {
+        header('X-Trace-Id: ' . $traceId);
+    }
+
+    $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if ($json === false) {
+        http_response_code(500);
+        echo '{"success":false,"error":{"code":"JSON_ENCODE_ERROR","message":"Response encoding failed."}}';
+        exit;
+    }
+
+    echo $json;
+    exit;
+}
+
+/**
+ * @return string
+ */
+function gateway_public_resolve_trace_id(): string
+{
+    if (isset($_GET['traceId']) && trim((string) $_GET['traceId']) !== '') {
+        return trim((string) $_GET['traceId']);
+    }
+
+    if (function_exists('getallheaders')) {
+        $headers = getallheaders();
+        if (is_array($headers)) {
+            foreach (['X-Trace-Id', 'x-trace-id', 'HTTP_X_TRACE_ID'] as $key) {
+                if (isset($headers[$key]) && is_string($headers[$key]) && trim($headers[$key]) !== '') {
+                    return trim($headers[$key]);
+                }
+            }
+        }
+    }
+
+    if (isset($_SERVER['HTTP_X_TRACE_ID']) && is_string($_SERVER['HTTP_X_TRACE_ID'])) {
+        $v = trim($_SERVER['HTTP_X_TRACE_ID']);
+        if ($v !== '') {
+            return $v;
+        }
+    }
+
+    return date('Ymd_His') . '_' . bin2hex(random_bytes(4));
+}
+
+/**
+ * Collect allowlisted hybrid filter params from public GET (Phase 2-C.15).
+ *
+ * @return array<string, string|int>
+ */
+function gateway_public_collect_client_params_from_get(): array
+{
+    $mapperFile = BBC_AI_BOT_ROOT . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search'
+        . DIRECTORY_SEPARATOR . 'HostBTourSearchParamMapper.php';
+    if (!is_file($mapperFile)) {
+        return [];
+    }
+
+    require_once $mapperFile;
+
+    $skip = ['sno', 'keyword', 'page', 'pageSize', 'traceId'];
+    $allowed = array_unique(array_merge(
+        HostBTourSearchParamMapper::HOST_B_WIRE_ALLOWLIST,
+        array_keys(HostBTourSearchParamMapper::INTERNAL_TO_HOST_B)
+    ));
+
+    $numericKeys = ['AmountMax', 'AmountMin', 'priceMax', 'priceMin'];
+    $out = [];
+
+    foreach ($_GET as $key => $value) {
+        if (!is_string($key) || in_array($key, $skip, true)) {
+            continue;
+        }
+        if (!in_array($key, $allowed, true)) {
+            continue;
+        }
+        if (!is_scalar($value)) {
+            continue;
+        }
+
+        $trimmed = trim((string) $value);
+        if ($trimmed === '') {
+            continue;
+        }
+
+        if (is_numeric($trimmed) && in_array($key, $numericKeys, true)) {
+            $out[$key] = (int) $trimmed;
+            continue;
+        }
+
+        $out[$key] = $trimmed;
+    }
+
+    return $out;
+}
+
+try {
+    $method = isset($_SERVER['REQUEST_METHOD']) ? strtoupper((string) $_SERVER['REQUEST_METHOD']) : 'GET';
+    if ($method !== 'GET') {
+        gateway_public_emit_json(
+            gateway_public_json_envelope(
+                false,
+                gateway_public_resolve_trace_id(),
+                '',
+                '',
+                null,
+                [],
+                null,
+                ['code' => 'METHOD_NOT_ALLOWED', 'message' => 'Only GET is supported.']
+            ),
+            405
+        );
+    }
+
+    $serviceFile = BBC_AI_BOT_ROOT . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tour_search_service.php';
+    if (!is_file($serviceFile)) {
+        gateway_public_emit_json(
+            gateway_public_json_envelope(
+                false,
+                gateway_public_resolve_trace_id(),
+                '',
+                '',
+                null,
+                [],
+                null,
+                ['code' => 'SERVICE_UNAVAILABLE', 'message' => 'Tour search service is not available.']
+            ),
+            500
+        );
+    }
+
+    require_once $serviceFile;
+
+    $sno = isset($_GET['sno']) ? trim((string) $_GET['sno']) : '';
+    $keyword = isset($_GET['keyword']) ? trim((string) $_GET['keyword']) : '';
+    $page = isset($_GET['page']) ? max(1, (int) $_GET['page']) : 1;
+    $pageSize = isset($_GET['pageSize']) ? max(1, min(100, (int) $_GET['pageSize'])) : 20;
+    $traceId = gateway_public_resolve_trace_id();
+
+    if ($sno === '') {
+        gateway_public_emit_json(
+            gateway_public_json_envelope(
+                false,
+                $traceId,
+                '',
+                $keyword,
+                null,
+                [],
+                null,
+                ['code' => 'MISSING_SNO', 'message' => 'Query parameter sno is required.']
+            ),
+            400
+        );
+    }
+
+    if ($keyword === '') {
+        gateway_public_emit_json(
+            gateway_public_json_envelope(
+                false,
+                $traceId,
+                $sno,
+                '',
+                null,
+                [],
+                null,
+                ['code' => 'KEYWORD_REQUIRED', 'message' => 'Query parameter keyword is required.']
+            ),
+            400
+        );
+    }
+
+    $extraClientParams = gateway_public_collect_client_params_from_get();
+    $result = TourSearchService::search($sno, $keyword, $page, $pageSize, $traceId, $extraClientParams);
+
+    $ok = (bool) ($result['ok'] ?? false);
+    $tid = (string) ($result['traceId'] ?? $traceId);
+
+    if ($ok) {
+        gateway_public_emit_json(
+            gateway_public_json_envelope(
+                true,
+                $tid,
+                $sno,
+                $keyword,
+                is_array($result['pagination'] ?? null) ? $result['pagination'] : null,
+                is_array($result['items'] ?? null) ? $result['items'] : [],
+                isset($result['search_url']) ? (string) $result['search_url'] : null,
+                null
+            )
+        );
+    }
+
+    $httpStatus = (int) ($result['httpStatus'] ?? 0);
+    $statusCode = $httpStatus >= 400 && $httpStatus < 600 ? $httpStatus : 502;
+
+    gateway_public_emit_json(
+        gateway_public_json_envelope(
+            false,
+            $tid,
+            $sno,
+            $keyword,
+            is_array($result['pagination'] ?? null) ? $result['pagination'] : null,
+            is_array($result['items'] ?? null) ? $result['items'] : [],
+            isset($result['search_url']) ? (string) $result['search_url'] : null,
+            [
+                'code' => (string) ($result['errorCode'] ?? 'TOUR_SEARCH_ERROR'),
+                'message' => (string) ($result['message'] ?? 'Tour search failed.'),
+            ]
+        ),
+        $statusCode
+    );
+} catch (Throwable $e) {
+    gateway_public_emit_json(
+        gateway_public_json_envelope(
+            false,
+            gateway_public_resolve_trace_id(),
+            isset($_GET['sno']) ? trim((string) $_GET['sno']) : '',
+            isset($_GET['keyword']) ? trim((string) $_GET['keyword']) : '',
+            null,
+            [],
+            null,
+            ['code' => 'GATEWAY_INTERNAL_ERROR', 'message' => 'Tour search request failed.']
+        ),
+        500
+    );
+}
