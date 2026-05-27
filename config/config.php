@@ -119,9 +119,9 @@ return [
                 : 'disabled',
         ],
         'hybrid_search' => [
-            'enabled' => false,
-            'allowed_sno' => [],
-            'allowed_channels' => [],
+            'enabled' => true,
+            'allowed_sno' => ['e1fd133c7e8e45a1'],
+            'allowed_channels' => ['Ufcedee37a93230a802c30b138f6228f8'],
             'dry_run_log_enabled' => true,
             'intent_log_enabled' => true,
             'api_debug_log_enabled' => true,

@@ -43,9 +43,10 @@ final class TourSearchService
         string $keyword,
         int $page = 1,
         int $pageSize = 20,
-        string $traceId = ''
+        string $traceId = '',
+        array $extraClientParams = []
     ): array {
-        return (new self())->searchInstance($sno, $keyword, $page, $pageSize, $traceId);
+        return (new self())->searchInstance($sno, $keyword, $page, $pageSize, $traceId, $extraClientParams);
     }
 
     /**
@@ -56,7 +57,8 @@ final class TourSearchService
         string $keyword,
         int $page = 1,
         int $pageSize = 20,
-        string $traceId = ''
+        string $traceId = '',
+        array $extraClientParams = []
     ): array {
         $trace = self::resolveTraceId($traceId);
         $normalizedSno = trim($sno);
@@ -126,12 +128,12 @@ final class TourSearchService
         }
 
         try {
-            $clientParams = [
+            $clientParams = array_merge($extraClientParams, [
                 'sno' => $authoritativeSno,
                 'keyword' => $normalizedKeyword,
                 'page' => max(1, $page),
                 'pageSize' => max(1, $pageSize),
-            ];
+            ]);
 
             $built = TourSearchRequestBuilder::build($clientParams, $tenantContext);
             $headers = HostBOutboundHeaderBuilder::build(['api_key' => $apiKey], $trace);
