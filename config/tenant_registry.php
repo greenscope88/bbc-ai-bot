@@ -64,20 +64,47 @@ return [
         ],
 
         // ---------------------------------------------------------------------
-        // travel_b — second agency placeholder (staging; all product features OFF)
+        // travel_b — second agency onboarding (staging; all product features OFF)
+        // TODO: replace TODO_* / zero Host B ids when BuySmart / Host B / LINE OA confirm values.
         // ---------------------------------------------------------------------
         'travel_b' => [
-            'display_name' => 'Staging 旅行社 B（占位）',
-            'line_channel_id' => 'U_PLACEHOLDER_TRAVEL_B_CHANNEL',
+            'created_for' => 'travel_b',
+            'display_name' => '旅行社 B（第二家 · staging onboarding）',
+            // TODO onboarding required: LINE Bot channel id (webhook destination)
+            'line_channel_id' => 'U_TODO_ONBOARDING_TRAVEL_B_CHANNEL',
+            // TODO onboarding required: Host B issued sno (wire authority for tour search)
             'sno' => '00000000-0000-4000-8000-0000000000b1',
+            // TODO onboarding required: Host A internal ids (non-zero before Host B context go-live)
             'depID' => 0,
             'storeNo' => 0,
             'store_uid' => 0,
             'provider_id_no' => 0,
             'status' => 'staging',
 
+            'onboarding_notes' => [
+                'onboarding_required' => true,
+                'created_for' => 'travel_b',
+                'phase' => '2A_stage_4',
+                'pending_fields' => [
+                    'line_channel_id',
+                    'sno',
+                    'depID',
+                    'storeNo',
+                    'store_uid',
+                    'provider_id_no',
+                    'line_channel_secret',
+                    'line_channel_access_token',
+                ],
+                'features_locked_off' => [
+                    'tour_prompt',
+                    'hybrid_search',
+                    'fixed_formatter',
+                ],
+                'checklist_doc' => 'docs/TENANT_TRAVEL_B_ONBOARDING_CHECKLIST.md',
+            ],
+
             'profile' => [
-                'company_name' => '旅行社 B 客服',
+                'company_name' => '旅行社 B 客服（staging）',
                 'ai_tone' => '親切',
                 'travel_specialties' => '綜合旅遊',
                 'price_catalog_json' => '{}',
@@ -92,7 +119,7 @@ return [
             'gemini_policy' => [
                 'tone' => 'travel_assistant',
                 'allow_fixed_formatter' => false,
-                'allow_gemini_rewrite' => true,
+                'allow_gemini_rewrite' => false,
             ],
 
             'source_policy' => [

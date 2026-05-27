@@ -42,7 +42,7 @@ test_assert($byChannel !== null && $byChannel->isFeatureEnabled('hybrid_search')
 test_assert($byChannel !== null && $byChannel->isFeatureEnabled('fixed_formatter') === true, 'travel_a fixed_formatter on');
 
 // 4. travel_b features OFF
-$travelB = $registry->resolveByChannel('U_PLACEHOLDER_TRAVEL_B_CHANNEL');
+$travelB = $registry->resolveByChannel('U_TODO_ONBOARDING_TRAVEL_B_CHANNEL');
 test_assert($travelB !== null && $travelB->getTenantKey() === 'travel_b', 'travel_b resolves by channel');
 test_assert($travelB !== null && $travelB->getStatus() === 'staging', 'travel_b status staging');
 test_assert($travelB !== null && $travelB->isFeatureEnabled('tour_prompt') === false, 'travel_b tour_prompt off');
