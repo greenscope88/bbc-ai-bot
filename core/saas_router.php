@@ -13,6 +13,7 @@ require_once __DIR__ . '/tour_fallback_formatter.php';
 require_once __DIR__ . '/tour_line_reply_composer.php';
 require_once __DIR__ . '/tour_prompt_context_service.php';
 require_once __DIR__ . '/tour_prompt_feature_gate.php';
+require_once __DIR__ . '/tenant/LineCredentialResolver.php';
 
 class SaaSRouter
 {
@@ -35,6 +36,37 @@ class SaaSRouter
         $lineSecret = (string) ($config['line']['channel_secret'] ?? '');
         $lineToken = (string) ($config['line']['channel_access_token'] ?? '');
         $lineReplyUrl = (string) ($config['line']['reply_api_url'] ?? 'https://api.line.me/v2/bot/message/reply');
+
+        // Stage 5-3: Multi LINE credential resolver (tenant-specific secrets live in .env/vault).
+        // Security: fail-closed for non-travel_a tenants when credentials are missing; never cross-tenant fallback.
+        $channelId = isset($event['destination']) ? trim((string) $event['destination']) : '';
+        if ($channelId !== '') {
+            $cred = LineCredentialResolver::resolveByChannelId($channelId);
+            if (($cred['ok'] ?? false) === true) {
+                $lineSecret = (string) ($cred['channel_secret'] ?? '');
+                $lineToken = (string) ($cred['channel_access_token'] ?? '');
+            } elseif (($cred['registry_hit'] ?? false) === true) {
+                $tenantKey = (string) ($cred['tenant_key'] ?? '');
+                if ($tenantKey !== 'travel_a') {
+                    self::appendWebhookLog('missing_line_credentials', [
+                        'trace_id' => $traceId,
+                        'tenant_key' => $tenantKey,
+                        'channel_id' => $channelId,
+                        'errorCode' => (string) ($cred['errorCode'] ?? ''),
+                        'missing_keys' => $cred['missing_keys'] ?? [],
+                    ]);
+                    Logger::log('saas_router.log', 'missing_line_credentials', [
+                        'trace_id' => $traceId,
+                        'tenant_key' => $tenantKey,
+                        'channel_id' => $channelId,
+                        'errorCode' => (string) ($cred['errorCode'] ?? ''),
+                        'missing_keys' => $cred['missing_keys'] ?? [],
+                    ]);
+                    return ['ok' => false, 'status' => 403, 'message' => 'missing line credentials'];
+                }
+                // travel_a: keep legacy behavior unchanged even if per-tenant keys are not configured yet.
+            }
+        }
 
         Logger::log('saas_router.log', 'router_start', ['trace_id' => $traceId]);
 

@@ -29,6 +29,7 @@ return [
         // travel_a — current staging tenant (baseline; mirrors tenant_context_map)
         // ---------------------------------------------------------------------
         'travel_a' => [
+            'credential_env_prefix' => 'travel_a',
             'display_name' => 'Staging 旅行社 A（BBC AI 驗收基線）',
             'line_channel_id' => 'Ufcedee37a93230a802c30b138f6228f8',
             'sno' => 'e1fd133c7e8e45a1',
@@ -69,6 +70,7 @@ return [
         // ---------------------------------------------------------------------
         'travel_b' => [
             'created_for' => 'travel_b',
+            'credential_env_prefix' => 'travel_b',
             'display_name' => '旅行社 B（第二家 · staging onboarding）',
             // TODO onboarding required: LINE Bot channel id (webhook destination)
             'line_channel_id' => 'U_TODO_ONBOARDING_TRAVEL_B_CHANNEL',
@@ -132,6 +134,7 @@ return [
         // travel_c — disabled placeholder (onboarding template; no traffic)
         // ---------------------------------------------------------------------
         'travel_c' => [
+            'credential_env_prefix' => 'travel_c',
             'display_name' => '旅行社 C（停用占位）',
             'line_channel_id' => 'U_PLACEHOLDER_TRAVEL_C_CHANNEL',
             'sno' => '00000000-0000-4000-8000-0000000000c1',

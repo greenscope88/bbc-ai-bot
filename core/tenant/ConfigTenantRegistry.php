@@ -146,6 +146,11 @@ final class ConfigTenantRegistry implements TenantRegistryInterface
             $status = 'disabled';
         }
 
+        $prefix = isset($row['credential_env_prefix']) ? trim((string) $row['credential_env_prefix']) : '';
+        if ($prefix === '') {
+            $prefix = $tenantKey;
+        }
+
         return new ResolvedTenant(
             $tenantKey,
             trim((string) ($row['line_channel_id'] ?? '')),
@@ -155,6 +160,7 @@ final class ConfigTenantRegistry implements TenantRegistryInterface
             (int) ($row['store_uid'] ?? ($row['storeNo'] ?? 0)),
             (int) ($row['provider_id_no'] ?? 0),
             $status,
+            $prefix,
             $normalizedFeatures,
             $profile,
             $geminiPolicy,

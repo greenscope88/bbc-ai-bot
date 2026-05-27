@@ -30,6 +30,9 @@ final class ResolvedTenant
     /** @var string enabled|staging|disabled */
     private $status;
 
+    /** @var string */
+    private $credentialEnvPrefix;
+
     /** @var array<string, bool> */
     private $features;
 
@@ -57,6 +60,7 @@ final class ResolvedTenant
         int $storeUid,
         int $providerIdNo,
         string $status,
+        string $credentialEnvPrefix,
         array $features,
         array $profile,
         array $geminiPolicy,
@@ -70,6 +74,7 @@ final class ResolvedTenant
         $this->storeUid = $storeUid;
         $this->providerIdNo = $providerIdNo;
         $this->status = $status;
+        $this->credentialEnvPrefix = $credentialEnvPrefix;
         $this->features = $features;
         $this->profile = $profile;
         $this->geminiPolicy = $geminiPolicy;
@@ -114,6 +119,11 @@ final class ResolvedTenant
     public function getStatus(): string
     {
         return $this->status;
+    }
+
+    public function getCredentialEnvPrefix(): string
+    {
+        return $this->credentialEnvPrefix;
     }
 
     /** @return array<string, bool> */
@@ -167,6 +177,7 @@ final class ResolvedTenant
             'store_uid' => $this->storeUid,
             'provider_id_no' => $this->providerIdNo,
             'status' => $this->status,
+            'credential_env_prefix' => $this->credentialEnvPrefix,
             'features' => $this->features,
             'profile' => $this->profile,
             'gemini_policy' => $this->geminiPolicy,

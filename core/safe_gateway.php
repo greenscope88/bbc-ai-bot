@@ -5,6 +5,7 @@ require_once 'C:/bbc-ai-bot/config/bootstrap.php';
 require_once 'C:/bbc-ai-bot/core/logger.php';
 require_once 'C:/bbc-ai-bot/core/line_service.php';
 require_once 'C:/bbc-ai-bot/core/saas_router.php';
+require_once 'C:/bbc-ai-bot/core/tenant/LineCredentialResolver.php';
 
 function safe_gateway_healthcheck(): void
 {
@@ -112,7 +113,33 @@ function handleWebhook(): void
             if ($lineReplyUrl === '') {
                 $lineReplyUrl = 'https://api.line.me/v2/bot/message/reply';
             }
-            $lineToken = readEnvValue('LINE_CHANNEL_ACCESS_TOKEN');
+            $channelId = isset($event['destination']) ? trim((string) $event['destination']) : '';
+            $lineToken = '';
+            if ($channelId !== '') {
+                $cred = LineCredentialResolver::resolveByChannelId($channelId);
+                if (($cred['ok'] ?? false) === true) {
+                    $lineToken = (string) ($cred['channel_access_token'] ?? '');
+                } elseif (($cred['registry_hit'] ?? false) === true) {
+                    $tenantKey = (string) ($cred['tenant_key'] ?? '');
+                    if ($tenantKey !== 'travel_a') {
+                        // Security: do not reply using other tenant token (fail closed).
+                        $appendWebhookLog('missing_line_credentials', [
+                            'mode' => 'safe_gateway_direct_hello',
+                            'tenant_key' => $tenantKey,
+                            'channel_id' => $channelId,
+                            'errorCode' => (string) ($cred['errorCode'] ?? ''),
+                            'missing_keys' => $cred['missing_keys'] ?? [],
+                        ]);
+                        http_response_code(403);
+                        echo json_encode(['ok' => false, 'message' => 'missing line credentials'], JSON_UNESCAPED_UNICODE);
+                        return;
+                    }
+                }
+            }
+            if ($lineToken === '') {
+                // Legacy fallback for travel_a only (preserve existing behavior).
+                $lineToken = readEnvValue('LINE_CHANNEL_ACCESS_TOKEN');
+            }
 
             $appendWebhookLog('line_api_request', [
                 'mode' => 'safe_gateway_direct_hello',
