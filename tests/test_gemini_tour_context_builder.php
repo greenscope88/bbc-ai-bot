@@ -8,6 +8,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'legacy_storefront_crypto.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tour_detail_url_builder.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'gemini_tour_context_builder.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tour_fallback_formatter.php';
 
 $failures = 0;
 
@@ -263,6 +264,31 @@ for ($d = 1; $d <= 7; ++$d) {
 $textSeven = $builder->build($sevenDates, ['referenceDate' => $refMay26, 'includeInstructions' => false]);
 test_assert(strpos($textSeven, '06/06...') !== false, 'c9: seventh date truncated with ellipsis');
 test_assert(strpos($textSeven, '06/07') === false, 'c9: seventh date not shown');
+
+// non-consecutive same couponNo rows should still merge globally and append "..." when >6 dates
+$nonConsecutiveMerge = [
+    'success' => true,
+    'pagination' => ['total' => 12],
+    'items' => [
+        ['title' => '特輯｜東京跟團半自助五日', 'tourDate' => '2026/06/21', 'price' => 28888, 'departureStr' => '台北', 'couponNo' => 11895],
+        ['title' => '其他商品A', 'tourDate' => '2026/06/23', 'price' => 25000, 'departureStr' => '台北', 'couponNo' => 22001],
+        ['title' => '特輯｜東京跟團半自助五日', 'tourDate' => '2026/06/22', 'price' => 28888, 'departureStr' => '台北', 'couponNo' => 11895],
+        ['title' => '其他商品B', 'tourDate' => '2026/06/24', 'price' => 26000, 'departureStr' => '高雄', 'couponNo' => 22002],
+        ['title' => '特輯｜東京跟團半自助五日', 'tourDate' => '2026/06/25', 'price' => 28888, 'departureStr' => '台北', 'couponNo' => 11895],
+        ['title' => '特輯｜東京跟團半自助五日', 'tourDate' => '2026/06/24', 'price' => 28888, 'departureStr' => '台北', 'couponNo' => 11895],
+        ['title' => '特輯｜東京跟團半自助五日', 'tourDate' => '2026/06/27', 'price' => 28888, 'departureStr' => '台北', 'couponNo' => 11895],
+        ['title' => '特輯｜東京跟團半自助五日', 'tourDate' => '2026/06/26', 'price' => 28888, 'departureStr' => '台北', 'couponNo' => 11895],
+        ['title' => '特輯｜東京跟團半自助五日', 'tourDate' => '2026/06/30', 'price' => 28888, 'departureStr' => '台北', 'couponNo' => 11895],
+        ['title' => '特輯｜東京跟團半自助五日', 'tourDate' => '2026/06/29', 'price' => 28888, 'departureStr' => '台北', 'couponNo' => 11895],
+        ['title' => '特輯｜東京跟團半自助五日', 'tourDate' => '2026/06/28', 'price' => 28888, 'departureStr' => '台北', 'couponNo' => 11895],
+        ['title' => '特輯｜東京跟團半自助五日', 'tourDate' => '2026/06/23', 'price' => 28888, 'departureStr' => '台北', 'couponNo' => 11895],
+    ],
+    'search_url' => 'https://bonusmee.com/non-consecutive',
+];
+$textNonConsecutive = $builder->build($nonConsecutiveMerge, ['referenceDate' => $refMay26, 'includeInstructions' => false]);
+test_assert(strpos($textNonConsecutive, GeminiTourContextBuilder::DEPARTURE_DATE_LABEL . '06/21、06/22、06/23、06/24、06/25、06/26...') !== false, 'c19: non-consecutive rows merged globally with ellipsis');
+test_assert(substr_count($textNonConsecutive, '特輯｜東京跟團半自助五日') === 1, 'c19: same coupon merged into one row even when non-consecutive');
+test_assert(strpos($textNonConsecutive, '2. 其他商品A') !== false, 'c19: first-seen order preserved for other groups');
 
 // cross-year full dates
 $crossYear = [
@@ -571,6 +597,29 @@ $mergeSchLinksArr = [
 $textMergeSchArr = $builder->build($mergeSchLinksArr, ['includeInstructions' => false]);
 test_assert(strpos($textMergeSchArr, '   行程表：') !== false, 'mergeSchLinks: multi header');
 test_assert(strpos($textMergeSchArr, 'https://example.com/a') !== false && strpos($textMergeSchArr, 'https://example.com/b') !== false, 'mergeSchLinks: both urls');
+
+// Phase 2-C.21: TourFallbackFormatter preserves departure date suffix from context
+$sep = GeminiTourContextBuilder::LINE_TOUR_ITEM_SEPARATOR;
+$ctxDots = "【旅遊產品搜尋結果】\n\n1. 特輯｜東京跟團半自助五日\n"
+    . "   最近出團：06/21、06/22、06/23、06/24、06/25、06/26...\n"
+    . "   直售價：NT\$28,888 起\n"
+    . "   出發地：台北\n"
+    . $sep . "\n\n"
+    . GeminiTourContextBuilder::SEARCH_URL_LABEL . "\n"
+    . 'https://bbcshops.com/test';
+$lineDots = TourFallbackFormatter::formatFromTourContext($ctxDots);
+test_assert(strpos($lineDots, '06/21、06/22、06/23、06/24、06/25、06/26...') !== false, 'C21: formatter keeps ... suffix');
+test_assert(strpos($lineDots, '06/26.....') === false, 'C21: no duplicated ellipsis on last token');
+
+$ctxLegacyMore = "【旅遊產品搜尋結果】\n\n1. 特輯｜東京\n"
+    . "   最近出團：06/21、06/22、06/23、06/24、06/25、06/26...更多\n"
+    . "   直售價：NT\$28,888 起\n"
+    . "   出發地：台北\n"
+    . $sep . "\n\n"
+    . GeminiTourContextBuilder::SEARCH_URL_LABEL . "\n"
+    . 'https://bbcshops.com/test';
+$lineLegacyMore = TourFallbackFormatter::formatFromTourContext($ctxLegacyMore);
+test_assert(strpos($lineLegacyMore, '06/26...更多') !== false, 'C21: formatter keeps legacy ...更多 suffix');
 
 if ($failures === 0) {
     echo "OK: GeminiTourContextBuilder tests passed.\n";

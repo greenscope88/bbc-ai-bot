@@ -17,6 +17,11 @@ final class BudgetParser
             return $base;
         }
 
+        $arabicMax = $this->tryParseArabicMaxBudget($text, $base);
+        if ($arabicMax !== null) {
+            return $arabicMax;
+        }
+
         if (preg_match('/預算\s*([一二三四五六七八九十兩\d]+(?:\.\d+)?)\s*萬/u', $text, $m) === 1) {
             $amount = ChineseNumberHelper::parseWanAmount($m[1] . '萬');
             if ($amount !== null) {
@@ -60,6 +65,23 @@ final class BudgetParser
         }
 
         return $base;
+    }
+
+    /**
+     * Phase 2-C.21: plain TWD amounts (e.g. 30000以下) — not dates (2026/06) or 人/日 counts.
+     */
+    private function tryParseArabicMaxBudget(string $text, SearchCondition $base): ?SearchCondition
+    {
+        if (preg_match('/(?<![\d\/])(\d{4,7})\s*(以下|以內|內)(?![\d萬元日人])/u', $text, $m) !== 1) {
+            return null;
+        }
+
+        $amount = (int) $m[1];
+        if ($amount < 1000 || $amount > 9999999) {
+            return null;
+        }
+
+        return $this->applyMax($base, $amount, $m[0]);
     }
 
     private function applyMax(SearchCondition $base, int $max, string $label): SearchCondition

@@ -117,12 +117,19 @@ final class TourFallbackFormatter
 
     /**
      * 將「2026-06-01、2026-08-01」等轉成 MM/DD；已為 MM/DD 或含「、」者盡量保留結構。
+     * Phase 2-C.21: preserve trailing ... / ...更多 from context (do not strip via tokenToMmDd).
      */
     private static function normalizeDatesDisplay(string $raw): string
     {
         $s = trim($raw);
         if ($s === '' || $s === '未提供') {
             return '未提供';
+        }
+
+        $suffix = self::extractDatesMoreSuffix($s);
+        if ($suffix !== '') {
+            $s = mb_substr($s, 0, mb_strlen($s, 'UTF-8') - mb_strlen($suffix, 'UTF-8'), 'UTF-8');
+            $s = rtrim($s);
         }
 
         $parts = preg_split('/\s*、\s*/u', $s) ?: [];
@@ -136,7 +143,41 @@ final class TourFallbackFormatter
             $out[] = $mmdd ?? $p;
         }
 
-        return $out === [] ? $s : implode('、', $out);
+        if ($out === []) {
+            return trim($raw);
+        }
+
+        $normalized = implode('、', $out);
+        if ($suffix !== '' && !self::stringEndsWithDatesSuffix($normalized)) {
+            $normalized .= $suffix;
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * Trailing “more dates” marker from GeminiTourContextBuilder (LINE must keep verbatim).
+     */
+    private static function extractDatesMoreSuffix(string $s): string
+    {
+        $legacyMore = '...更多';
+        if (mb_strlen($s, 'UTF-8') >= mb_strlen($legacyMore, 'UTF-8')
+            && mb_substr($s, -mb_strlen($legacyMore, 'UTF-8'), null, 'UTF-8') === $legacyMore) {
+            return $legacyMore;
+        }
+
+        $dots = GeminiTourContextBuilder::MORE_DEPARTURE_DATES_SUFFIX;
+        if (mb_strlen($s, 'UTF-8') >= mb_strlen($dots, 'UTF-8')
+            && mb_substr($s, -mb_strlen($dots, 'UTF-8'), null, 'UTF-8') === $dots) {
+            return $dots;
+        }
+
+        return '';
+    }
+
+    private static function stringEndsWithDatesSuffix(string $s): bool
+    {
+        return self::extractDatesMoreSuffix($s) !== '';
     }
 
     private static function tokenToMmDd(string $token): ?string
@@ -144,6 +185,13 @@ final class TourFallbackFormatter
         $s = trim($token);
         if ($s === '' || $s === '未提供') {
             return null;
+        }
+
+        $moreSuffix = GeminiTourContextBuilder::MORE_DEPARTURE_DATES_SUFFIX;
+        if (mb_strlen($s, 'UTF-8') >= mb_strlen($moreSuffix, 'UTF-8')
+            && mb_substr($s, -mb_strlen($moreSuffix, 'UTF-8'), null, 'UTF-8') === $moreSuffix) {
+            $s = mb_substr($s, 0, mb_strlen($s, 'UTF-8') - mb_strlen($moreSuffix, 'UTF-8'), 'UTF-8');
+            $s = rtrim($s);
         }
 
         if (preg_match('/^(\d{4})[-\/\.\s年](\d{1,2})[-\/\.\s月](\d{1,2})/u', $s, $m) === 1) {
@@ -154,7 +202,7 @@ final class TourFallbackFormatter
             return sprintf('%02d/%02d', (int) $m[1], (int) $m[2]);
         }
 
-        if (preg_match('/^(\d{1,2})[-\/.](\d{1,2})\b/u', $s, $m) === 1) {
+        if (preg_match('/^(\d{1,2})[-\/.](\d{1,2})(?:\.\.\.)?$/u', $s, $m) === 1) {
             return sprintf('%02d/%02d', (int) $m[1], (int) $m[2]);
         }
 

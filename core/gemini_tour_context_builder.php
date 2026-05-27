@@ -207,46 +207,57 @@ final class GeminiTourContextBuilder
      */
     private function buildMergedDisplayRows(array $slice): array
     {
-        /** @var list<array{item: array<string, mixed>, dates_display: string}> $out */
-        $out = [];
-
-        /** @var array<string, mixed>|null $pendingItem */
-        $pendingItem = null;
-        /** @var list<string> $pendingIsoDates YYYY-MM-DD (on/after reference day) */
-        $pendingIsoDates = [];
-        /** @var string|null $pendingMergeKey */
-        $pendingMergeKey = null;
+        /** @var array<string, array{item: array<string, mixed>, iso_dates: list<string>}> $groups */
+        $groups = [];
 
         foreach ($slice as $item) {
             if (!is_array($item)) {
                 continue;
             }
+
             $safe = $this->stripSensitiveKeys($item);
             $mergeKey = $this->mergeGroupKey($safe);
+
+            if (!isset($groups[$mergeKey])) {
+                $groups[$mergeKey] = [
+                    'item' => $safe,
+                    'iso_dates' => [],
+                ];
+            } else {
+                $groups[$mergeKey]['item'] = $this->mergeItemFieldsForDisplay($groups[$mergeKey]['item'], $safe);
+            }
+
             $rawDate = $this->fieldValue($safe, ['tourDate', 'departure_date', '出團日期']);
             $hasExplicitYear = false;
             $isoDate = $this->parseTourDateToIso($rawDate, $hasExplicitYear);
-
-            if ($pendingMergeKey !== null && $mergeKey !== $pendingMergeKey) {
-                $this->flushMergedDisplayGroup($out, $pendingItem, $pendingIsoDates, $pendingMergeKey);
-                $pendingItem = null;
-                $pendingIsoDates = [];
-                $pendingMergeKey = null;
-            }
-
-            if ($pendingMergeKey === null) {
-                $pendingMergeKey = $mergeKey;
-                $pendingItem = $safe;
-            } else {
-                $pendingItem = $this->mergeItemFieldsForDisplay($pendingItem, $safe);
-            }
-
             if ($isoDate !== null && (!$hasExplicitYear || $this->isTourDateOnOrAfterToday($isoDate))) {
-                $pendingIsoDates[] = $isoDate;
+                $groups[$mergeKey]['iso_dates'][] = $isoDate;
             }
         }
 
-        $this->flushMergedDisplayGroup($out, $pendingItem, $pendingIsoDates, $pendingMergeKey);
+        /** @var list<array{item: array<string, mixed>, dates_display: string}> $out */
+        $out = [];
+        foreach ($groups as $group) {
+            $uniq = [];
+            foreach ($group['iso_dates'] as $iso) {
+                if ($iso === '' || in_array($iso, $uniq, true)) {
+                    continue;
+                }
+                $uniq[] = $iso;
+            }
+            sort($uniq);
+
+            $mmddTokens = [];
+            foreach ($uniq as $iso) {
+                $mmddTokens[] = $this->isoDateToMmDd($iso);
+            }
+
+            $display = $mmddTokens === []
+                ? '未提供'
+                : self::formatDepartureDatesDisplay(implode('、', $mmddTokens));
+
+            $out[] = ['item' => $group['item'], 'dates_display' => $display];
+        }
 
         return $out;
     }
