@@ -66,34 +66,27 @@ return [
 
         // ---------------------------------------------------------------------
         // travel_b — second agency onboarding (staging; all product features OFF)
-        // TODO: replace TODO_* / zero Host B ids when BuySmart / Host B / LINE OA confirm values.
+        // Host B ids confirmed; LINE destination + credentials still pending.
         // ---------------------------------------------------------------------
         'travel_b' => [
             'created_for' => 'travel_b',
             'credential_env_prefix' => 'travel_b',
-            'display_name' => '旅行社 B（第二家 · staging onboarding）',
+            'display_name' => '旅行蜜優惠',
             // TODO onboarding required: LINE Bot channel id (webhook destination)
-            'line_channel_id' => 'U_TODO_ONBOARDING_TRAVEL_B_CHANNEL',
-            // TODO onboarding required: Host B issued sno (wire authority for tour search)
-            'sno' => '00000000-0000-4000-8000-0000000000b1',
-            // TODO onboarding required: Host A internal ids (non-zero before Host B context go-live)
-            'depID' => 0,
-            'storeNo' => 0,
-            'store_uid' => 0,
-            'provider_id_no' => 0,
+            'line_channel_id' => 'Uc29debdbf97e5e3aa050a6f54cf32091',
+            'sno' => '5f99b8d665e8444d',
+            'depID' => 888,
+            'storeNo' => 6180,
+            'store_uid' => 6180,
+            'provider_id_no' => 101,
             'status' => 'staging',
 
             'onboarding_notes' => [
                 'onboarding_required' => true,
                 'created_for' => 'travel_b',
-                'phase' => '2A_stage_4',
+                'phase' => '2A_stage_6',
                 'pending_fields' => [
                     'line_channel_id',
-                    'sno',
-                    'depID',
-                    'storeNo',
-                    'store_uid',
-                    'provider_id_no',
                     'line_channel_secret',
                     'line_channel_access_token',
                 ],

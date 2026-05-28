@@ -41,8 +41,19 @@ test_assert($byChannel !== null && $byChannel->isFeatureEnabled('tour_prompt') =
 test_assert($byChannel !== null && $byChannel->isFeatureEnabled('hybrid_search') === true, 'travel_a hybrid_search on');
 test_assert($byChannel !== null && $byChannel->isFeatureEnabled('fixed_formatter') === true, 'travel_a fixed_formatter on');
 
-// 4. travel_b features OFF
-$travelB = $registry->resolveByChannel('U_TODO_ONBOARDING_TRAVEL_B_CHANNEL');
+// 4. travel_b features OFF (channel must come from registry, no hardcoded value)
+$travelBTenant = null;
+foreach ($registry->getAllTenants() as $tenant) {
+    if ($tenant->getTenantKey() === 'travel_b') {
+        $travelBTenant = $tenant;
+        break;
+    }
+}
+test_assert($travelBTenant !== null, 'travel_b present in registry');
+$travelBChannel = $travelBTenant !== null ? trim($travelBTenant->getLineChannelId()) : '';
+test_assert($travelBChannel !== '', 'travel_b line_channel_id from registry');
+
+$travelB = $registry->resolveByChannel($travelBChannel);
 test_assert($travelB !== null && $travelB->getTenantKey() === 'travel_b', 'travel_b resolves by channel');
 test_assert($travelB !== null && $travelB->getStatus() === 'staging', 'travel_b status staging');
 test_assert($travelB !== null && $travelB->isFeatureEnabled('tour_prompt') === false, 'travel_b tour_prompt off');

@@ -107,6 +107,7 @@ function handleWebhook(): void
         ];
 
         if ($messageText === '你好' && $replyToken !== '') {
+            safeGatewayEnsureAppConfigLoaded();
             $appendWebhookLog('line_api_prepare', ['mode' => 'safe_gateway_direct_hello']);
 
             $lineReplyUrl = readEnvValue('LINE_REPLY_API_URL');
@@ -212,4 +213,11 @@ function readEnvValue(string $key): string
     }
 
     return '';
+}
+
+function safeGatewayEnsureAppConfigLoaded(): void
+{
+    if (function_exists('app_config')) {
+        app_config();
+    }
 }

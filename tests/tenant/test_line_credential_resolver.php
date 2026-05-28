@@ -8,6 +8,7 @@ declare(strict_types=1);
  * NOTE: We do not read or print any real secrets/tokens.
  */
 
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tenant' . DIRECTORY_SEPARATOR . 'ConfigTenantRegistry.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tenant' . DIRECTORY_SEPARATOR . 'LineCredentialResolver.php';
 
 $failures = 0;
@@ -22,7 +23,19 @@ function test_assert(bool $cond, string $message): void
 }
 
 $travelAChannel = 'Ufcedee37a93230a802c30b138f6228f8';
-$travelBChannel = 'U_TODO_ONBOARDING_TRAVEL_B_CHANNEL';
+
+$registry = new ConfigTenantRegistry();
+$travelBTenant = null;
+foreach ($registry->getAllTenants() as $tenant) {
+    if ($tenant->getTenantKey() === 'travel_b') {
+        $travelBTenant = $tenant;
+        break;
+    }
+}
+test_assert($travelBTenant !== null, 'travel_b present in ConfigTenantRegistry');
+$travelBChannel = $travelBTenant !== null ? trim($travelBTenant->getLineChannelId()) : '';
+test_assert($travelBChannel !== '', 'travel_b line_channel_id from registry');
+test_assert($registry->resolveByChannel($travelBChannel) !== null, 'travel_b channel resolves in registry');
 
 // Ensure clean env for these keys in this process.
 putenv('LINE_CHANNEL_SECRET__travel_a');
