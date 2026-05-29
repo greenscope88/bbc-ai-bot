@@ -32,7 +32,7 @@ function write_temp_registry(array $config): string
 
 $travelASno = 'e1fd133c7e8e45a1';
 $travelAChannel = 'Ufcedee37a93230a802c30b138f6228f8';
-$travelBSno = '00000000-0000-4000-8000-0000000000b1';
+$travelBSno = '5f99b8d665e8444d';
 $travelCSno = '00000000-0000-4000-8000-0000000000c1';
 
 $registry = new ConfigTenantRegistry();
@@ -53,19 +53,20 @@ test_assert(
     'travel_a HybridSearchFeatureGate ON via registry'
 );
 
-// 2. travel_b — OFF
+// 2. travel_b — Stage 1: tour_prompt + hybrid_search ON; fixed_formatter OFF
 $travelB = $registry->resolveBySno($travelBSno);
 test_assert($travelB !== null, 'travel_b in registry');
-test_assert($travelB->isFeatureEnabled('tour_prompt') === false, 'travel_b tour_prompt OFF');
-test_assert($travelB->isFeatureEnabled('hybrid_search') === false, 'travel_b hybrid_search OFF');
+test_assert($travelB->isFeatureEnabled('tour_prompt') === true, 'travel_b tour_prompt ON');
+test_assert($travelB->isFeatureEnabled('hybrid_search') === true, 'travel_b hybrid_search ON');
+test_assert($travelB->isFeatureEnabled('fixed_formatter') === false, 'travel_b fixed_formatter OFF');
 
 test_assert(
-    TourPromptFeatureGate::isEnabled(['sno' => $travelBSno], $registry) === false,
-    'travel_b TourPromptFeatureGate OFF'
+    TourPromptFeatureGate::isEnabled(['sno' => $travelBSno], $registry) === true,
+    'travel_b TourPromptFeatureGate ON'
 );
 test_assert(
-    HybridSearchFeatureGate::isEnabled(['sno' => $travelBSno], null, $registry) === false,
-    'travel_b HybridSearchFeatureGate OFF'
+    HybridSearchFeatureGate::isEnabled(['sno' => $travelBSno], null, $registry) === true,
+    'travel_b HybridSearchFeatureGate ON'
 );
 
 // 3. travel_c — disabled status + features OFF

@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 /**
- * Phase 2A Stage 4: travel_b onboarding staging readiness (config + gates + context shape).
+ * travel_b Stage 1 readiness (tour_prompt + hybrid_search ON; fixed_formatter OFF).
  * No Host B, LINE, or Gemini HTTP.
  */
 
@@ -46,23 +46,23 @@ $bySno = $registry->resolveBySno($travelBSno);
 test_assert($byChannel !== null && $bySno !== null, 'travel_b resolves by channel and sno');
 test_assert($byChannel->getTenantKey() === 'travel_b', 'tenant_key travel_b');
 
-// 2. status=staging
-test_assert($bySno->getStatus() === 'staging', 'status=staging');
-test_assert($bySno->isEnabled() === false, 'isEnabled false while staging');
+// 2. status=enabled (Stage 1)
+test_assert($bySno->getStatus() === 'enabled', 'status=enabled');
+test_assert($bySno->isEnabled() === true, 'isEnabled true when enabled');
 
-// 3. features all OFF
-foreach (['tour_prompt', 'hybrid_search', 'fixed_formatter'] as $feature) {
-    test_assert($bySno->isFeatureEnabled($feature) === false, "feature OFF: {$feature}");
-}
+// 3. Stage 1 features: tour_prompt + hybrid_search ON; fixed_formatter OFF
+test_assert($bySno->isFeatureEnabled('tour_prompt') === true, 'tour_prompt ON');
+test_assert($bySno->isFeatureEnabled('hybrid_search') === true, 'hybrid_search ON');
+test_assert($bySno->isFeatureEnabled('fixed_formatter') === false, 'fixed_formatter OFF');
 
-// 4–5. Feature gates must not enable travel_b
+// 4–5. Feature gates ON for tour_prompt + hybrid_search
 $gateCtx = [
     'sno' => $travelBSno,
     'channelId' => $travelBChannel,
     'tenantRegistry' => $registry,
 ];
-test_assert(TourPromptFeatureGate::isEnabled($gateCtx) === false, 'TourPromptFeatureGate OFF for travel_b');
-test_assert(HybridSearchFeatureGate::isEnabled($gateCtx, null) === false, 'HybridSearchFeatureGate OFF for travel_b');
+test_assert(TourPromptFeatureGate::isEnabled($gateCtx) === true, 'TourPromptFeatureGate ON for travel_b');
+test_assert(HybridSearchFeatureGate::isEnabled($gateCtx, null) === true, 'HybridSearchFeatureGate ON for travel_b');
 
 // 6. TenantContextResolver shape (registry bridge path)
 $ctxResolver = new TenantContextResolver();

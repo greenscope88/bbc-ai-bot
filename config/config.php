@@ -120,8 +120,8 @@ return [
         ],
         'hybrid_search' => [
             'enabled' => true,
-            'allowed_sno' => ['e1fd133c7e8e45a1'],
-            'allowed_channels' => ['Ufcedee37a93230a802c30b138f6228f8'],
+            'allowed_sno' => ['e1fd133c7e8e45a1', '5f99b8d665e8444d'],
+            'allowed_channels' => ['Ufcedee37a93230a802c30b138f6228f8', 'Uc29debdbf97e5e3aa050a6f54cf32091'],
             'dry_run_log_enabled' => true,
             'intent_log_enabled' => true,
             'api_debug_log_enabled' => true,

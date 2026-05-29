@@ -78,10 +78,10 @@ $unknownCtx = $resolver->resolve('unknown-sno-bridge-test-0001');
 test_assert(($unknownCtx['ok'] ?? true) === false, 'unknown sno not ok');
 test_assert(($unknownCtx['errorCode'] ?? '') === 'TENANT_NOT_FOUND', 'unknown sno TENANT_NOT_FOUND');
 
-// 6. registry-only sno (travel_b placeholder) — shape contract preserved
+// 6. travel_b sno — shape contract preserved
 $registry = new ConfigTenantRegistry();
 $resolverInjected = new TenantContextResolver(null, null, $registry);
-$bSno = '00000000-0000-4000-8000-0000000000b1';
+$bSno = '5f99b8d665e8444d';
 $bCtx = $resolverInjected->resolve($bSno);
 test_assert(($bCtx['ok'] ?? false) === true, 'travel_b registry context ok');
 test_assert(($bCtx['tenantContext']['sno'] ?? '') === $bSno, 'travel_b sno');

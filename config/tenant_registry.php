@@ -65,8 +65,7 @@ return [
         ],
 
         // ---------------------------------------------------------------------
-        // travel_b — second agency onboarding (staging; all product features OFF)
-        // Host B ids confirmed; LINE destination + credentials still pending.
+        // travel_b — Stage 1: tour_prompt + hybrid_search ON; fixed_formatter OFF.
         // ---------------------------------------------------------------------
         'travel_b' => [
             'created_for' => 'travel_b',
@@ -79,7 +78,7 @@ return [
             'storeNo' => 6180,
             'store_uid' => 6180,
             'provider_id_no' => 101,
-            'status' => 'staging',
+            'status' => 'enabled',
 
             'onboarding_notes' => [
                 'onboarding_required' => true,
@@ -106,8 +105,8 @@ return [
             ],
 
             'features' => [
-                'tour_prompt' => false,
-                'hybrid_search' => false,
+                'tour_prompt' => true,
+                'hybrid_search' => true,
                 'fixed_formatter' => false,
             ],
 
@@ -118,7 +117,7 @@ return [
             ],
 
             'source_policy' => [
-                'host_b_enabled' => false,
+                'host_b_enabled' => true,
                 'search_client' => 'gateway_php',
             ],
         ],
