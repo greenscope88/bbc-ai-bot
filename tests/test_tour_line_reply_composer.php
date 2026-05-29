@@ -7,6 +7,8 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tour_line_reply_composer.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'gemini_tour_context_builder.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tour_prompt_feature_gate.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tenant' . DIRECTORY_SEPARATOR . 'ConfigTenantRegistry.php';
 
 $failures = 0;
 $lineSep = GeminiTourContextBuilder::LINE_TOUR_ITEM_SEPARATOR;
@@ -98,6 +100,54 @@ test_assert($busy['used_tour_fallback'] === false, 'empty ctx: no tour fallback'
 $noCtx = TourLineReplyComposer::resolve('prompt', '', static fn (): array => ['ok' => true, 'text' => '一般回覆']);
 test_assert($noCtx['reply_text'] === '一般回覆', 'no context: gemini text');
 test_assert($noCtx['used_fixed_tour_list'] === false, 'no context: no fixed list');
+
+// Stage 2: allowFixedFormatter=false skips formatter even when context exists
+$geminiCalledGateOff = false;
+$gateOff = TourLineReplyComposer::resolve(
+    'prompt',
+    $ctx,
+    static function () use (&$geminiCalledGateOff): array {
+        $geminiCalledGateOff = true;
+        return ['ok' => true, 'text' => 'Gemini 回覆（無固定清單）'];
+    },
+    false
+);
+test_assert($gateOff['used_fixed_tour_list'] === false, 'gate off: no fixed list');
+test_assert($gateOff['used_tour_fallback'] === false, 'gate off: no formatter fallback');
+test_assert($geminiCalledGateOff === true, 'gate off: gemini called');
+test_assert($gateOff['reply_text'] === 'Gemini 回覆（無固定清單）', 'gate off: gemini text');
+test_assert(strpos($gateOff['reply_text'], '🚩 ') === false, 'gate off: no formatter emoji layout');
+
+$geminiFailGateOff = false;
+$gateOffBusy = TourLineReplyComposer::resolve(
+    'prompt',
+    $ctx,
+    static function () use (&$geminiFailGateOff): array {
+        $geminiFailGateOff = true;
+        return ['ok' => false, 'text' => null];
+    },
+    false
+);
+test_assert($geminiFailGateOff === true, 'gate off fail: gemini attempted');
+test_assert(strpos($gateOffBusy['reply_text'], '忙碌') !== false, 'gate off fail: busy message not formatter');
+test_assert($gateOffBusy['used_tour_fallback'] === false, 'gate off fail: no formatter fallback');
+
+// Registry-backed gate expectations (travel_a ON, travel_b OFF, miss → true)
+$registry = new ConfigTenantRegistry();
+$travelASno = 'e1fd133c7e8e45a1';
+$travelBSno = '5f99b8d665e8444d';
+test_assert(
+    TourPromptFeatureGate::isFixedFormatterEnabled(['sno' => $travelASno], $registry) === true,
+    'registry travel_a fixed_formatter ON'
+);
+test_assert(
+    TourPromptFeatureGate::isFixedFormatterEnabled(['sno' => $travelBSno], $registry) === true,
+    'registry travel_b fixed_formatter ON'
+);
+test_assert(
+    TourPromptFeatureGate::isFixedFormatterEnabled(['sno' => 'unknown-sno-not-in-registry'], $registry) === true,
+    'registry miss fixed_formatter legacy true'
+);
 
 if ($failures === 0) {
     echo "OK: TourLineReplyComposer tests passed.\n";

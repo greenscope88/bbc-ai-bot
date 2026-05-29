@@ -52,13 +52,17 @@ test_assert(
     HybridSearchFeatureGate::isEnabled(['sno' => $travelASno], null, $registry) === true,
     'travel_a HybridSearchFeatureGate ON via registry'
 );
+test_assert(
+    TourPromptFeatureGate::isFixedFormatterEnabled(['sno' => $travelASno], $registry) === true,
+    'travel_a isFixedFormatterEnabled ON via registry'
+);
 
-// 2. travel_b — Stage 1: tour_prompt + hybrid_search ON; fixed_formatter OFF
+// 2. travel_b — Stage 2: tour_prompt + hybrid_search + fixed_formatter ON
 $travelB = $registry->resolveBySno($travelBSno);
 test_assert($travelB !== null, 'travel_b in registry');
 test_assert($travelB->isFeatureEnabled('tour_prompt') === true, 'travel_b tour_prompt ON');
 test_assert($travelB->isFeatureEnabled('hybrid_search') === true, 'travel_b hybrid_search ON');
-test_assert($travelB->isFeatureEnabled('fixed_formatter') === false, 'travel_b fixed_formatter OFF');
+test_assert($travelB->isFeatureEnabled('fixed_formatter') === true, 'travel_b fixed_formatter ON');
 
 test_assert(
     TourPromptFeatureGate::isEnabled(['sno' => $travelBSno], $registry) === true,
@@ -67,6 +71,10 @@ test_assert(
 test_assert(
     HybridSearchFeatureGate::isEnabled(['sno' => $travelBSno], null, $registry) === true,
     'travel_b HybridSearchFeatureGate ON'
+);
+test_assert(
+    TourPromptFeatureGate::isFixedFormatterEnabled(['sno' => $travelBSno], $registry) === true,
+    'travel_b isFixedFormatterEnabled ON'
 );
 
 // 3. travel_c — disabled status + features OFF
@@ -101,6 +109,14 @@ try {
     test_assert(
         TourPromptFeatureGate::isEnabled(['sno' => $travelASno], $emptyRegistry) === true,
         'registry miss fallback legacy ALLOWED_SNO for travel_a'
+    );
+    test_assert(
+        TourPromptFeatureGate::isFixedFormatterEnabled(['sno' => $travelASno], $emptyRegistry) === true,
+        'registry miss isFixedFormatterEnabled legacy true'
+    );
+    test_assert(
+        TourPromptFeatureGate::isFixedFormatterEnabled(['sno' => 'unknown-sno-not-in-registry'], $emptyRegistry) === true,
+        'registry miss unknown sno isFixedFormatterEnabled true'
     );
     test_assert(
         TourPromptFeatureGate::isEnabled(['sno' => 'unknown-sno-not-in-registry'], $emptyRegistry) === false,

@@ -41,7 +41,7 @@ test_assert($byChannel !== null && $byChannel->isFeatureEnabled('tour_prompt') =
 test_assert($byChannel !== null && $byChannel->isFeatureEnabled('hybrid_search') === true, 'travel_a hybrid_search on');
 test_assert($byChannel !== null && $byChannel->isFeatureEnabled('fixed_formatter') === true, 'travel_a fixed_formatter on');
 
-// 4. travel_b Stage 1 (channel must come from registry, no hardcoded value)
+// 4. travel_b Stage 2 (channel must come from registry, no hardcoded value)
 $travelBTenant = null;
 foreach ($registry->getAllTenants() as $tenant) {
     if ($tenant->getTenantKey() === 'travel_b') {
@@ -58,7 +58,7 @@ test_assert($travelB !== null && $travelB->getTenantKey() === 'travel_b', 'trave
 test_assert($travelB !== null && $travelB->getStatus() === 'enabled', 'travel_b status enabled');
 test_assert($travelB !== null && $travelB->isFeatureEnabled('tour_prompt') === true, 'travel_b tour_prompt on');
 test_assert($travelB !== null && $travelB->isFeatureEnabled('hybrid_search') === true, 'travel_b hybrid_search on');
-test_assert($travelB !== null && $travelB->isFeatureEnabled('fixed_formatter') === false, 'travel_b fixed_formatter off');
+test_assert($travelB !== null && $travelB->isFeatureEnabled('fixed_formatter') === true, 'travel_b fixed_formatter on');
 
 // 5. travel_c disabled
 $travelC = $registry->resolveBySno('00000000-0000-4000-8000-0000000000c1');

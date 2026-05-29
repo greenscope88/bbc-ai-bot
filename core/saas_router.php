@@ -212,10 +212,17 @@ class SaaSRouter
             $prompt = AiPromptBuilder::appendTourContext($prompt, $tourContext);
         }
 
+        $gateCtx = [
+            'sno' => (string) ($tenant['sno'] ?? ''),
+            'channelId' => $channelId !== '' ? $channelId : null,
+        ];
+        $allowFixedFormatter = TourPromptFeatureGate::isFixedFormatterEnabled($gateCtx);
+
         $composed = TourLineReplyComposer::resolve(
             $prompt,
             $tourContext,
-            static fn (): array => callGemini($prompt)
+            static fn (): array => callGemini($prompt),
+            $allowFixedFormatter
         );
         $replyText = $composed['reply_text'];
         $usedTourFallback = $composed['used_tour_fallback'];
@@ -235,6 +242,7 @@ class SaaSRouter
             'line_reply_status' => $lineReplyRes['status'],
             'elapsed_ms' => (int) ((microtime(true) - $start) * 1000),
             'ai_ok' => $composed['ai_ok'],
+            'allow_fixed_formatter' => $allowFixedFormatter,
             'used_fixed_tour_list' => $usedFixedTourList,
             'used_tour_fallback' => $usedTourFallback,
         ]);

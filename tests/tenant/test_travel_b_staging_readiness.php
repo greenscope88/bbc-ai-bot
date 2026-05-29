@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 /**
- * travel_b Stage 1 readiness (tour_prompt + hybrid_search ON; fixed_formatter OFF).
+ * travel_b Stage 2 readiness (tour_prompt + hybrid_search + fixed_formatter ON).
  * No Host B, LINE, or Gemini HTTP.
  */
 
@@ -50,12 +50,12 @@ test_assert($byChannel->getTenantKey() === 'travel_b', 'tenant_key travel_b');
 test_assert($bySno->getStatus() === 'enabled', 'status=enabled');
 test_assert($bySno->isEnabled() === true, 'isEnabled true when enabled');
 
-// 3. Stage 1 features: tour_prompt + hybrid_search ON; fixed_formatter OFF
+// 3. Stage 2 features: tour_prompt + hybrid_search + fixed_formatter ON
 test_assert($bySno->isFeatureEnabled('tour_prompt') === true, 'tour_prompt ON');
 test_assert($bySno->isFeatureEnabled('hybrid_search') === true, 'hybrid_search ON');
-test_assert($bySno->isFeatureEnabled('fixed_formatter') === false, 'fixed_formatter OFF');
+test_assert($bySno->isFeatureEnabled('fixed_formatter') === true, 'fixed_formatter ON');
 
-// 4–5. Feature gates ON for tour_prompt + hybrid_search
+// 4–5. Feature gates ON for tour_prompt + hybrid_search + fixed formatter
 $gateCtx = [
     'sno' => $travelBSno,
     'channelId' => $travelBChannel,
@@ -63,6 +63,7 @@ $gateCtx = [
 ];
 test_assert(TourPromptFeatureGate::isEnabled($gateCtx) === true, 'TourPromptFeatureGate ON for travel_b');
 test_assert(HybridSearchFeatureGate::isEnabled($gateCtx, null) === true, 'HybridSearchFeatureGate ON for travel_b');
+test_assert(TourPromptFeatureGate::isFixedFormatterEnabled($gateCtx, $registry) === true, 'isFixedFormatterEnabled ON for travel_b');
 
 // 6. TenantContextResolver shape (registry bridge path)
 $ctxResolver = new TenantContextResolver();

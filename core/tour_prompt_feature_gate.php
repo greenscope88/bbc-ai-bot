@@ -146,6 +146,22 @@ final class TourPromptFeatureGate
         return $tenant->isFeatureEnabled($feature);
     }
 
+    /**
+     * Runtime gate for TourLineReplyComposer fixed formatter (scheme C).
+     * Registry hit: use features.fixed_formatter; miss: true (legacy, travel_a-safe default).
+     *
+     * @param array{sno?: string|null, channelId?: string|null} $context
+     */
+    public static function isFixedFormatterEnabled(array $context = [], ?TenantRegistryInterface $registryOverride = null): bool
+    {
+        $registryEnabled = self::tryRegistryFeature($context, 'fixed_formatter', $registryOverride);
+        if ($registryEnabled !== null) {
+            return $registryEnabled;
+        }
+
+        return true;
+    }
+
     public static function isGlobalTourPromptMasterEnabled(?TenantRegistryInterface $registryOverride = null): bool
     {
         $registry = $registryOverride ?? new ConfigTenantRegistry();

@@ -65,7 +65,7 @@ return [
         ],
 
         // ---------------------------------------------------------------------
-        // travel_b — Stage 1: tour_prompt + hybrid_search ON; fixed_formatter OFF.
+        // travel_b — Stage 2: tour_prompt + hybrid_search + fixed_formatter ON (same LINE format as travel_a).
         // ---------------------------------------------------------------------
         'travel_b' => [
             'created_for' => 'travel_b',
@@ -107,12 +107,12 @@ return [
             'features' => [
                 'tour_prompt' => true,
                 'hybrid_search' => true,
-                'fixed_formatter' => false,
+                'fixed_formatter' => true,
             ],
 
             'gemini_policy' => [
                 'tone' => 'travel_assistant',
-                'allow_fixed_formatter' => false,
+                'allow_fixed_formatter' => true,
                 'allow_gemini_rewrite' => false,
             ],
 

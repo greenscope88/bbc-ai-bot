@@ -17,10 +17,14 @@ final class TourLineReplyComposer
      *   used_tour_fallback: bool
      * }
      */
-    public static function resolve(string $prompt, string $tourContext, callable $geminiCaller): array
-    {
+    public static function resolve(
+        string $prompt,
+        string $tourContext,
+        callable $geminiCaller,
+        bool $allowFixedFormatter = true
+    ): array {
         $ctx = trim($tourContext);
-        if ($ctx !== '') {
+        if ($allowFixedFormatter && $ctx !== '') {
             $fixed = TourFallbackFormatter::formatFromTourContext($ctx);
             if ($fixed !== '') {
                 return [
@@ -42,7 +46,7 @@ final class TourLineReplyComposer
             ];
         }
 
-        if ($ctx !== '') {
+        if ($allowFixedFormatter && $ctx !== '') {
             $fallback = TourFallbackFormatter::formatFromTourContext($ctx);
             if ($fallback !== '') {
                 return [
