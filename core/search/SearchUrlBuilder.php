@@ -76,6 +76,42 @@ final class SearchUrlBuilder
     }
 
     /**
+     * Storefront listing URL without search keyword (zero-result fallback).
+     *
+     * @param array<string, mixed> $options apply_short_url (bool) overrides constructor
+     */
+    public function buildStorefrontListingUrl(string $sno, array $options = []): string
+    {
+        $sno = trim($sno);
+        $query = [
+            'openExternalBrowser' => '1',
+            'clearParam' => 'Y',
+            'sno' => $sno,
+        ];
+
+        $qs = http_build_query($query, '', '&', PHP_QUERY_RFC3986);
+        $longUrl = self::SEARCH_URL_BASE . '?' . $qs;
+
+        $useShort = $this->applyShortUrl;
+        if (array_key_exists('apply_short_url', $options)) {
+            $useShort = (bool) $options['apply_short_url'];
+        }
+
+        if (!$useShort) {
+            return $longUrl;
+        }
+
+        $shortPath = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'short_url_service.php';
+        if (!is_file($shortPath)) {
+            return $longUrl;
+        }
+
+        require_once $shortPath;
+
+        return (new \ShortUrlService())->toPublicShortUrl($longUrl);
+    }
+
+    /**
      * Search params only (for parity checks vs ApiQueryMapper).
      *
      * @return array<string, string>

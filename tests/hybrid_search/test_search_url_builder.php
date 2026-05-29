@@ -28,4 +28,13 @@ $searchOnly = $urlBuilder->searchParamsOnly($condition);
 hybrid_test_assert($searchOnly['keyword'] === $apiParams['keyword'], 'searchParamsOnly keyword match');
 hybrid_test_assert($searchOnly['dateFrom'] === $apiParams['dateFrom'], 'searchParamsOnly dateFrom match');
 
+$listingUrl = $urlBuilder->buildStorefrontListingUrl($sno);
+$listingParams = [];
+parse_str((string) parse_url($listingUrl, PHP_URL_QUERY), $listingParams);
+hybrid_test_assert(strpos($listingUrl, 'cloud_store_tourdate.php') !== false, 'listing url: base path');
+hybrid_test_assert(($listingParams['openExternalBrowser'] ?? '') === '1', 'listing url: openExternalBrowser');
+hybrid_test_assert(($listingParams['clearParam'] ?? '') === 'Y', 'listing url: clearParam');
+hybrid_test_assert(($listingParams['sno'] ?? '') === $sno, 'listing url: sno');
+hybrid_test_assert(!array_key_exists('keyword', $listingParams), 'listing url: no keyword');
+
 hybrid_test_finish('SearchUrlBuilder');

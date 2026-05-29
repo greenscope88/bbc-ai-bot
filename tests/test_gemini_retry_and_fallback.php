@@ -148,6 +148,23 @@ test_assert(strpos($fbCap, '06/18') === false, 'fallback: cap hides fifth date')
 test_assert(strpos($fbCap, '...更多') !== false, 'fallback: cap suffix');
 test_assert(strpos($fb, 'AI錯誤') === false, 'fallback: no AI error label');
 test_assert(strpos($fb, '503') === false, 'fallback: no 503');
+test_assert(strpos($fb, '哈囉，您好～') !== false, 'fallback: greeting line1');
+test_assert(strpos($fb, '我是旅遊 AI 助理，以下為您整理最新的出團資訊：') !== false, 'fallback: greeting line2');
+test_assert(strpos($fb, '行程參考資訊（系統自動整理') === false, 'fallback: old greeting removed');
+
+$fixtureEmpty = <<<CTX
+【旅遊產品搜尋結果】
+目前沒有找到符合條件的行程。
+更多行程 & 出團日：
+https://bbcshops.com/R64DY
+
+請 Gemini 回覆客人時：
+- x
+CTX;
+$fbEmpty = TourFallbackFormatter::formatFromTourContext($fixtureEmpty);
+test_assert(substr_count($fbEmpty, GeminiTourContextBuilder::SEARCH_URL_LABEL) === 1, 'fallback empty: search label once');
+test_assert(substr_count($fbEmpty, 'https://bbcshops.com/R64DY') === 1, 'fallback empty: search url once');
+test_assert(strpos($fbEmpty, '目前沒有找到符合條件的行程。') !== false, 'fallback empty: no-result message');
 
 // --- TourFallbackFormatter: 價格 / 售價 aliases ---
 $fixturePriceAlias = <<<'CTX'

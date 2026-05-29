@@ -107,6 +107,10 @@ final class TourSearchApiClient
             if ($tid !== '') {
                 $headers['X-Trace-Id'] = $tid;
             }
+            $hostBApiKey = $this->resolveHostBApiKeyForRequest();
+            if ($hostBApiKey !== null) {
+                $headers['x-api-key'] = $hostBApiKey;
+            }
 
             $transport = $this->transport ?? [$this, 'defaultTransport'];
             $raw = $transport($url, $headers, $this->timeoutSeconds);
@@ -290,6 +294,22 @@ final class TourSearchApiClient
         ];
     }
 
+    private function resolveHostBApiKeyForRequest(): ?string
+    {
+        if (strpos($this->baseUrl, '/api/tour/search') === false) {
+            return null;
+        }
+        if (strpos($this->baseUrl, 'bonusmee.com/api/gateway/tour/search.php') !== false) {
+            return null;
+        }
+        if (!function_exists('app_config_get')) {
+            return null;
+        }
+
+        $apiKey = trim((string) app_config_get('gateway.host_b.api_key', ''));
+        return $apiKey !== '' ? $apiKey : null;
+    }
+
     /**
      * @param array<string, mixed> $payload
      * @return array<string, mixed>
@@ -301,7 +321,6 @@ final class TourSearchApiClient
         string $keyword,
         ?string $fallbackTraceId
     ): array {
-        $apiSuccess = ($payload['success'] ?? false) === true;
         $traceId = isset($payload['traceId']) && is_string($payload['traceId']) && $payload['traceId'] !== ''
             ? $payload['traceId']
             : $fallbackTraceId;
@@ -311,7 +330,7 @@ final class TourSearchApiClient
             $pagination = null;
         }
 
-        $items = $payload['items'] ?? [];
+        $items = $payload['items'] ?? ($payload['data'] ?? []);
         if (!is_array($items)) {
             $items = [];
         }
@@ -321,6 +340,16 @@ final class TourSearchApiClient
             if (is_array($row)) {
                 $normalizedItems[] = $row;
             }
+        }
+
+        $hasErrorObject = isset($payload['error']) && is_array($payload['error']) && $payload['error'] !== [];
+        if (array_key_exists('success', $payload)) {
+            $apiSuccess = $payload['success'] === true;
+        } else {
+            $statusRaw = isset($payload['status']) ? strtolower(trim((string) $payload['status'])) : '';
+            $statusIndicatesSuccess = in_array($statusRaw, ['success', 'ok', 'true', '1'], true);
+            $hasHostBDataArray = isset($payload['data']) && is_array($payload['data']);
+            $apiSuccess = $statusIndicatesSuccess || ($hasHostBDataArray && !$hasErrorObject);
         }
 
         $searchUrl = isset($payload['search_url']) && is_string($payload['search_url'])
@@ -338,6 +367,11 @@ final class TourSearchApiClient
                 if (isset($err['message']) && is_string($err['message']) && $err['message'] !== '') {
                     $message = $err['message'];
                 }
+            } elseif (isset($payload['status']) && trim((string) $payload['status']) !== '') {
+                $code = (string) $payload['status'];
+            }
+            if ((!is_array($err) || !isset($err['message'])) && isset($payload['message']) && is_string($payload['message']) && trim($payload['message']) !== '') {
+                $message = trim($payload['message']);
             }
 
             return $this->failureResult($httpStatus, $sno, $keyword, $traceId, $code, $message, $pagination, $normalizedItems, $searchUrl);

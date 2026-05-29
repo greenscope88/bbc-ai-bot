@@ -34,16 +34,18 @@ final class TourFallbackFormatter
         $url = self::extractSearchUrl($body);
 
         $lines = [];
-        $lines[] = '您好，以下為行程參考資訊（系統自動整理，實際以官網與客服確認為準）：';
+        $lines[] = '哈囉，您好～';
+        $lines[] = '我是旅遊 AI 助理，以下為您整理最新的出團資訊：';
         $lines[] = '';
 
         $items = self::parseItemBlocks($body);
         if ($items === []) {
             foreach (explode("\n", $body) as $ln) {
                 $t = trim($ln);
-                if ($t !== '' && strpos($t, '請 Gemini') === false) {
-                    $lines[] = $t;
+                if ($t === '' || strpos($t, '請 Gemini') !== false || self::isSearchUrlBodyLine($t)) {
+                    continue;
                 }
+                $lines[] = $t;
             }
         } else {
             $sliceItems = array_slice($items, 0, 5);
@@ -85,6 +87,26 @@ final class TourFallbackFormatter
         }
 
         return $ctx;
+    }
+
+    private static function isSearchUrlBodyLine(string $line): bool
+    {
+        if ($line === GeminiTourContextBuilder::SEARCH_URL_LABEL) {
+            return true;
+        }
+
+        foreach (['更多參考行程及出團日期：', '完整搜尋結果：'] as $label) {
+            if ($line === $label) {
+                return true;
+            }
+        }
+
+        if (preg_match('/^https?:\/\/\S+/u', $line) !== 1) {
+            return false;
+        }
+
+        return strpos($line, 'cloud_store_tourdate.php') !== false
+            || preg_match('/^https?:\/\/(?:www\.)?bbcshops\.com\/[A-Za-z0-9]+/u', $line) === 1;
     }
 
     private static function extractSearchUrl(string $body): string

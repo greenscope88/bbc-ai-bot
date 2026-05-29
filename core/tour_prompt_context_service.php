@@ -117,7 +117,18 @@ final class TourPromptContextService
 
             $intentDetector = $params['intentDetector'] ?? new TourQueryIntentDetector();
 
-            $searchClient = $params['searchClient'] ?? new TourSearchApiClient();
+            $searchClient = $params['searchClient'] ?? null;
+            if (!$searchClient instanceof TourSearchApiClient) {
+                $hostBBaseUrl = '';
+                if (function_exists('app_config_get')) {
+                    $hostBBaseUrl = trim((string) app_config_get('gateway.host_b.base_url', ''));
+                }
+                if ($hostBBaseUrl !== '') {
+                    $searchClient = new TourSearchApiClient(rtrim($hostBBaseUrl, '/') . '/api/tour/search');
+                } else {
+                    $searchClient = new TourSearchApiClient();
+                }
+            }
 
             $contextBuilder = $params['contextBuilder'] ?? new GeminiTourContextBuilder();
 
@@ -404,7 +415,7 @@ final class TourPromptContextService
 
             $searchUrlParams = $urlBuilder->searchParamsOnly($condition);
 
-            $apiResult['search_url'] = $urlBuilder->build($sno, $condition);
+            $apiResult['search_url'] = $this->resolveSearchUrlForApiResult($urlBuilder, $sno, $condition, $apiResult);
 
 
 
@@ -732,6 +743,35 @@ final class TourPromptContextService
 
         return null;
 
+    }
+
+
+
+    /**
+     * Keyword search URL when results exist; clean storefront listing URL when empty.
+     */
+    private function resolveSearchUrlForApiResult(
+        SearchUrlBuilder $urlBuilder,
+        string $sno,
+        SearchCondition $condition,
+        array $apiResult
+    ): string {
+        $items = $apiResult['items'] ?? [];
+        if (!is_array($items)) {
+            $items = [];
+        }
+
+        $total = 0;
+        $pagination = $apiResult['pagination'] ?? null;
+        if (is_array($pagination) && isset($pagination['total'])) {
+            $total = (int) $pagination['total'];
+        }
+
+        if ($total <= 0 && $items === []) {
+            return $urlBuilder->buildStorefrontListingUrl($sno);
+        }
+
+        return $urlBuilder->build($sno, $condition);
     }
 
 }
