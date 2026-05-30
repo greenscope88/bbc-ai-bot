@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "templates": [
+    {
+      "template_id": "bbcshops_search_v1",
+      "kind": "search",
+      "url": "https://bonusmee.com/view/cloud/cloud_store_tourdate.php?openExternalBrowser=1&sno={sno}&keyword={keyword}"
+    },
+    {
+      "template_id": "bbcshops_detail_v1",
+      "kind": "detail",
+      "url": "https://bonusmee.com/view/cloud/cloud_store_tourdetail.php?openExternalBrowser=1&sno={sno}&tourSeqNo={tour_seq_no}"
+    },
+    {
+      "template_id": "grp_search_v1",
+      "kind": "search",
+      "url": "http://dayitravel.grp.com.tw/Exhibition.aspx?area_no={area_no}"
+    },
+    {
+      "template_id": "bbctravel_search_v1",
+      "kind": "search",
+      "url": "https://dayitravel.bbctravel.com.tw/searchlist/tpe/{category_code}"
+    },
+    {
+      "template_id": "tourcenter_search_v1",
+      "kind": "search",
+      "url": "https://dayitravel.tourcenter.com.tw/category/zh-tw/travel/{category_slug}"
+    }
+  ]
+}
