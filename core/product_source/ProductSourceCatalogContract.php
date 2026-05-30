@@ -1,8 +1,10 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'ProductCategoryContract.php';
+
 /**
- * Product source catalog contract constants (Phase 9-B-1b).
+ * Product source catalog contract constants (Phase 9-B-1b / 9-B-7).
  */
 final class ProductSourceCatalogContract
 {
@@ -11,14 +13,24 @@ final class ProductSourceCatalogContract
     /** @var list<int> */
     public const SUPPORTED_SCHEMA_VERSIONS = [1];
 
-    /** @var list<string> */
+    /**
+     * Canonical list delegated to ProductCategoryContract (Phase 9-B-7).
+     * Includes legacy private_group for backward compatibility with Phase 9-B-1b samples.
+     *
+     * @var list<string>
+     */
     public const PRODUCT_CATEGORIES = [
         'group_tour',
-        'hotel',
-        'car_rental',
         'fit',
-        'private_group',
+        'flight',
+        'hotel',
+        'mini_group',
+        'car_rental',
+        'cruise',
+        'visa',
+        'ticket',
         'other',
+        'private_group',
     ];
 
     /** @var list<string> */
@@ -54,7 +66,7 @@ final class ProductSourceCatalogContract
 
     public static function isValidProductCategory(string $category): bool
     {
-        return in_array(trim($category), self::PRODUCT_CATEGORIES, true);
+        return ProductCategoryContract::isValidProductCategory($category);
     }
 
     public static function isValidSourceType(string $sourceType): bool
