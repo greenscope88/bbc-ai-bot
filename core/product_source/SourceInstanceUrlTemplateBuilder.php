@@ -95,11 +95,13 @@ final class SourceInstanceUrlTemplateBuilder
     private function buildSubdomainUrl(array $platform, array $instance, array $urlTemplate): string
     {
         $values = $this->identifierValues($instance);
-        $subdomain = isset($values['subdomain']) ? trim((string) $values['subdomain']) : '';
+        $this->assertRequiredIdentifierKeys($values, $urlTemplate);
+
+        $subdomain = $this->resolveSubdomainValue($values);
         if ($subdomain === '') {
             throw new ProductSourceContractException(
                 'URL_TEMPLATE_MISSING_IDENTIFIER',
-                'subdomain identifier_values.subdomain is required.'
+                'subdomain identifier_values.subdomain or tenant_subdomain is required.'
             );
         }
 
@@ -107,15 +109,19 @@ final class SourceInstanceUrlTemplateBuilder
         $hostPattern = $this->templateString($urlTemplate, 'host_pattern', '{subdomain}.{platform_domain}');
         $host = $this->substitutePlaceholders($hostPattern, [
             'subdomain' => $subdomain,
+            'tenant_subdomain' => $subdomain,
             'platform_domain' => $platformDomain,
         ], $values);
 
-        return $this->composeUrl(
+        $query = $this->buildQueryFromTemplate($urlTemplate, $values, $platformDomain);
+        $url = $this->composeUrl(
             $this->templateString($urlTemplate, 'scheme', 'https'),
             $host,
             $this->templateString($urlTemplate, 'path', '/'),
-            []
+            $query
         );
+
+        return $this->assertNoUnreplacedPlaceholders($url);
     }
 
     /**
@@ -182,11 +188,14 @@ final class SourceInstanceUrlTemplateBuilder
             );
         }
 
-        $platformDomain = trim((string) $platform['platform_domain']);
+        $this->assertRequiredIdentifierKeys($values, $urlTemplate);
 
-        return $this->substitutePlaceholders($pattern, [
+        $platformDomain = trim((string) $platform['platform_domain']);
+        $url = $this->substitutePlaceholders($pattern, [
             'platform_domain' => $platformDomain,
         ], $values);
+
+        return $this->assertNoUnreplacedPlaceholders($url);
     }
 
     /**
@@ -262,6 +271,83 @@ final class SourceInstanceUrlTemplateBuilder
         }
 
         return $query;
+    }
+
+    /**
+     * @param array<string, string> $values
+     * @param array<string, mixed> $urlTemplate
+     */
+    private function assertRequiredIdentifierKeys(array $values, array $urlTemplate): void
+    {
+        if (!isset($urlTemplate['required_identifier_keys']) || !is_array($urlTemplate['required_identifier_keys'])) {
+            return;
+        }
+
+        foreach ($this->normalizeStringList($urlTemplate['required_identifier_keys']) as $key) {
+            if (!isset($values[$key]) || trim((string) $values[$key]) === '') {
+                throw new ProductSourceContractException(
+                    'URL_TEMPLATE_MISSING_IDENTIFIER',
+                    'Missing required identifier_values: ' . $key
+                );
+            }
+        }
+    }
+
+    /**
+     * @param array<string, string> $values
+     */
+    private function resolveSubdomainValue(array $values): string
+    {
+        if (isset($values['subdomain']) && trim($values['subdomain']) !== '') {
+            return trim($values['subdomain']);
+        }
+
+        if (isset($values['tenant_subdomain']) && trim($values['tenant_subdomain']) !== '') {
+            return trim($values['tenant_subdomain']);
+        }
+
+        return '';
+    }
+
+    /**
+     * @param array<string, mixed> $urlTemplate
+     * @param array<string, string> $values
+     * @return array<string, string>
+     */
+    private function buildQueryFromTemplate(array $urlTemplate, array $values, string $platformDomain): array
+    {
+        $queryTemplate = $urlTemplate['query_template'] ?? null;
+        if (!is_array($queryTemplate) || $queryTemplate === []) {
+            return [];
+        }
+
+        $query = [];
+        foreach ($queryTemplate as $key => $rawValue) {
+            if (!is_string($key)) {
+                continue;
+            }
+            $resolved = $this->substitutePlaceholders((string) $rawValue, [
+                'platform_domain' => $platformDomain,
+            ], $values);
+            $trimmed = trim($resolved);
+            if ($trimmed !== '') {
+                $query[$key] = $trimmed;
+            }
+        }
+
+        return $query;
+    }
+
+    private function assertNoUnreplacedPlaceholders(string $url): string
+    {
+        if (preg_match('/\{[a-zA-Z0-9_]+\}/', $url) === 1) {
+            throw new ProductSourceContractException(
+                'URL_TEMPLATE_UNRESOLVED_PLACEHOLDER',
+                'URL still contains unresolved placeholders: ' . $url
+            );
+        }
+
+        return $url;
     }
 
     /**

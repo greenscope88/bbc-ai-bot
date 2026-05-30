@@ -114,8 +114,11 @@ final class TenantSourceInstanceContract
 
         if ($type === 'subdomain') {
             $subdomain = isset($identifierValues['subdomain']) ? trim((string) $identifierValues['subdomain']) : '';
+            if ($subdomain === '' && isset($identifierValues['tenant_subdomain'])) {
+                $subdomain = trim((string) $identifierValues['tenant_subdomain']);
+            }
             if ($subdomain === '') {
-                $violations[] = 'subdomain identifier_values.subdomain required';
+                $violations[] = 'subdomain identifier_values.subdomain or tenant_subdomain required';
             }
         } elseif ($type === 'query_param') {
             $paramKeys = self::resolveParamKeys($platform, ['GetStore']);
