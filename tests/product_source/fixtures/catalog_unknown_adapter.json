@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "catalog_id": "test_adapter",
+  "sources": [
+    {
+      "source_id": "badadapter",
+      "source_name": "Bad Adapter",
+      "source_type": "external",
+      "product_categories": ["group_tour"],
+      "adapter": "NotRegisteredAdapter",
+      "url_template_id": "badadapter_v1",
+      "priority": 1,
+      "short_url_enabled": false,
+      "short_url_domain": "",
+      "domain_namespace": "",
+      "supports_search": true,
+      "supports_detail": false,
+      "supports_inventory": false,
+      "supports_registration_flow": false,
+      "supports_google_sheet_registration": false,
+      "enabled": true
+    }
+  ]
+}

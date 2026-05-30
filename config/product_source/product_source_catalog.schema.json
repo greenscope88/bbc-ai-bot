@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bbc-travel.local/schemas/product_source_catalog.v1.json",
+  "title": "BBC Travel Product Source Catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "catalog_id", "sources"],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Catalog contract major version."
+    },
+    "catalog_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/source" }
+    }
+  },
+  "$defs": {
+    "product_category": {
+      "type": "string",
+      "enum": ["group_tour", "hotel", "car_rental", "fit", "private_group", "other"]
+    },
+    "source_type": {
+      "type": "string",
+      "enum": ["host_b", "catalog", "storefront", "external", "future"]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_id",
+        "source_name",
+        "source_type",
+        "product_categories",
+        "adapter",
+        "url_template_id",
+        "enabled",
+        "priority",
+        "short_url_enabled",
+        "short_url_domain",
+        "domain_namespace",
+        "supports_search",
+        "supports_detail",
+        "supports_inventory",
+        "supports_registration_flow",
+        "supports_google_sheet_registration"
+      ],
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$"
+        },
+        "source_name": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "display_name": {
+          "type": "string",
+          "description": "Deprecated alias of source_name; loader maps to source_name when missing."
+        },
+        "source_type": { "$ref": "#/$defs/source_type" },
+        "product_categories": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/product_category" }
+        },
+        "product_category": {
+          "$ref": "#/$defs/product_category",
+          "description": "Deprecated single category; use product_categories."
+        },
+        "adapter": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "url_template_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,127}$"
+        },
+        "enabled": { "type": "boolean" },
+        "priority": { "type": "integer", "minimum": 0, "maximum": 9999 },
+        "short_url_enabled": { "type": "boolean" },
+        "short_url_domain": { "type": "string", "maxLength": 253 },
+        "domain_namespace": { "type": "string", "maxLength": 64 },
+        "supports_search": { "type": "boolean" },
+        "supports_detail": { "type": "boolean" },
+        "supports_inventory": { "type": "boolean" },
+        "supports_registration_flow": { "type": "boolean" },
+        "supports_google_sheet_registration": { "type": "boolean" }
+      }
+    }
+  }
+}

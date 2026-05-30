@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "catalog_id": "test_dup",
+  "sources": [
+    {
+      "source_id": "dup",
+      "source_name": "One",
+      "source_type": "external",
+      "product_categories": ["group_tour"],
+      "adapter": "StubProductSourceAdapter",
+      "url_template_id": "dup_v1",
+      "priority": 1,
+      "short_url_enabled": false,
+      "short_url_domain": "",
+      "domain_namespace": "",
+      "supports_search": true,
+      "supports_detail": false,
+      "supports_inventory": false,
+      "supports_registration_flow": false,
+      "supports_google_sheet_registration": false,
+      "enabled": true
+    },
+    {
+      "source_id": "dup",
+      "source_name": "Two",
+      "source_type": "external",
+      "product_categories": ["group_tour"],
+      "adapter": "StubProductSourceAdapter",
+      "url_template_id": "dup_v2",
+      "priority": 2,
+      "short_url_enabled": false,
+      "short_url_domain": "",
+      "domain_namespace": "",
+      "supports_search": true,
+      "supports_detail": false,
+      "supports_inventory": false,
+      "supports_registration_flow": false,
+      "supports_google_sheet_registration": false,
+      "enabled": true
+    }
+  ]
+}
