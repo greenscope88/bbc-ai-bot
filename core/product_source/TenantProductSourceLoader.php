@@ -1,12 +1,29 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'GcsTenantProductSourcesProvider.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'LocalTenantProductSourcesProvider.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'TenantProductSourcesProviderFactory.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'TenantProductSourcesProviderInterface.php';
+
 /**
- * Loads per-tenant enabled product sources from local JSON (Phase 9-B-1a sample; no GCS).
+ * Loads per-tenant enabled product sources via provider abstraction (Phase 9-B-1a / 9-B-5).
  */
 final class TenantProductSourceLoader
 {
-    public const DEFAULT_TRAVEL_B_SAMPLE_PATH = 'docs/sample/travel_b_product_sources.sample.json';
+    public const DEFAULT_TRAVEL_B_SAMPLE_PATH = LocalTenantProductSourcesProvider::DEFAULT_TRAVEL_B_SAMPLE_PATH;
+
+    private TenantProductSourcesProviderInterface $provider;
+
+    public function __construct(?TenantProductSourcesProviderInterface $provider = null)
+    {
+        $this->provider = $provider ?? TenantProductSourcesProviderFactory::createDefault();
+    }
+
+    public function getProvider(): TenantProductSourcesProviderInterface
+    {
+        return $this->provider;
+    }
 
     /**
      * @return array{
@@ -14,26 +31,73 @@ final class TenantProductSourceLoader
      *   tenant_sno: string,
      *   tenant_key: string,
      *   default_category: string,
-     *   enabled_sources: list<array{source_id: string, priority: int, product_categories: list<string>}>
+     *   enabled_sources: list<array{source_id: string, priority: int, product_categories: list<string>}>,
+     *   provider_id: string
      * }
      */
     public function load(?string $path = null): array
     {
-        $resolvedPath = $this->resolvePath($path);
-        if (!is_file($resolvedPath)) {
-            throw new \RuntimeException('Tenant product sources config not found: ' . $resolvedPath);
+        $provider = $this->provider;
+        if ($path !== null && trim($path) !== '') {
+            $provider = new LocalTenantProductSourcesProvider($path);
         }
 
-        $raw = file_get_contents($resolvedPath);
-        if ($raw === false) {
-            throw new \RuntimeException('Unable to read tenant product sources: ' . $resolvedPath);
-        }
+        $decoded = $provider->fetchTenantProductSourcesDocument();
 
-        $decoded = json_decode($raw, true);
-        if (!is_array($decoded)) {
-            throw new \RuntimeException('Tenant product sources must be valid JSON: ' . $resolvedPath);
-        }
+        return $this->normalizeDocument($decoded, $provider->getProviderId());
+    }
 
+    /**
+     * Safe fallback: returns empty enabled_sources on provider or normalization errors.
+     *
+     * @return array{
+     *   schema_version: int,
+     *   tenant_sno: string,
+     *   tenant_key: string,
+     *   default_category: string,
+     *   enabled_sources: list<array{source_id: string, priority: int, product_categories: list<string>}>,
+     *   provider_id: string
+     * }
+     */
+    public function loadSafe(?string $path = null): array
+    {
+        try {
+            return $this->load($path);
+        } catch (\Throwable $e) {
+            $providerId = $this->provider->getProviderId();
+            if ($path !== null && trim($path) !== '') {
+                $providerId = 'local';
+            }
+
+            $tenantSno = '';
+            if ($this->provider instanceof GcsTenantProductSourcesProvider) {
+                $tenantSno = $this->provider->getTenantSno();
+            }
+
+            return [
+                'schema_version' => 1,
+                'tenant_sno' => $tenantSno,
+                'tenant_key' => '',
+                'default_category' => 'group_tour',
+                'enabled_sources' => [],
+                'provider_id' => $providerId,
+            ];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $decoded
+     * @return array{
+     *   schema_version: int,
+     *   tenant_sno: string,
+     *   tenant_key: string,
+     *   default_category: string,
+     *   enabled_sources: list<array{source_id: string, priority: int, product_categories: list<string>}>,
+     *   provider_id: string
+     * }
+     */
+    private function normalizeDocument(array $decoded, string $providerId): array
+    {
         $tenantSno = isset($decoded['tenant_sno']) ? trim((string) $decoded['tenant_sno']) : '';
         if ($tenantSno === '') {
             throw new \RuntimeException('Tenant product sources missing tenant_sno.');
@@ -75,6 +139,7 @@ final class TenantProductSourceLoader
             'tenant_key' => isset($decoded['tenant_key']) ? trim((string) $decoded['tenant_key']) : '',
             'default_category' => isset($decoded['default_category']) ? trim((string) $decoded['default_category']) : 'group_tour',
             'enabled_sources' => $normalized,
+            'provider_id' => $providerId,
         ];
     }
 
@@ -100,39 +165,5 @@ final class TenantProductSourceLoader
         }
 
         return $out;
-    }
-
-    private function resolvePath(?string $path): string
-    {
-        if ($path !== null && trim($path) !== '') {
-            $trimmed = trim($path);
-            if ($this->isAbsolutePath($trimmed)) {
-                return $trimmed;
-            }
-
-            return $this->projectRoot() . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $trimmed);
-        }
-
-        return $this->projectRoot() . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, self::DEFAULT_TRAVEL_B_SAMPLE_PATH);
-    }
-
-    private function projectRoot(): string
-    {
-        return dirname(__DIR__, 2);
-    }
-
-    private function isAbsolutePath(string $path): bool
-    {
-        if ($path === '') {
-            return false;
-        }
-        if ($path[0] === '/' || $path[0] === '\\') {
-            return true;
-        }
-        if (strlen($path) >= 3 && ctype_alpha($path[0]) && $path[1] === ':' && ($path[2] === '/' || $path[2] === '\\')) {
-            return true;
-        }
-
-        return false;
     }
 }
