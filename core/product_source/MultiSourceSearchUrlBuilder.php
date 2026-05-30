@@ -1,273 +1,124 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . DIRECTORY_SEPARATOR . 'ProductSourceRegistry.php';
-require_once __DIR__ . DIRECTORY_SEPARATOR . 'ProductSourceUrlResult.php';
-require_once __DIR__ . DIRECTORY_SEPARATOR . 'UrlTemplateRegistry.php';
-require_once __DIR__ . DIRECTORY_SEPARATOR . 'UrlTemplateResolver.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'MultiSourceSearchUrlBuilderException.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'MultiSourceSearchUrlBuilderRegistry.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'RegionKeywordMapper.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'SearchUrlBuilder.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'SearchUrlBuilderRegistry.php';
 
 /**
- * Builds long search/detail URLs per product source via sample templates (Phase 9-B-2).
+ * Builds search URL lists across registered source instances (Phase 9-B-14).
  *
- * Does not call ShortUrlService, Host B, Hybrid, or LINE.
+ * Flow: SearchCondition → Platform Mapper (RegionKeywordMapper) → SearchUrlBuilder → URL list.
+ * Does not fetch pages, call APIs, or run Gemini/LINE/Publisher.
  */
 final class MultiSourceSearchUrlBuilder
 {
-    private UrlTemplateRegistry $templateRegistry;
+    private MultiSourceSearchUrlBuilderRegistry $sourceInstanceRegistry;
 
-    private UrlTemplateResolver $templateResolver;
+    private SearchUrlBuilderRegistry $searchUrlBuilderRegistry;
 
-    public function __construct(?UrlTemplateRegistry $templateRegistry = null, ?UrlTemplateResolver $templateResolver = null)
-    {
-        $this->templateRegistry = $templateRegistry ?? UrlTemplateRegistry::fromSampleFile();
-        $this->templateResolver = $templateResolver ?? new UrlTemplateResolver($this->templateRegistry);
-    }
+    private SearchUrlBuilder $searchUrlBuilder;
 
-    /**
-     * @param array<string, mixed> $detailContext tour_seq_no (string), item_id (string), etc.
-     */
-    public function buildSearchUrl(
-        string $sourceId,
-        string $keyword,
-        string $category,
-        string $tenantSno,
-        ?ProductSourceRegistry $registry = null
-    ): ProductSourceUrlResult {
-        $definition = $this->resolveDefinition($sourceId, $registry);
-        $category = $this->normalizeCategory($category, $definition);
+    private RegionKeywordMapper $keywordMapper;
 
-        if ($definition === null || !$definition->supportsSearch()) {
-            return new ProductSourceUrlResult(trim($sourceId), $category, null, null);
-        }
-
-        $templateId = $this->templateResolver->resolveSearchTemplateId($definition);
-        $searchUrl = $this->renderTemplate($templateId, $keyword, $category, $tenantSno, []);
-
-        return new ProductSourceUrlResult(
-            $definition->getSourceId(),
-            $category,
-            $searchUrl,
-            null
-        );
-    }
-
-    /**
-     * @param array<string, mixed> $detailContext
-     */
-    public function buildDetailUrl(
-        string $sourceId,
-        string $keyword,
-        string $category,
-        string $tenantSno,
-        ?ProductSourceRegistry $registry = null,
-        array $detailContext = []
-    ): ProductSourceUrlResult {
-        $definition = $this->resolveDefinition($sourceId, $registry);
-        $category = $this->normalizeCategory($category, $definition);
-
-        if ($definition === null || !$definition->supportsDetail()) {
-            return new ProductSourceUrlResult(trim($sourceId), $category, null, null);
-        }
-
-        $templateId = $this->templateResolver->resolveDetailTemplateId($definition);
-        if ($templateId === null) {
-            return new ProductSourceUrlResult($definition->getSourceId(), $category, null, null);
-        }
-
-        $detailUrl = $this->renderTemplate($templateId, $keyword, $category, $tenantSno, $detailContext);
-
-        return new ProductSourceUrlResult(
-            $definition->getSourceId(),
-            $category,
+    public function __construct(
+        MultiSourceSearchUrlBuilderRegistry $sourceInstanceRegistry,
+        SearchUrlBuilderRegistry $searchUrlBuilderRegistry,
+        ?SearchUrlBuilder $searchUrlBuilder = null,
+        ?RegionKeywordMapper $keywordMapper = null
+    ) {
+        $this->sourceInstanceRegistry = $sourceInstanceRegistry;
+        $this->searchUrlBuilderRegistry = $searchUrlBuilderRegistry;
+        $this->keywordMapper = $keywordMapper ?? new RegionKeywordMapper();
+        $this->searchUrlBuilder = $searchUrlBuilder ?? new SearchUrlBuilder(
+            $searchUrlBuilderRegistry,
             null,
-            $detailUrl
+            $this->keywordMapper
         );
     }
 
     /**
-     * Search + detail URLs for one source.
-     *
-     * @param array<string, mixed> $detailContext
+     * @param array<string, mixed> $searchCondition
+     * @return list<array{platform: string, tenant_instance: string, search_url: string}>
      */
-    public function buildForSource(
-        string $sourceId,
-        string $keyword,
-        string $category,
-        string $tenantSno,
-        ?ProductSourceRegistry $registry = null,
-        array $detailContext = []
-    ): ProductSourceUrlResult {
-        $search = $this->buildSearchUrl($sourceId, $keyword, $category, $tenantSno, $registry);
-        $detail = $this->buildDetailUrl($sourceId, $keyword, $category, $tenantSno, $registry, $detailContext);
-
-        return new ProductSourceUrlResult(
-            $search->getSourceId(),
-            $search->getProductCategory(),
-            $search->getSearchUrl(),
-            $detail->getDetailUrl()
-        );
-    }
-
-    /**
-     * All tenant-enabled sources for category (registry required).
-     *
-     * @param array<string, mixed> $detailContext
-     * @return list<ProductSourceUrlResult>
-     */
-    public function buildAllForTenant(
-        ProductSourceRegistry $registry,
-        string $keyword,
-        string $category,
-        array $detailContext = []
-    ): array {
-        $tenantSno = $registry->getTenantSno();
-        $results = [];
-
-        foreach ($registry->getEnabledSourcesByCategory($category) as $definition) {
-            $results[] = $this->buildForSource(
-                $definition->getSourceId(),
-                $keyword,
-                $category,
-                $tenantSno,
-                $registry,
-                $detailContext
+    public function build(array $searchCondition): array
+    {
+        if ($this->sourceInstanceRegistry->isEmpty()) {
+            throw new MultiSourceSearchUrlBuilderException(
+                MultiSourceSearchUrlBuilderException::NO_SOURCE_INSTANCE,
+                'No source instance registered for multi-source search.'
             );
+        }
+
+        $results = [];
+        foreach ($this->sourceInstanceRegistry->getSourceInstanceKeys() as $tenantInstanceKey) {
+            $results[] = $this->buildForSourceInstance($tenantInstanceKey, $searchCondition);
         }
 
         return $results;
     }
 
-    private function resolveDefinition(string $sourceId, ?ProductSourceRegistry $registry): ?ProductSourceDefinition
-    {
-        $key = trim($sourceId);
-        if ($key === '') {
-            return null;
-        }
-
-        if ($registry !== null) {
-            $enabled = $registry->getEnabledSource($key);
-            if ($enabled !== null) {
-                return $enabled;
-            }
-
-            return $registry->getCatalogSource($key);
-        }
-
-        $catalog = ProductSourceRegistry::fromLocalFiles();
-
-        return $catalog->getCatalogSource($key);
-    }
-
-    private function normalizeCategory(string $category, ?ProductSourceDefinition $definition): string
-    {
-        $needle = trim($category);
-        if ($needle !== '') {
-            return $needle;
-        }
-        if ($definition !== null) {
-            return $definition->getProductCategory();
-        }
-
-        return 'group_tour';
-    }
-
     /**
-     * @param array<string, mixed> $detailContext
+     * @param array<string, mixed> $searchCondition
+     * @return array{platform: string, tenant_instance: string, search_url: string}
      */
-    private function renderTemplate(
-        string $templateId,
-        string $keyword,
-        string $category,
-        string $tenantSno,
-        array $detailContext
-    ): ?string {
-        $templateUrl = $this->templateRegistry->getTemplateUrl($templateId);
-        if ($templateUrl === null) {
-            return null;
+    private function buildForSourceInstance(string $tenantInstanceKey, array $searchCondition): array
+    {
+        $instance = $this->searchUrlBuilderRegistry->getInstanceByTenantKey($tenantInstanceKey);
+        if ($instance === null) {
+            throw new MultiSourceSearchUrlBuilderException(
+                MultiSourceSearchUrlBuilderException::UNKNOWN_SOURCE_INSTANCE,
+                'Unknown source instance: ' . $tenantInstanceKey
+            );
         }
 
-        $vars = $this->buildTemplateVariables($keyword, $category, $tenantSno, $detailContext);
-
-        $out = $templateUrl;
-        foreach ($vars as $name => $value) {
-            $out = str_replace('{' . $name . '}', $value, $out);
+        $platformId = isset($instance['platform_id']) ? trim((string) $instance['platform_id']) : '';
+        if ($platformId === '') {
+            throw new MultiSourceSearchUrlBuilderException(
+                MultiSourceSearchUrlBuilderException::UNKNOWN_SOURCE_INSTANCE,
+                'Source instance missing platform_id: ' . $tenantInstanceKey
+            );
         }
 
-        return $out;
-    }
+        $keyword = isset($searchCondition['keyword']) ? trim((string) $searchCondition['keyword']) : '';
+        $buildInput = $this->prepareBuildInput($searchCondition, $platformId, $keyword);
+        $buildInput['tenant_instance'] = $tenantInstanceKey;
+        $buildInput['platform'] = $platformId;
 
-    /**
-     * @param array<string, mixed> $detailContext
-     * @return array<string, string>
-     */
-    private function buildTemplateVariables(
-        string $keyword,
-        string $category,
-        string $tenantSno,
-        array $detailContext
-    ): array {
-        $keyword = trim($keyword);
-        $category = trim($category);
-        $tenantSno = trim($tenantSno);
-
-        $tourSeqNo = isset($detailContext['tour_seq_no']) ? trim((string) $detailContext['tour_seq_no']) : '';
-        if ($tourSeqNo === '') {
-            $tourSeqNo = '0';
-        }
+        $built = $this->searchUrlBuilder->buildSearchUrl($buildInput);
 
         return [
-            'sno' => $tenantSno,
-            'keyword' => rawurlencode($keyword),
-            'keyword_raw' => $keyword,
-            'product_category' => $category,
-            'area_no' => $this->resolveAreaNo($keyword),
-            'category_code' => $this->resolveCategoryCode($category),
-            'category_slug' => $this->resolveCategorySlug($category),
-            'tour_seq_no' => rawurlencode($tourSeqNo),
+            'platform' => $built['platform'],
+            'tenant_instance' => $built['tenant_instance'],
+            'search_url' => $built['search_url'],
         ];
     }
 
-    private function resolveAreaNo(string $keyword): string
+    /**
+     * Delegates keyword handling to platform-scoped mapper; unknown agenttour keywords do not abort.
+     *
+     * @param array<string, mixed> $searchCondition
+     * @return array<string, mixed>
+     */
+    private function prepareBuildInput(array $searchCondition, string $platformId, string $keyword): array
     {
         if ($keyword === '') {
-            return 'ALL';
+            return $searchCondition;
         }
 
-        $map = [
-            '東京' => 'TOKYO',
-            '大阪' => 'OSAKA',
-            '北海道' => 'HOKKAIDO',
-            '京都' => 'KYOTO',
-        ];
+        try {
+            return $this->keywordMapper->applyToSearchCondition($searchCondition, $platformId, $keyword);
+        } catch (RegionKeywordMapperException $e) {
+            if ($e->getErrorCode() !== RegionKeywordMapperException::KEYWORD_NOT_FOUND) {
+                throw $e;
+            }
 
-        return $map[$keyword] ?? rawurlencode($keyword);
-    }
+            $fallback = $searchCondition;
+            $fallback['keyword'] = $keyword;
 
-    private function resolveCategoryCode(string $category): string
-    {
-        $map = [
-            'group_tour' => 'tpe',
-            'fit' => 'fit',
-            'hotel' => 'hotel',
-            'car_rental' => 'car',
-            'private_group' => 'private',
-            'other' => 'other',
-        ];
-
-        return $map[$category] ?? 'tpe';
-    }
-
-    private function resolveCategorySlug(string $category): string
-    {
-        $map = [
-            'group_tour' => 'group-tour-travel',
-            'fit' => 'fit-travel',
-            'hotel' => 'hotel-travel',
-            'car_rental' => 'car-rental-travel',
-            'private_group' => 'private-group-travel',
-            'other' => 'other-travel',
-        ];
-
-        return $map[$category] ?? 'group-tour-travel';
+            return $fallback;
+        }
     }
 }
