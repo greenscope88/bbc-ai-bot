@@ -142,3 +142,47 @@ C:\Web\xampp\php\php.exe C:\bbc-ai-bot\tests\product_sources\test_channel_publis
 
 - `docs/BATS_PUBLISHER_STRATEGY_CONTRACT.md` — Strategy 層（Phase 9-B-18~19）
 - `docs/PUBLISHER_CONTRACT_PHASE9B16.md` — Publisher 中介內容
+
+---
+
+## Phase 9-B-21 實作紀錄
+
+**PublisherStrategy → ChannelPublishPlan** 整合測試已建立。
+
+| 檔案 | 說明 |
+|------|------|
+| `tests/product_sources/test_publisher_strategy_to_channel_publish_plan.php` | 整合測試 |
+
+### 已驗證流程
+
+```
+PublisherContract[] (mock)
+        ↓
+PublisherStrategyResolver::resolve('line')
+        ↓
+LinePublisherStrategy::applyStrategy()
+        ↓
+ChannelPublishPlanValidator::validate()
+        ↓
+ChannelPublishPlan
+```
+
+### 測試涵蓋
+
+| 項目 | 驗證 |
+|------|------|
+| Plan 建立 | `ChannelPublishPlan` 成功 |
+| channel / strategy_name | `line` / `line_oa_default_v1` |
+| title 保留 | 未超限標題原樣保留 |
+| summary truncate | travel_b tenant `max_summary_length=100` |
+| max_items | default 10 筆；travel_b 10→5 |
+| tenant override | travel_b `max_items=5`、title 36 |
+| 禁止內容 | 無 Flex / prompt / markdown 欄位 |
+
+### 測試指令
+
+```powershell
+C:\Web\xampp\php\php.exe C:\bbc-ai-bot\tests\product_sources\test_publisher_strategy_to_channel_publish_plan.php
+```
+
+**下一步（Phase 9-B-22+）：** LineRenderer skeleton（讀取 ChannelPublishPlan，仍不接入 webhook）
