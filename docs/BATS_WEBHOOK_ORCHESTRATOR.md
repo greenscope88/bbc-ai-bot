@@ -163,3 +163,26 @@ C:\Web\xampp\php\php.exe C:\bbc-ai-bot\tests\product_sources\test_bats_webhook_o
 - `docs/BATS_LINE_SENDER_CONTRACT.md` — Sender 層（9-B-25）
 - `docs/BATS_GEMINI_RESPONSE_CONTRACT.md` — Gemini Response（9-B-24）
 - `docs/BATS_CHANNEL_PUBLISH_PLAN_CONTRACT.md` — Plan 層（9-B-20~21）
+
+---
+
+## Phase 9-B-26B-2 實作紀錄
+
+**GeminiClient** adapter skeleton 已建立（見 `docs/BATS_GEMINI_CLIENT.md`）。
+
+| 檔案 | 說明 |
+|------|------|
+| `core/product_source/integration/GeminiClient.php` | Context → Response adapter |
+| `tests/product_sources/test_gemini_client.php` | 測試 |
+
+### 已驗證流程
+
+```
+GeminiContextDocument
+        ↓
+GeminiClient.generateResponse() / generateMockResponse()
+        ↓
+GeminiResponseContract (+ Validator)
+```
+
+**下一步（Phase 9-B-26B-3）：** LineTransport skeleton。
