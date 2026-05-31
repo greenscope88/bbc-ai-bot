@@ -213,3 +213,28 @@ LineMessagePayload (messages[] text only)
 ```
 
 **下一步（Phase 9-B-23+）：** Gemini Renderer / LineSender / webhook 仍不在本 Phase。
+
+---
+
+## Phase 9-B-23 實作紀錄
+
+**GeminiRenderer / GeminiContextDocument** 已建立（見 `docs/BATS_GEMINI_RENDERER_CONTRACT.md`）。
+
+| 檔案 | 說明 |
+|------|------|
+| `core/product_source/renderer/gemini/GeminiRenderer.php` | Plan → Context |
+| `core/product_source/renderer/gemini/GeminiContextDocument.php` | Context contract |
+| `core/product_source/renderer/gemini/GeminiContextDocumentValidator.php` | 驗證 |
+| `tests/product_sources/test_gemini_renderer.php` | 測試 |
+
+### 已驗證流程
+
+```
+ChannelPublishPlan (channel=gemini)
+        ↓
+GeminiRenderer
+        ↓
+GeminiContextDocument
+```
+
+**下一步（Phase 9-B-24+）：** Gemini Response Integration Test / LineSender / webhook 仍不在本 Phase。
