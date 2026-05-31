@@ -197,3 +197,29 @@ C:\Web\xampp\php\php.exe C:\bbc-ai-bot\tests\product_sources\test_gemini_rendere
 - `docs/BATS_CHANNEL_PUBLISH_PLAN_CONTRACT.md` — Plan 層
 - `docs/BATS_LINE_RENDERER_CONTRACT.md` — LINE Renderer（9-B-22）
 - `docs/BATS_PUBLISHER_STRATEGY_CONTRACT.md` — Strategy 層
+
+---
+
+## Phase 9-B-24 實作紀錄
+
+**GeminiResponseContract** 整合測試已建立（見 `docs/BATS_GEMINI_RESPONSE_CONTRACT.md`）。
+
+| 檔案 | 說明 |
+|------|------|
+| `core/product_source/renderer/gemini/GeminiResponseContract.php` | Response contract |
+| `core/product_source/renderer/gemini/GeminiResponseContractValidator.php` | Schema + 商業規則 |
+| `tests/product_sources/test_gemini_response_integration.php` | 整合測試 |
+
+### 已驗證流程
+
+```
+ChannelPublishPlan
+        ↓
+GeminiRenderer → GeminiContextDocument
+        ↓
+(mock) Gemini Response
+        ↓
+GeminiResponseContract (+ Validator)
+```
+
+**下一步（Phase 9-B-25+）：** LineSender / webhook 仍不在本 Phase。
