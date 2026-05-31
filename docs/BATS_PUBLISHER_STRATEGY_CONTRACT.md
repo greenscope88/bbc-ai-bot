@@ -316,3 +316,30 @@ notepad C:\bbc-ai-bot\config\examples\publisher_strategies.example.php
 ```powershell
 C:\Web\xampp\php\php.exe C:\bbc-ai-bot\tests\product_sources\test_publisher_strategy_contract.php
 ```
+
+---
+
+## Phase 9-B-19 實作紀錄
+
+本階段完成 **PublisherStrategyResolver** 與 **LinePublisherStrategy skeleton**，未建立 ChannelPublishPlan、Renderer、LINE API 整合。
+
+| 檔案 | 說明 |
+|------|------|
+| `core/product_source/publisher_strategy/PublisherStrategyInterface.php` | `applyStrategy()` 介面 |
+| `core/product_source/publisher_strategy/BasePublisherStrategy.php` | `truncateText` / `limitItems` / `applyFallback` |
+| `core/product_source/publisher_strategy/LinePublisherStrategy.php` | LINE skeleton（array 輸出） |
+| `core/product_source/publisher_strategy/PublisherStrategyResolver.php` | config 載入 + tenant merge + line only |
+| `tests/product_sources/test_publisher_strategy_resolver.php` | resolver / strategy 測試 |
+
+**尚未完成：**
+
+- `ChannelPublishPlan` 正式 contract
+- Renderer（LINE Flex / text / Gemini / Web Chat）
+- LINE webhook 接入
+- Gemini / Web Chat / Telegram / APP strategy class
+
+### 測試
+
+```powershell
+C:\Web\xampp\php\php.exe C:\bbc-ai-bot\tests\product_sources\test_publisher_strategy_resolver.php
+```
