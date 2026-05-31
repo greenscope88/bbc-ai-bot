@@ -186,3 +186,30 @@ C:\Web\xampp\php\php.exe C:\bbc-ai-bot\tests\product_sources\test_publisher_stra
 ```
 
 **下一步（Phase 9-B-22+）：** LineRenderer skeleton（讀取 ChannelPublishPlan，仍不接入 webhook）
+
+---
+
+## Phase 9-B-22 實作紀錄
+
+**LineRenderer Text MVP** 已建立（見 `docs/BATS_LINE_RENDERER_CONTRACT.md`）。
+
+| 檔案 | 說明 |
+|------|------|
+| `core/product_source/renderer/ChannelRendererInterface.php` | Renderer 介面 |
+| `core/product_source/renderer/line/LineRenderer.php` | Plan → Payload |
+| `core/product_source/renderer/line/LineTextMessageBuilder.php` | Text messages |
+| `core/product_source/renderer/line/LineMessagePayload.php` | Payload contract |
+| `core/product_source/renderer/line/LineMessagePayloadValidator.php` | text-only 驗證 |
+| `tests/product_sources/test_line_renderer.php` | 測試 |
+
+### 已驗證流程
+
+```
+ChannelPublishPlan
+        ↓
+LineRenderer
+        ↓
+LineMessagePayload (messages[] text only)
+```
+
+**下一步（Phase 9-B-23+）：** Gemini Renderer / LineSender / webhook 仍不在本 Phase。
