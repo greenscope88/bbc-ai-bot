@@ -343,3 +343,21 @@ C:\Web\xampp\php\php.exe C:\bbc-ai-bot\tests\product_sources\test_publisher_stra
 ```powershell
 C:\Web\xampp\php\php.exe C:\bbc-ai-bot\tests\product_sources\test_publisher_strategy_resolver.php
 ```
+
+---
+
+## Phase 9-B-20 實作紀錄
+
+**ChannelPublishPlan** 正式 contract 已建立（見 `docs/BATS_CHANNEL_PUBLISH_PLAN_CONTRACT.md`）。
+
+| 檔案 | 說明 |
+|------|------|
+| `core/product_source/channel_publish_plan/ChannelPublishPlan.php` | Plan contract |
+| `core/product_source/channel_publish_plan/ChannelPublishPlanValidator.php` | 驗證 |
+| `tests/product_sources/test_channel_publish_plan.php` | 測試 |
+
+**下一步（Phase 9-B-21+）：**
+
+- Strategy 輸出改為 `ChannelPublishPlan`（非 ad-hoc array）
+- LineRenderer / 其他 Renderer skeleton
+- LINE webhook 接入
