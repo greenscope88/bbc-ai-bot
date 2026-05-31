@@ -139,3 +139,28 @@ C:\Web\xampp\php\php.exe C:\bbc-ai-bot\tests\product_sources\test_line_renderer.
 
 - `docs/BATS_CHANNEL_PUBLISH_PLAN_CONTRACT.md` — Plan 層（9-B-20~21）
 - `docs/BATS_PUBLISHER_STRATEGY_CONTRACT.md` — Strategy 層（9-B-18~19）
+
+---
+
+## Phase 9-B-25 實作紀錄
+
+**LineSender** contract 已建立（見 `docs/BATS_LINE_SENDER_CONTRACT.md`）。
+
+| 檔案 | 說明 |
+|------|------|
+| `core/product_source/sender/line/LineSender.php` | Payload → Result |
+| `core/product_source/sender/line/LineSenderResult.php` | Result contract |
+| `core/product_source/sender/line/LineSenderResultValidator.php` | 驗證 |
+| `tests/product_sources/test_line_sender.php` | 測試 |
+
+### 已驗證流程
+
+```
+LineMessagePayload
+        ↓
+LineSender.prepare()
+        ↓
+LineSenderResult (reply / push, no HTTP)
+```
+
+**下一步（Phase 9-B-26）：** LINE OA Webhook Integration + 實際 Messaging API。
