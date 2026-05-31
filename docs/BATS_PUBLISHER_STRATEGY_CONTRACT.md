@@ -291,3 +291,28 @@ Phase 9-B-18 **不得**修改：
 # 本 Phase 僅供閱讀，未 wired 至 runtime
 notepad C:\bbc-ai-bot\config\examples\publisher_strategies.example.php
 ```
+
+---
+
+## Phase 9-B-18.1 實作紀錄
+
+本階段完成 **Contract + Validator + Test**，未接入 runtime、未建立 Strategy / Renderer。
+
+| 檔案 | 說明 |
+|------|------|
+| `core/product_source/PublisherStrategyContract.php` | `fromArray()` / `toArray()` |
+| `core/product_source/PublisherStrategyContractValidator.php` | `collectViolations()` / `validate()` |
+| `tests/product_sources/test_publisher_strategy_contract.php` | 6 個測試案例 |
+
+**留待後續 Phase：**
+
+- `PublisherStrategyResolver`
+- `ChannelPublishPlan`
+- `LinePublisherStrategy` / 其他 channel adapter
+- Renderer / LINE webhook 接入
+
+### 測試
+
+```powershell
+C:\Web\xampp\php\php.exe C:\bbc-ai-bot\tests\product_sources\test_publisher_strategy_contract.php
+```
