@@ -208,4 +208,76 @@ LineTransport.prepareReply() / preparePush() / simulateSend()
 TransportResult
 ```
 
-**下一步（Phase 9-B-26B-4）：** SaaSRouter hook + feature flag integration。
+**下一步（Phase 9-B-26B-4B）：** SaaSRouter hook + feature flag dry-run（見下方 4B 紀錄）。
+
+---
+
+## Phase 9-B-26B-4B — SaaSRouter Hook + Feature Flag Dry-run
+
+### 1. SaaSRouter Hook 位置
+
+`SaaSRouter::handleEvent()` 內，**`TenantResolver::resolve()` 之後**、**`TourService` / `AiPromptBuilder` / `callGemini` legacy 之前**：
+
+```
+簽章驗證 → 訊息擷取 → (legacy: 你好 / 天氣)
+    → TenantResolver::resolve()
+    → attemptBatsWebhookHook()   ← 4B
+    → null? → legacy Tour + Gemini + LineService
+    → array? → return bats_dry_run / bats_enabled_skeleton（不 LINE）
+```
+
+可測試入口：`SaaSRouter::attemptBatsWebhookHook()`（單元測試注入 `BatsFeatureGate`）。
+
+### 2. Feature Flag 設計
+
+| 檔案 | 說明 |
+|------|------|
+| `config/bats_feature.php` | `defaults` / `tenants` / `channels` → `mode` |
+
+解析順序：`tenants[tenant_sno]` → `channels[channel]` → `defaults.mode`（fail-closed → `disabled`）。
+
+| mode | 4B 行為 |
+|------|---------|
+| `disabled` | **fall-through** 原 legacy，不呼叫 orchestrator |
+| `dry_run` | `BatsWebhookOrchestrator` → `message: bats_dry_run`，**不** LINE / Gemini |
+| `enabled` | 同 skeleton → `message: bats_enabled_skeleton`，**不**接正式 API |
+
+### 3. disabled / dry_run / enabled skeleton 差異
+
+- **disabled：** `attemptBatsWebhookHook()` 回傳 `null`，SaaSRouter 繼續 `TourService` → `callGemini` → `LineService::replyToLine`（與 4B 前相同）。
+- **dry_run：** orchestrator `status: dry_run`，router `message: bats_dry_run`，提前 `return`，無商品搜尋、無 HTTP。
+- **enabled（4B）：** orchestrator `status: accepted`，router `message: bats_enabled_skeleton`，仍為 skeleton，行為等同不接 LINE。
+
+### 4. Rollback 方法
+
+1. **Config rollback（建議）：** 將 `config/bats_feature.php` 的 `defaults.mode` 與所有 `tenants` / `channels` 設為 `disabled`（或清空 `tenants`），立即回到 legacy。
+2. **Git rollback：** `git revert` 本 Phase commit（僅 `saas_router.php` + config + docs + test）。
+3. **不需** 改 webhook、`callback.php`、`safe_gateway.php`、`.env`、SQL。
+
+### 5. 目前不支援 hello / weather 進 BATS
+
+Hook 在 **TenantResolver 之後**：
+
+- `你好`：在 `callback.php` 路徑由 `safe_gateway` 提前回覆；在 `callback_core` / router 內亦在 resolve **之前** 回覆。
+- `weather_query`：在 resolve **之前** 走 `callGemini` + `LineService`。
+
+因此 **4B pilot 的 dry_run tenant** 若使用者送「你好」或天氣句，仍走 legacy 短路，**不會**進 `BatsWebhookOrchestrator`。全量 BATS 需未來 Phase 將 hook 上移並預解析 tenant。
+
+### 6. 未來 Phase 9-B-26C — LINE OA dry-run 實測
+
+- 單一 pilot `tenant_sno` 設 `dry_run`
+- 以真實 LINE OA 送一般行程句（非 hello / 天氣）
+- 預期 HTTP 200 + `message: bats_dry_run`，**客人端不應收到 BATS 回覆**（未呼叫 `LineService`）
+- 驗證 `saas_router.log` / `webhook.log` 的 `bats_orchestrator_hook` 步驟
+
+### 檔案清單（4B）
+
+| 檔案 | 說明 |
+|------|------|
+| `config/bats_feature.php` | Feature flag（預設全 disabled） |
+| `core/saas_router.php` | `attemptBatsWebhookHook` + resolve 後 hook |
+| `tests/product_sources/test_saas_router_bats_hook.php` | Hook 測試 |
+
+```powershell
+C:\Web\xampp\php\php.exe C:\bbc-ai-bot\tests\product_sources\test_saas_router_bats_hook.php
+```

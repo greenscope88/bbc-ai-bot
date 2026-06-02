@@ -14,6 +14,8 @@ require_once __DIR__ . '/tour_line_reply_composer.php';
 require_once __DIR__ . '/tour_prompt_context_service.php';
 require_once __DIR__ . '/tour_prompt_feature_gate.php';
 require_once __DIR__ . '/tenant/LineCredentialResolver.php';
+require_once __DIR__ . '/product_source/integration/BatsFeatureGate.php';
+require_once __DIR__ . '/product_source/integration/BatsWebhookOrchestrator.php';
 
 class SaaSRouter
 {
@@ -248,6 +250,97 @@ class SaaSRouter
         ]);
 
         return ['ok' => true, 'message' => 'completed'];
+    }
+
+    /**
+     * Phase 9-B-26B-4B: BATS hook after TenantResolver, before legacy Tour/Gemini/LINE.
+     * Returns router result when BATS intercepts; null = fall through to legacy.
+     *
+     * @param array<string, mixed> $tenant
+     * @return array<string, mixed>|null
+     */
+    public static function attemptBatsWebhookHook(
+        array $tenant,
+        string $userMessage,
+        string $traceId,
+        string $channelId = '',
+        ?BatsFeatureGate $featureGate = null,
+        ?BatsWebhookOrchestrator $orchestrator = null
+    ): ?array {
+        $tenantSno = trim((string) ($tenant['sno'] ?? ''));
+        if ($channelId === '') {
+            $channelId = trim((string) ($tenant['channel_id'] ?? ''));
+        }
+
+        $gate = $featureGate ?? new BatsFeatureGate(self::loadBatsFeatureConfig());
+        $mode = $gate->resolveMode([
+            'tenant_sno' => $tenantSno,
+            'channel' => $channelId,
+        ]);
+
+        if (!$gate->isPipelineAllowed($mode)) {
+            return null;
+        }
+
+        if ($tenantSno === '') {
+            return null;
+        }
+
+        $orch = $orchestrator ?? new BatsWebhookOrchestrator($gate);
+        $batsResult = $orch->handle([
+            'tenant_sno' => $tenantSno,
+            'customer_message' => $userMessage,
+            'channel' => $channelId,
+            'trace_id' => $traceId,
+        ]);
+
+        $status = isset($batsResult['status']) ? trim((string) $batsResult['status']) : '';
+        if ($status === 'disabled' || $status === 'rejected') {
+            return null;
+        }
+
+        $routerMessage = 'bats_dry_run';
+        if ($status === 'accepted' || $mode === BatsFeatureGate::MODE_ENABLED) {
+            $routerMessage = 'bats_enabled_skeleton';
+        }
+        if ($status === 'dry_run') {
+            $routerMessage = 'bats_dry_run';
+        }
+
+        Logger::log('saas_router.log', 'bats_orchestrator_hook', [
+            'trace_id' => $traceId,
+            'tenant_sno' => $tenantSno,
+            'bats_mode' => $mode,
+            'bats_status' => $status,
+            'router_message' => $routerMessage,
+        ]);
+        self::appendWebhookLog('bats_orchestrator_hook', [
+            'trace_id' => $traceId,
+            'tenant_sno' => $tenantSno,
+            'bats' => $batsResult,
+            'router_message' => $routerMessage,
+        ]);
+
+        return [
+            'ok' => true,
+            'message' => $routerMessage,
+            'bats' => $batsResult,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function loadBatsFeatureConfig(): array
+    {
+        $path = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'bats_feature.php';
+        if (!is_file($path)) {
+            return BatsFeatureGate::defaultConfig();
+        }
+
+        $loaded = require $path;
+
+        return is_array($loaded) ? $loaded : BatsFeatureGate::defaultConfig();
     }
 
     private static function createPdo(array $config): PDO
