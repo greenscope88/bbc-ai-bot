@@ -370,6 +370,8 @@ class SaaSRouter
         $snapshotVersion = null;
         $snapshotReasonCode = null;
         $decisionSnapshotPresent = false;
+        $candidateSourceCount = null;
+        $resultCount = null;
 
         if ($featureEnabled && $tenantSno !== '') {
             $orch = new BatsWebhookOrchestrator($gate);
@@ -387,6 +389,12 @@ class SaaSRouter
                     : null;
                 $snapshotReasonCode = isset($batsResult['decision_snapshot']['reason_code'])
                     ? (string) $batsResult['decision_snapshot']['reason_code']
+                    : null;
+                $candidateSourceCount = isset($batsResult['decision_snapshot']['candidate_sources']['count'])
+                    ? (int) $batsResult['decision_snapshot']['candidate_sources']['count']
+                    : null;
+                $resultCount = isset($batsResult['decision_snapshot']['result_summary']['result_count'])
+                    ? (int) $batsResult['decision_snapshot']['result_summary']['result_count']
                     : null;
             }
             $decision = 'orchestrator_called';
@@ -408,6 +416,8 @@ class SaaSRouter
             'decision_snapshot_present' => $decisionSnapshotPresent,
             'snapshot_version' => $snapshotVersion,
             'reason_code' => $snapshotReasonCode,
+            'candidate_source_count' => $candidateSourceCount,
+            'result_count' => $resultCount,
             'fallthrough_to_legacy' => true,
         ];
 

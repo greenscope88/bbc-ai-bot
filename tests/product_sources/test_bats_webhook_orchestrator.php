@@ -117,7 +117,7 @@ try {
     test_assert(isset($result['decision_snapshot']) && is_array($result['decision_snapshot']), 'case3 snapshot exists');
     test_assert(($result['decision_snapshot']['snapshot_version'] ?? 0) === 1, 'case3 snapshot version');
     test_assert(($result['decision_snapshot']['fallthrough_to_legacy'] ?? false) === true, 'case3 fallthrough true');
-    test_assert(($result['decision_snapshot']['reason_code'] ?? '') === 'DRY_RUN_SNAPSHOT_ONLY', 'case3 reason code');
+    test_assert(($result['decision_snapshot']['reason_code'] ?? '') === 'DRY_RUN_SNAPSHOT_NO_CANDIDATES', 'case3 reason code');
     test_assert(($result['decision_snapshot']['query']['raw'] ?? '') === '請推薦大阪三日團', 'case3 raw query');
     test_assert(($result['decision_snapshot']['search_condition']['available'] ?? true) === false, 'case3 search_condition unavailable');
     test_assert(($result['decision_snapshot']['candidate_sources']['available'] ?? true) === false, 'case3 candidate_sources unavailable');
@@ -186,6 +186,80 @@ try {
     test_assert(true, 'case7 round trip PASS');
 } catch (\Throwable $e) {
     test_assert(false, 'case7 should pass: ' . $e->getMessage());
+}
+
+// Case 8: dry_run snapshot with candidate source summaries
+try {
+    $result = $orchestrator->handle([
+        'tenant_sno' => 'cccccccccccccccc',
+        'customer_message' => '東京五日',
+        'trace_id' => 'trace-case-8',
+        'source_results' => [
+            [
+                'source_platform' => 'bbcshops',
+                'tenant_instance' => 'travel_b',
+                'product_category' => 'group_tour',
+                'result_count' => 10,
+                'items' => [['title' => 'should_not_be_exposed']],
+            ],
+            [
+                'source_platform' => 'agenttour',
+                'tenant_instance' => 'travel_b_agenttour',
+                'product_category' => 'group_tour',
+                'result_count' => 8,
+            ],
+            [
+                'source_platform' => 'grp',
+                'tenant_instance' => 'travel_b_grp',
+                'product_category' => 'group_tour',
+                'result_count' => 12,
+            ],
+        ],
+    ]);
+    $snapshot = $result['decision_snapshot'] ?? [];
+    $candidate = is_array($snapshot['candidate_sources'] ?? null) ? $snapshot['candidate_sources'] : [];
+    $summary = is_array($snapshot['result_summary'] ?? null) ? $snapshot['result_summary'] : [];
+    $items = is_array($candidate['items'] ?? null) ? $candidate['items'] : [];
+
+    test_assert(($candidate['available'] ?? false) === true, 'case8 candidate available true');
+    test_assert(($candidate['count'] ?? 0) === 3, 'case8 candidate count = 3');
+    test_assert(($summary['source_count'] ?? 0) === 3, 'case8 source_count = 3');
+    test_assert(($summary['result_count'] ?? 0) === 30, 'case8 result_count = 30');
+    test_assert(($snapshot['reason_code'] ?? '') === 'DRY_RUN_SNAPSHOT_WITH_CANDIDATES', 'case8 reason code with candidates');
+    test_assert(($snapshot['fallthrough_to_legacy'] ?? false) === true, 'case8 fallthrough true');
+
+    foreach ($items as $idx => $item) {
+        test_assert(is_array($item), 'case8 item array #' . $idx);
+        test_assert(!array_key_exists('items', $item), 'case8 no full items payload #' . $idx);
+        test_assert(!array_key_exists('products', $item), 'case8 no products payload #' . $idx);
+        test_assert(count(array_keys($item)) === 4, 'case8 summary keys only #' . $idx);
+    }
+    test_assert(!containsSensitiveKey($snapshot), 'case8 snapshot has no sensitive keys');
+    test_assert(true, 'case8 candidate summary PASS');
+} catch (\Throwable $e) {
+    test_assert(false, 'case8 should pass: ' . $e->getMessage());
+}
+
+// Case 9: dry_run snapshot without source_results should not fatal
+try {
+    $result = $orchestrator->handle([
+        'tenant_sno' => 'cccccccccccccccc',
+        'customer_message' => '大阪三日',
+        'trace_id' => 'trace-case-9',
+        'source_results' => [],
+    ]);
+    $snapshot = is_array($result['decision_snapshot'] ?? null) ? $result['decision_snapshot'] : [];
+    $candidate = is_array($snapshot['candidate_sources'] ?? null) ? $snapshot['candidate_sources'] : [];
+    $summary = is_array($snapshot['result_summary'] ?? null) ? $snapshot['result_summary'] : [];
+
+    test_assert(($candidate['available'] ?? true) === false, 'case9 candidate available false');
+    test_assert(($candidate['count'] ?? -1) === 0, 'case9 candidate count = 0');
+    test_assert(($summary['source_count'] ?? -1) === 0, 'case9 source_count = 0');
+    test_assert(($summary['result_count'] ?? -1) === 0, 'case9 result_count = 0');
+    test_assert(($snapshot['reason_code'] ?? '') === 'DRY_RUN_SNAPSHOT_NO_CANDIDATES', 'case9 reason code no candidates');
+    test_assert(true, 'case9 no candidate snapshot PASS');
+} catch (\Throwable $e) {
+    test_assert(false, 'case9 should pass: ' . $e->getMessage());
 }
 
 if ($failures > 0) {

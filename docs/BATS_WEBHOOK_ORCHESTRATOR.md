@@ -334,3 +334,43 @@ C:\Web\xampp\php\php.exe C:\bbc-ai-bot\tests\product_sources\test_saas_router_ba
 - Multi Source candidate list
 - PublisherStrategy / ChannelPublishPlan
 - GeminiContextDocument
+
+---
+
+## Phase 9-B-26C-3 — Multi Source Result Summary into Decision Snapshot
+
+### 1. 範圍
+
+本 phase 僅支援以 `source_results`（fixture/mock）輸入 orchestrator，寫入 snapshot 摘要欄位，不做外部搜尋：
+
+- 不做 Hybrid Smart Search
+- 不做 Query Normalizer / Alias / RAG
+- 不呼叫任何外部商品源 API
+
+### 2. 新增 snapshot 欄位
+
+- `candidate_sources.available`
+- `candidate_sources.count`
+- `candidate_sources.items`（摘要 only）
+- `result_summary.result_count`
+- `result_summary.source_count`
+
+每個 `candidate_sources.items[]` 限縮為：
+
+- `source_platform`
+- `tenant_instance`
+- `product_category`
+- `result_count`
+
+### 3. reason_code 規則
+
+- `DRY_RUN_SNAPSHOT_WITH_CANDIDATES`：dry-run 且 `source_results` 有摘要資料
+- `DRY_RUN_SNAPSHOT_NO_CANDIDATES`：dry-run 且沒有 candidates
+- `SNAPSHOT_PLACEHOLDER_ONLY`：非 dry-run status 的 placeholder snapshot
+
+### 4. 安全原則
+
+- `fallthrough_to_legacy` 持續為 `true`
+- 不帶入完整商品明細到 snapshot
+- 不紀錄 token / secret / apiKey / replyToken
+- 不更動 SaaSRouter 正式回覆 return path

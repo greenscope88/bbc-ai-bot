@@ -29,6 +29,9 @@ final class BatsWebhookOrchestrator
         $customerMessage = isset($input['customer_message']) ? trim((string) $input['customer_message']) : '';
         $channel = isset($input['channel']) ? trim((string) $input['channel']) : '';
         $traceId = isset($input['trace_id']) ? trim((string) $input['trace_id']) : '';
+        $sourceResults = isset($input['source_results']) && is_array($input['source_results'])
+            ? $input['source_results']
+            : [];
 
         if ($traceId === '') {
             $traceId = $this->generateTraceId();
@@ -48,7 +51,8 @@ final class BatsWebhookOrchestrator
                     $channel,
                     $customerMessage,
                     'rejected',
-                    BatsFeatureGate::MODE_DISABLED
+                    BatsFeatureGate::MODE_DISABLED,
+                    $sourceResults
                 ),
             ]);
         }
@@ -67,7 +71,8 @@ final class BatsWebhookOrchestrator
                     $channel,
                     $customerMessage,
                     'rejected',
-                    BatsFeatureGate::MODE_DISABLED
+                    BatsFeatureGate::MODE_DISABLED,
+                    $sourceResults
                 ),
             ]);
         }
@@ -86,7 +91,8 @@ final class BatsWebhookOrchestrator
                     $channel,
                     $customerMessage,
                     'rejected',
-                    BatsFeatureGate::MODE_DISABLED
+                    BatsFeatureGate::MODE_DISABLED,
+                    $sourceResults
                 ),
             ]);
         }
@@ -110,7 +116,8 @@ final class BatsWebhookOrchestrator
                     $channel,
                     $customerMessage,
                     'disabled',
-                    $mode
+                    $mode,
+                    $sourceResults
                 ),
             ]);
         }
@@ -129,7 +136,8 @@ final class BatsWebhookOrchestrator
                     $channel,
                     $customerMessage,
                     'dry_run',
-                    $mode
+                    $mode,
+                    $sourceResults
                 ),
             ]);
         }
@@ -147,7 +155,8 @@ final class BatsWebhookOrchestrator
                 $channel,
                 $customerMessage,
                 'accepted',
-                $mode
+                $mode,
+                $sourceResults
             ),
         ]);
     }
@@ -211,10 +220,20 @@ final class BatsWebhookOrchestrator
         string $channel,
         string $rawQuery,
         string $status,
-        string $batsMode
+        string $batsMode,
+        array $sourceResults = []
     ): array {
         $isDryRun = $status === 'dry_run' || $batsMode === BatsFeatureGate::MODE_DRY_RUN;
-        $reasonCode = $isDryRun ? 'DRY_RUN_SNAPSHOT_ONLY' : 'SNAPSHOT_PLACEHOLDER_ONLY';
+        $candidateSummary = $this->buildCandidateSourceSummary($sourceResults);
+        $hasCandidates = $candidateSummary['count'] > 0;
+
+        if ($isDryRun && $hasCandidates) {
+            $reasonCode = 'DRY_RUN_SNAPSHOT_WITH_CANDIDATES';
+        } elseif ($isDryRun) {
+            $reasonCode = 'DRY_RUN_SNAPSHOT_NO_CANDIDATES';
+        } else {
+            $reasonCode = 'SNAPSHOT_PLACEHOLDER_ONLY';
+        }
 
         return [
             'snapshot_version' => self::SNAPSHOT_VERSION,
@@ -239,9 +258,13 @@ final class BatsWebhookOrchestrator
                 'value' => null,
             ],
             'candidate_sources' => [
-                'available' => false,
-                'count' => null,
-                'items' => [],
+                'available' => $hasCandidates,
+                'count' => $hasCandidates ? $candidateSummary['count'] : 0,
+                'items' => $candidateSummary['items'],
+            ],
+            'result_summary' => [
+                'result_count' => $candidateSummary['result_count'],
+                'source_count' => $candidateSummary['count'],
             ],
             'publisher_strategy' => [
                 'available' => false,
@@ -261,6 +284,41 @@ final class BatsWebhookOrchestrator
             'reason_code' => $reasonCode,
             'fallthrough_to_legacy' => true,
             'generated_at_unix' => time(),
+        ];
+    }
+
+    /**
+     * @param array<int, mixed> $sourceResults
+     * @return array{count: int, result_count: int, items: list<array<string, mixed>>}
+     */
+    private function buildCandidateSourceSummary(array $sourceResults): array
+    {
+        $items = [];
+        $resultCount = 0;
+
+        foreach ($sourceResults as $source) {
+            if (!is_array($source)) {
+                continue;
+            }
+
+            $sourcePlatform = isset($source['source_platform']) ? trim((string) $source['source_platform']) : '';
+            $tenantInstance = isset($source['tenant_instance']) ? trim((string) $source['tenant_instance']) : '';
+            $productCategory = isset($source['product_category']) ? trim((string) $source['product_category']) : '';
+            $sourceResultCount = isset($source['result_count']) ? max(0, (int) $source['result_count']) : 0;
+
+            $items[] = [
+                'source_platform' => $sourcePlatform,
+                'tenant_instance' => $tenantInstance,
+                'product_category' => $productCategory,
+                'result_count' => $sourceResultCount,
+            ];
+            $resultCount += $sourceResultCount;
+        }
+
+        return [
+            'count' => count($items),
+            'result_count' => $resultCount,
+            'items' => $items,
         ];
     }
 
@@ -294,8 +352,12 @@ final class BatsWebhookOrchestrator
             ],
             'candidate_sources' => isset($snapshot['candidate_sources']) && is_array($snapshot['candidate_sources']) ? $snapshot['candidate_sources'] : [
                 'available' => false,
-                'count' => null,
+                'count' => 0,
                 'items' => [],
+            ],
+            'result_summary' => isset($snapshot['result_summary']) && is_array($snapshot['result_summary']) ? $snapshot['result_summary'] : [
+                'result_count' => 0,
+                'source_count' => 0,
             ],
             'publisher_strategy' => isset($snapshot['publisher_strategy']) && is_array($snapshot['publisher_strategy']) ? $snapshot['publisher_strategy'] : [
                 'available' => false,
