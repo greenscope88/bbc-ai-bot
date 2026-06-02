@@ -186,3 +186,26 @@ GeminiResponseContract (+ Validator)
 ```
 
 **下一步（Phase 9-B-26B-3）：** LineTransport skeleton。
+
+---
+
+## Phase 9-B-26B-3 實作紀錄
+
+**LineTransport** adapter skeleton 已建立（見 `docs/BATS_LINE_TRANSPORT.md`）。
+
+| 檔案 | 說明 |
+|------|------|
+| `core/product_source/integration/LineTransport.php` | TransportResult + LineTransport |
+| `tests/product_sources/test_line_transport.php` | 測試 |
+
+### 已驗證流程
+
+```
+LineMessagePayload
+        ↓
+LineTransport.prepareReply() / preparePush() / simulateSend()
+        ↓
+TransportResult
+```
+
+**下一步（Phase 9-B-26B-4）：** SaaSRouter hook + feature flag integration。
