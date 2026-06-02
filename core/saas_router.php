@@ -103,6 +103,17 @@ class SaaSRouter
             'reply_token_exists' => $replyToken !== '',
         ]);
 
+        // Phase 9-B-26C-0: read-only BATS hook trace (always fall-through).
+        // Safety: never throw, never reply, never call Gemini, never change legacy flow.
+        try {
+            self::traceBatsHookReadOnly($event, $firstEvent, $userMessage, $replyToken, $traceId);
+        } catch (\Throwable $e) {
+            Logger::log('saas_router.log', 'bats_hook_trace_error', [
+                'trace_id' => $traceId,
+                'message' => $e->getMessage(),
+            ]);
+        }
+
         if ($replyToken === '' || $userMessage === '') {
             Logger::log('saas_router.log', 'empty_reply_or_message', ['trace_id' => $traceId]);
             return ['ok' => true, 'message' => 'ignored'];
@@ -162,6 +173,21 @@ class SaaSRouter
         try {
             $pdo = self::createPdo($config);
             $tenant = TenantResolver::resolve($pdo, $event, $config);
+
+            // Phase 9-B-26C-0: resolve tenant then trace BATS gate/orchestrator read-only.
+            try {
+                $postResolveChannelId = (string) ($tenant['channel_id'] ?? '');
+                if ($postResolveChannelId === '' && isset($event['destination'])) {
+                    $postResolveChannelId = (string) $event['destination'];
+                }
+                self::traceBatsHookAfterTenantReadOnly($tenant, $userMessage, $traceId, $postResolveChannelId);
+            } catch (\Throwable $e) {
+                Logger::log('saas_router.log', 'bats_hook_trace_error_post_resolve', [
+                    'trace_id' => $traceId,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+
             $intent = IntentRouter::detect($userMessage);
 
             $supportCheck = TourService::isServiceSupported($pdo, (string) $tenant['sno'], (string) $intent['service_name']);
@@ -250,6 +276,143 @@ class SaaSRouter
         ]);
 
         return ['ok' => true, 'message' => 'completed'];
+    }
+
+    /**
+     * Phase 9-B-26C-0: Read-only trace hook (no intercept).
+     *
+     * Logs minimal event metadata + channel-based feature mode decision.
+     * Must not log tokens/secrets and must not throw.
+     *
+     * @param array<string, mixed> $event
+     * @param array<string, mixed> $firstEvent
+     */
+    private static function traceBatsHookReadOnly(
+        array $event,
+        array $firstEvent,
+        string $userMessage,
+        string $replyToken,
+        string $traceId
+    ): void {
+        $destination = isset($event['destination']) ? trim((string) $event['destination']) : '';
+        $eventType = isset($firstEvent['type']) ? trim((string) $firstEvent['type']) : '';
+        $eventTimestamp = isset($firstEvent['timestamp']) ? (int) $firstEvent['timestamp'] : 0;
+
+        $source = (isset($firstEvent['source']) && is_array($firstEvent['source'])) ? $firstEvent['source'] : [];
+        $userId = isset($source['userId']) ? (string) $source['userId'] : '';
+        $groupId = isset($source['groupId']) ? (string) $source['groupId'] : '';
+        $roomId = isset($source['roomId']) ? (string) $source['roomId'] : '';
+
+        $message = (isset($firstEvent['message']) && is_array($firstEvent['message'])) ? $firstEvent['message'] : [];
+        $messageType = isset($message['type']) ? (string) $message['type'] : '';
+
+        $preview = self::messagePreview($userMessage, 80);
+        $hash8 = substr(hash('sha256', $userMessage), 0, 8);
+
+        $gate = new BatsFeatureGate(self::loadBatsFeatureConfig());
+        $mode = $gate->resolveMode([
+            'tenant_sno' => '',
+            'channel' => $destination,
+        ]);
+
+        $featureEnabled = $gate->isPipelineAllowed($mode);
+        $dryRunEnabled = $mode === BatsFeatureGate::MODE_DRY_RUN;
+
+        $payload = [
+            'trace_id' => $traceId,
+            'timestamp' => $eventTimestamp > 0 ? $eventTimestamp : time(),
+            'event_type' => $eventType,
+            'reply_token_exists' => $replyToken !== '',
+            'user_id' => $userId,
+            'group_id' => $groupId,
+            'room_id' => $roomId,
+            'channel' => $destination,
+            'message_type' => $messageType,
+            'message_text_preview' => $preview,
+            'message_text_hash8' => $hash8,
+            'bats_feature_enabled' => $featureEnabled,
+            'bats_dry_run_enabled' => $dryRunEnabled,
+            'bats_hook_called' => true,
+            'bats_hook_decision' => $featureEnabled ? 'gate_enabled_channel' : 'gate_disabled_channel',
+            'fallthrough_to_legacy' => true,
+        ];
+
+        Logger::log('saas_router.log', 'bats_hook_trace', $payload);
+        self::appendWebhookLog('bats_hook_trace', $payload);
+    }
+
+    /**
+     * Phase 9-B-26C-0: After tenant resolved, trace tenant-based gate and orchestrator status.
+     * Always fall-through. Never returns any intercept result.
+     *
+     * @param array<string, mixed> $tenant
+     */
+    private static function traceBatsHookAfterTenantReadOnly(
+        array $tenant,
+        string $userMessage,
+        string $traceId,
+        string $channelId = ''
+    ): void {
+        $tenantSno = trim((string) ($tenant['sno'] ?? ''));
+        $resolvedChannelId = $channelId !== '' ? $channelId : trim((string) ($tenant['channel_id'] ?? ''));
+
+        $gate = new BatsFeatureGate(self::loadBatsFeatureConfig());
+        $mode = $gate->resolveMode([
+            'tenant_sno' => $tenantSno,
+            'channel' => $resolvedChannelId,
+        ]);
+
+        $featureEnabled = $gate->isPipelineAllowed($mode);
+        $dryRunEnabled = $mode === BatsFeatureGate::MODE_DRY_RUN;
+
+        $decision = $featureEnabled ? 'gate_enabled_tenant' : 'gate_disabled_tenant';
+        $batsStatus = '';
+
+        if ($featureEnabled && $tenantSno !== '') {
+            $orch = new BatsWebhookOrchestrator($gate);
+            $batsResult = $orch->handle([
+                'tenant_sno' => $tenantSno,
+                'customer_message' => $userMessage,
+                'channel' => $resolvedChannelId,
+                'trace_id' => $traceId,
+            ]);
+            $batsStatus = isset($batsResult['status']) ? trim((string) $batsResult['status']) : '';
+            $decision = 'orchestrator_called';
+        } elseif ($featureEnabled && $tenantSno === '') {
+            $decision = 'skipped_missing_tenant_sno';
+        }
+
+        $payload = [
+            'trace_id' => $traceId,
+            'timestamp' => time(),
+            'tenant_sno' => $tenantSno,
+            'channel' => $resolvedChannelId,
+            'bats_feature_enabled' => $featureEnabled,
+            'bats_dry_run_enabled' => $dryRunEnabled,
+            'bats_hook_called' => true,
+            'bats_hook_decision' => $decision,
+            'bats_mode' => $mode,
+            'bats_status' => $batsStatus,
+            'fallthrough_to_legacy' => true,
+        ];
+
+        Logger::log('saas_router.log', 'bats_hook_trace_post_resolve', $payload);
+        self::appendWebhookLog('bats_hook_trace_post_resolve', $payload);
+    }
+
+    private static function messagePreview(string $text, int $maxChars): string
+    {
+        $t = trim(str_replace(["\r", "\n", "\t"], ' ', $text));
+        if ($t === '') {
+            return '';
+        }
+
+        $len = mb_strlen($t, 'UTF-8');
+        if ($len <= $maxChars) {
+            return $t;
+        }
+
+        return mb_substr($t, 0, $maxChars, 'UTF-8') . '…';
     }
 
     /**
