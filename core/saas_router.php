@@ -367,6 +367,9 @@ class SaaSRouter
 
         $decision = $featureEnabled ? 'gate_enabled_tenant' : 'gate_disabled_tenant';
         $batsStatus = '';
+        $snapshotVersion = null;
+        $snapshotReasonCode = null;
+        $decisionSnapshotPresent = false;
 
         if ($featureEnabled && $tenantSno !== '') {
             $orch = new BatsWebhookOrchestrator($gate);
@@ -377,6 +380,15 @@ class SaaSRouter
                 'trace_id' => $traceId,
             ]);
             $batsStatus = isset($batsResult['status']) ? trim((string) $batsResult['status']) : '';
+            if (isset($batsResult['decision_snapshot']) && is_array($batsResult['decision_snapshot'])) {
+                $decisionSnapshotPresent = true;
+                $snapshotVersion = isset($batsResult['decision_snapshot']['snapshot_version'])
+                    ? (int) $batsResult['decision_snapshot']['snapshot_version']
+                    : null;
+                $snapshotReasonCode = isset($batsResult['decision_snapshot']['reason_code'])
+                    ? (string) $batsResult['decision_snapshot']['reason_code']
+                    : null;
+            }
             $decision = 'orchestrator_called';
         } elseif ($featureEnabled && $tenantSno === '') {
             $decision = 'skipped_missing_tenant_sno';
@@ -393,6 +405,9 @@ class SaaSRouter
             'bats_hook_decision' => $decision,
             'bats_mode' => $mode,
             'bats_status' => $batsStatus,
+            'decision_snapshot_present' => $decisionSnapshotPresent,
+            'snapshot_version' => $snapshotVersion,
+            'reason_code' => $snapshotReasonCode,
             'fallthrough_to_legacy' => true,
         ];
 

@@ -281,3 +281,56 @@ Hook 在 **TenantResolver 之後**：
 ```powershell
 C:\Web\xampp\php\php.exe C:\bbc-ai-bot\tests\product_sources\test_saas_router_bats_hook.php
 ```
+
+---
+
+## Phase 9-B-26C-2 — BATS Orchestrator Decision Snapshot Dry-run
+
+### 1. 目標
+
+在 **dry-run** 模式下，`BatsWebhookOrchestrator::handle()` 回傳 `decision_snapshot`，提供後續 BATS pipeline 的契約骨架，但**不接管正式回覆**、不改既有 LINE OA 行為。
+
+### 2. Safety Guard（必須維持）
+
+- `fallthrough_to_legacy = true`（由 router trace 與 snapshot 都標示）
+- 不呼叫 Gemini API / LINE Reply API / Host B / SQL
+- 不修改 hello / weather / legacy tour 正式流程
+
+### 3. Decision Snapshot（最小契約）
+
+`decision_snapshot` 目前為 placeholder contract（v1）：
+
+- `snapshot_version`, `trace_id`, `tenant_sno`, `channel`
+- `dry_run`, `orchestrator_status`, `bats_mode`
+- `intent`（`not_available_yet`）
+- `query.raw`（保留原始 customer_message）
+- `search_condition.available = false`
+- `candidate_sources.available = false`
+- `publisher_strategy.available = false`
+- `channel_publish_plan.available = false`
+- `gemini_context.available = false`
+- `reason_code`
+- `fallthrough_to_legacy = true`
+- `generated_at_unix`
+
+### 4. reason_code 說明（26C-2）
+
+- `DRY_RUN_SNAPSHOT_ONLY`：dry-run 模式的 snapshot（本 phase 核心）
+- `SNAPSHOT_PLACEHOLDER_ONLY`：非 dry-run 狀態的 placeholder snapshot
+
+### 5. SaaSRouter log 摘要欄位（post-resolve）
+
+`bats_hook_trace_post_resolve` 增加 snapshot summary（避免大 payload）：
+
+- `decision_snapshot_present`
+- `snapshot_version`
+- `reason_code`
+
+### 6. 後續銜接
+
+26C-2 僅建立契約，不做資料整合。以下欄位待後續 phase 補齊：
+
+- SearchCondition parser
+- Multi Source candidate list
+- PublisherStrategy / ChannelPublishPlan
+- GeminiContextDocument
