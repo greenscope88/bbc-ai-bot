@@ -12,6 +12,8 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'GeminiContextDocumentValidator.php
  */
 final class GeminiRenderer implements ChannelRendererInterface
 {
+    private const PROMPT_RENDERER_VERSION = 'gemini_prompt_renderer_v1';
+
     private GeminiContextDocumentValidator $documentValidator;
 
     public function __construct(?GeminiContextDocumentValidator $documentValidator = null)
@@ -57,6 +59,67 @@ final class GeminiRenderer implements ChannelRendererInterface
         ];
 
         return $this->documentValidator->validate($document);
+    }
+
+    /**
+     * @param list<array<string, mixed>> $candidateSources
+     * @param array<string, mixed> $resultSummary
+     * @param array<string, mixed> $metadata
+     * @return array<string, mixed>
+     */
+    public function renderPrompts(array $candidateSources, array $resultSummary, array $metadata = []): array
+    {
+        $traceId = isset($metadata['trace_id']) ? trim((string) $metadata['trace_id']) : '';
+        $tenantSno = isset($metadata['tenant_sno']) ? trim((string) $metadata['tenant_sno']) : '';
+        $sourceCount = isset($resultSummary['source_count']) ? max(0, (int) $resultSummary['source_count']) : count($candidateSources);
+        $resultCount = isset($resultSummary['result_count']) ? max(0, (int) $resultSummary['result_count']) : 0;
+
+        $systemPrompt = implode("\n", [
+            '你是旅行社年輕女孩客服助理，語氣溫暖、熱情、專業，不輕浮。',
+            '可適度使用 emoji，但避免過量與幼稚語氣。',
+            '不得捏造價格、庫存、成團狀態或不存在之商品資訊。',
+            '若資料不足或無法確認，必須明確建議轉由專人客服協助。',
+            '回覆必須只根據使用者提供的商品來源摘要。',
+        ]);
+
+        $sourceLines = [];
+        foreach ($candidateSources as $index => $source) {
+            if (!is_array($source)) {
+                continue;
+            }
+            $sourceLines[] = sprintf(
+                '%d) platform=%s, tenant_instance=%s, product_category=%s, result_count=%d',
+                $index + 1,
+                isset($source['source_platform']) ? trim((string) $source['source_platform']) : '',
+                isset($source['tenant_instance']) ? trim((string) $source['tenant_instance']) : '',
+                isset($source['product_category']) ? trim((string) $source['product_category']) : '',
+                isset($source['result_count']) ? max(0, (int) $source['result_count']) : 0
+            );
+        }
+
+        if ($sourceLines === []) {
+            $sourceLines[] = '無候選商品來源摘要。';
+        }
+
+        $userPrompt = implode("\n", [
+            '請使用以下商品來源摘要，產生旅遊客服回覆草稿。',
+            '僅可引用下列摘要資訊，不可加入未提供的商品明細。',
+            sprintf('source_count=%d, result_count=%d', $sourceCount, $resultCount),
+            'candidate_sources:',
+            implode("\n", $sourceLines),
+        ]);
+
+        return [
+            'system_prompt' => $systemPrompt,
+            'user_prompt' => $userPrompt,
+            'render_metadata' => [
+                'trace_id' => $traceId,
+                'tenant_sno' => $tenantSno,
+                'source_count' => $sourceCount,
+                'result_count' => $resultCount,
+                'renderer_version' => self::PROMPT_RENDERER_VERSION,
+            ],
+        ];
     }
 
     /**

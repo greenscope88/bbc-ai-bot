@@ -188,6 +188,38 @@ try {
     test_assert(false, 'case7 should pass: ' . $e->getMessage());
 }
 
+// Case 8: prompt payload mock path
+try {
+    $response = $client->generateResponseFromPrompt(
+        [
+            'system_prompt' => 'mock system prompt',
+            'user_prompt' => 'mock user prompt',
+            'render_metadata' => [
+                'trace_id' => 'trace-client-8',
+                'tenant_sno' => 'cccccccccccccccc',
+                'source_count' => 3,
+                'result_count' => 30,
+                'renderer_version' => 'gemini_prompt_renderer_v1',
+            ],
+        ],
+        []
+    );
+    $doc = $response->toArray();
+    $encoded = json_encode($doc, JSON_UNESCAPED_UNICODE);
+
+    test_assert($response instanceof GeminiResponseContract, 'case8 returns GeminiResponseContract');
+    test_assert(($doc['reply_text'] ?? '') !== '', 'case8 reply_text non-empty');
+    test_assert(!array_key_exists('apiKey', $doc), 'case8 no apiKey');
+    test_assert(!array_key_exists('accessToken', $doc), 'case8 no accessToken');
+    test_assert(!array_key_exists('replyToken', $doc), 'case8 no replyToken');
+    test_assert(!array_key_exists('secret', $doc), 'case8 no secret');
+    test_assert(stripos((string) $encoded, 'generativelanguage.googleapis.com') === false, 'case8 no gemini endpoint');
+    test_assert(stripos((string) $encoded, 'curl') === false, 'case8 no curl');
+    test_assert(true, 'case8 prompt payload mock PASS');
+} catch (\Throwable $e) {
+    test_assert(false, 'case8 should pass: ' . $e->getMessage());
+}
+
 if ($failures > 0) {
     fwrite(STDERR, "\n{$failures} test failure(s)\n");
     exit(1);

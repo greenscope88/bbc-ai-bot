@@ -374,3 +374,51 @@ C:\Web\xampp\php\php.exe C:\bbc-ai-bot\tests\product_sources\test_saas_router_ba
 - 不帶入完整商品明細到 snapshot
 - 不紀錄 token / secret / apiKey / replyToken
 - 不更動 SaaSRouter 正式回覆 return path
+
+---
+
+## Phase 9-B-26C-4 — GeminiRenderer + GeminiClient Dry-run Integration
+
+### 1. 範圍
+
+本 phase 在 dry-run 且有 candidate sources 時，加入下列串接：
+
+`candidate_sources/result_summary -> GeminiRenderer(renderPrompts) -> GeminiClient(generateResponseFromPrompt mock) -> decision_snapshot summary`
+
+限制維持：
+
+- 不呼叫真 Gemini API
+- 不送 LINE Reply
+- 不接管正式回覆流程（維持 legacy fallthrough）
+
+### 2. GeminiRenderer prompt payload（新增）
+
+`renderPrompts(...)` 輸出：
+
+- `system_prompt`
+- `user_prompt`
+- `render_metadata`（`trace_id`, `tenant_sno`, `source_count`, `result_count`, `renderer_version`）
+
+`user_prompt` 僅允許使用來源摘要，不帶入完整商品明細。
+
+### 3. GeminiClient mock prompt path（新增）
+
+`generateResponseFromPrompt(...)`：
+
+- 僅 mock，不做外部 API 呼叫
+- 回傳 `GeminiResponseContract`
+- 欄位符合 contract：`reply_text`, `reply_type`, `used_fallback`, `used_service_scope`, `voice_profile_used`, `schema_version`
+
+### 4. Decision Snapshot 擴充
+
+dry-run 且 candidates 可用時，新增摘要：
+
+- `gemini_context.available = true`
+- `gemini_context.renderer_version`
+- `gemini_context.prompt_present = true`
+- `gemini_reply.available = true`
+- `gemini_reply.reply_type`
+- `gemini_reply.used_fallback`
+- `gemini_reply.voice_profile_used`
+
+不在 router log 或 snapshot 泄漏完整 prompt 內容與敏感欄位。

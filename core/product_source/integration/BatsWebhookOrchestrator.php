@@ -2,6 +2,8 @@
 declare(strict_types=1);
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'BatsFeatureGate.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'renderer' . DIRECTORY_SEPARATOR . 'gemini' . DIRECTORY_SEPARATOR . 'GeminiRenderer.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'GeminiClient.php';
 
 /**
  * BATS webhook orchestrator skeleton (Phase 9-B-26B-1).
@@ -13,10 +15,18 @@ final class BatsWebhookOrchestrator
     private const SNAPSHOT_VERSION = 1;
 
     private BatsFeatureGate $featureGate;
+    private GeminiRenderer $geminiRenderer;
+    private GeminiClient $geminiClient;
 
-    public function __construct(?BatsFeatureGate $featureGate = null)
+    public function __construct(
+        ?BatsFeatureGate $featureGate = null,
+        ?GeminiRenderer $geminiRenderer = null,
+        ?GeminiClient $geminiClient = null
+    )
     {
         $this->featureGate = $featureGate ?? new BatsFeatureGate();
+        $this->geminiRenderer = $geminiRenderer ?? new GeminiRenderer();
+        $this->geminiClient = $geminiClient ?? new GeminiClient();
     }
 
     /**
@@ -235,6 +245,25 @@ final class BatsWebhookOrchestrator
             $reasonCode = 'SNAPSHOT_PLACEHOLDER_ONLY';
         }
 
+        $geminiContext = [
+            'available' => false,
+            'schema_version' => null,
+            'renderer_version' => null,
+            'prompt_present' => false,
+        ];
+        $geminiReply = [
+            'available' => false,
+            'reply_type' => null,
+            'used_fallback' => null,
+            'voice_profile_used' => null,
+        ];
+
+        if ($isDryRun && $hasCandidates) {
+            $geminiResult = $this->buildGeminiDryRunSummary($traceId, $tenantSno, $candidateSummary);
+            $geminiContext = $geminiResult['gemini_context'];
+            $geminiReply = $geminiResult['gemini_reply'];
+        }
+
         return [
             'snapshot_version' => self::SNAPSHOT_VERSION,
             'trace_id' => $traceId,
@@ -277,14 +306,75 @@ final class BatsWebhookOrchestrator
                 'item_count' => null,
                 'fallback_present' => null,
             ],
-            'gemini_context' => [
-                'available' => false,
-                'schema_version' => null,
-            ],
+            'gemini_context' => $geminiContext,
+            'gemini_reply' => $geminiReply,
             'reason_code' => $reasonCode,
             'fallthrough_to_legacy' => true,
             'generated_at_unix' => time(),
         ];
+    }
+
+    /**
+     * @param array{count: int, result_count: int, items: list<array<string, mixed>>} $candidateSummary
+     * @return array{gemini_context: array<string, mixed>, gemini_reply: array<string, mixed>}
+     */
+    private function buildGeminiDryRunSummary(string $traceId, string $tenantSno, array $candidateSummary): array
+    {
+        $default = [
+            'gemini_context' => [
+                'available' => false,
+                'schema_version' => null,
+                'renderer_version' => null,
+                'prompt_present' => false,
+            ],
+            'gemini_reply' => [
+                'available' => false,
+                'reply_type' => null,
+                'used_fallback' => null,
+                'voice_profile_used' => null,
+            ],
+        ];
+
+        try {
+            $promptPayload = $this->geminiRenderer->renderPrompts(
+                $candidateSummary['items'],
+                [
+                    'source_count' => $candidateSummary['count'],
+                    'result_count' => $candidateSummary['result_count'],
+                ],
+                [
+                    'trace_id' => $traceId,
+                    'tenant_sno' => $tenantSno,
+                ]
+            );
+
+            $response = $this->geminiClient->generateResponseFromPrompt($promptPayload, []);
+            $responseArray = $response->toArray();
+            $renderMetadata = isset($promptPayload['render_metadata']) && is_array($promptPayload['render_metadata'])
+                ? $promptPayload['render_metadata']
+                : [];
+
+            return [
+                'gemini_context' => [
+                    'available' => true,
+                    'schema_version' => 1,
+                    'renderer_version' => isset($renderMetadata['renderer_version'])
+                        ? trim((string) $renderMetadata['renderer_version'])
+                        : null,
+                    'prompt_present' => isset($promptPayload['system_prompt'], $promptPayload['user_prompt']),
+                ],
+                'gemini_reply' => [
+                    'available' => true,
+                    'reply_type' => isset($responseArray['reply_type']) ? (string) $responseArray['reply_type'] : null,
+                    'used_fallback' => isset($responseArray['used_fallback']) ? (bool) $responseArray['used_fallback'] : null,
+                    'voice_profile_used' => isset($responseArray['voice_profile_used'])
+                        ? (string) $responseArray['voice_profile_used']
+                        : null,
+                ],
+            ];
+        } catch (\Throwable $e) {
+            return $default;
+        }
     }
 
     /**
@@ -373,6 +463,14 @@ final class BatsWebhookOrchestrator
             'gemini_context' => isset($snapshot['gemini_context']) && is_array($snapshot['gemini_context']) ? $snapshot['gemini_context'] : [
                 'available' => false,
                 'schema_version' => null,
+                'renderer_version' => null,
+                'prompt_present' => false,
+            ],
+            'gemini_reply' => isset($snapshot['gemini_reply']) && is_array($snapshot['gemini_reply']) ? $snapshot['gemini_reply'] : [
+                'available' => false,
+                'reply_type' => null,
+                'used_fallback' => null,
+                'voice_profile_used' => null,
             ],
             'reason_code' => isset($snapshot['reason_code']) ? trim((string) $snapshot['reason_code']) : '',
             'fallthrough_to_legacy' => isset($snapshot['fallthrough_to_legacy']) ? (bool) $snapshot['fallthrough_to_legacy'] : true,

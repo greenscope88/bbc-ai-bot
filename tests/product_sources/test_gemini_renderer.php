@@ -201,6 +201,52 @@ try {
     test_assert(false, 'case7 should pass: ' . $e->getMessage());
 }
 
+// Case 8: renderPrompts payload for dry-run
+try {
+    $payload = $renderer->renderPrompts(
+        [
+            [
+                'source_platform' => 'bbcshops',
+                'tenant_instance' => 'travel_b',
+                'product_category' => 'group_tour',
+                'result_count' => 10,
+            ],
+            [
+                'source_platform' => 'agenttour',
+                'tenant_instance' => 'travel_b_agenttour',
+                'product_category' => 'group_tour',
+                'result_count' => 8,
+            ],
+            [
+                'source_platform' => 'grp',
+                'tenant_instance' => 'travel_b_grp',
+                'product_category' => 'group_tour',
+                'result_count' => 12,
+            ],
+        ],
+        [
+            'source_count' => 3,
+            'result_count' => 30,
+        ],
+        [
+            'trace_id' => 'trace-render-8',
+            'tenant_sno' => 'cccccccccccccccc',
+        ]
+    );
+
+    test_assert(isset($payload['system_prompt']) && trim((string) $payload['system_prompt']) !== '', 'case8 system_prompt exists');
+    test_assert(isset($payload['user_prompt']) && trim((string) $payload['user_prompt']) !== '', 'case8 user_prompt exists');
+    test_assert(($payload['render_metadata']['trace_id'] ?? '') === 'trace-render-8', 'case8 trace_id');
+    test_assert(($payload['render_metadata']['source_count'] ?? 0) === 3, 'case8 source_count');
+    test_assert(($payload['render_metadata']['result_count'] ?? 0) === 30, 'case8 result_count');
+    test_assert(mb_strpos((string) $payload['system_prompt'], '不得捏造價格、庫存、成團狀態') !== false, 'case8 anti-hallucination rule');
+    test_assert(mb_strpos((string) $payload['user_prompt'], '未提供的商品明細') !== false, 'case8 no extra details rule');
+    test_assert(mb_strpos((string) $payload['user_prompt'], 'price_from') === false, 'case8 no hidden product details');
+    test_assert(true, 'case8 renderPrompts PASS');
+} catch (\Throwable $e) {
+    test_assert(false, 'case8 should pass: ' . $e->getMessage());
+}
+
 if ($failures > 0) {
     fwrite(STDERR, "\n{$failures} test failure(s)\n");
     exit(1);

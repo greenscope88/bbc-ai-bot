@@ -38,6 +38,48 @@ final class GeminiClient
     }
 
     /**
+     * Prompt payload dry-run entry point (no external API calls).
+     *
+     * @param array<string, mixed> $promptPayload
+     * @param array<string, mixed> $metadata
+     */
+    public function generateResponseFromPrompt(array $promptPayload, array $metadata = []): GeminiResponseContract
+    {
+        $renderMetadata = isset($promptPayload['render_metadata']) && is_array($promptPayload['render_metadata'])
+            ? $promptPayload['render_metadata']
+            : [];
+        $mergedMetadata = array_merge($renderMetadata, $metadata);
+
+        $sourceCount = isset($mergedMetadata['source_count']) ? max(0, (int) $mergedMetadata['source_count']) : 0;
+        $resultCount = isset($mergedMetadata['result_count']) ? max(0, (int) $mergedMetadata['result_count']) : 0;
+        $hasCandidates = $sourceCount > 0 && $resultCount > 0;
+
+        if (!$hasCandidates) {
+            return $this->responseValidator->validate([
+                'reply_text' => '目前可用資料不足，先由專人客服為您進一步確認，謝謝您。',
+                'reply_type' => 'human_agent_fallback',
+                'used_fallback' => true,
+                'used_service_scope' => 'tour',
+                'voice_profile_used' => 'young_female',
+            ]);
+        }
+
+        $replyText = sprintf(
+            "哈囉您好 😊\n目前共整理 %d 個商品來源、%d 筆候選結果。\n若您希望，我可以先依您的預算與出發日期幫您縮小範圍，或由專人客服接續服務。",
+            $sourceCount,
+            $resultCount
+        );
+
+        return $this->responseValidator->validate([
+            'reply_text' => $replyText,
+            'reply_type' => 'normal_reply',
+            'used_fallback' => false,
+            'used_service_scope' => 'tour',
+            'voice_profile_used' => 'young_female',
+        ]);
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function buildMockResponseDocument(GeminiContextDocument $context): array

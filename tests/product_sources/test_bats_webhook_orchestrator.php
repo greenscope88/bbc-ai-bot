@@ -227,6 +227,14 @@ try {
     test_assert(($summary['result_count'] ?? 0) === 30, 'case8 result_count = 30');
     test_assert(($snapshot['reason_code'] ?? '') === 'DRY_RUN_SNAPSHOT_WITH_CANDIDATES', 'case8 reason code with candidates');
     test_assert(($snapshot['fallthrough_to_legacy'] ?? false) === true, 'case8 fallthrough true');
+    test_assert(($snapshot['gemini_context']['available'] ?? false) === true, 'case8 gemini_context available');
+    test_assert(($snapshot['gemini_context']['prompt_present'] ?? false) === true, 'case8 gemini prompt present');
+    test_assert(($snapshot['gemini_context']['renderer_version'] ?? '') !== '', 'case8 renderer version present');
+    test_assert(($snapshot['gemini_reply']['available'] ?? false) === true, 'case8 gemini_reply available');
+    test_assert(($snapshot['gemini_reply']['reply_type'] ?? '') !== '', 'case8 gemini_reply type present');
+    test_assert(($snapshot['gemini_reply']['voice_profile_used'] ?? '') !== '', 'case8 gemini voice profile');
+    test_assert(!isset($snapshot['system_prompt']), 'case8 no system_prompt leakage');
+    test_assert(!isset($snapshot['user_prompt']), 'case8 no user_prompt leakage');
 
     foreach ($items as $idx => $item) {
         test_assert(is_array($item), 'case8 item array #' . $idx);
@@ -257,6 +265,8 @@ try {
     test_assert(($summary['source_count'] ?? -1) === 0, 'case9 source_count = 0');
     test_assert(($summary['result_count'] ?? -1) === 0, 'case9 result_count = 0');
     test_assert(($snapshot['reason_code'] ?? '') === 'DRY_RUN_SNAPSHOT_NO_CANDIDATES', 'case9 reason code no candidates');
+    test_assert(($snapshot['gemini_context']['available'] ?? true) === false, 'case9 gemini_context unavailable');
+    test_assert(($snapshot['gemini_reply']['available'] ?? true) === false, 'case9 gemini_reply unavailable');
     test_assert(true, 'case9 no candidate snapshot PASS');
 } catch (\Throwable $e) {
     test_assert(false, 'case9 should pass: ' . $e->getMessage());
