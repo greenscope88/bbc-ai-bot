@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'ChannelRendererInterface.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'gemini' . DIRECTORY_SEPARATOR . 'GeminiResponseContract.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'LineMessagePayload.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'LineMessagePayloadValidator.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'LineTextMessageBuilder.php';
@@ -13,6 +14,8 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'LineTextMessageBuilder.php';
  */
 final class LineRenderer implements ChannelRendererInterface
 {
+    private const MAX_LINE_TEXT_LENGTH = 5000;
+
     private LineTextMessageBuilder $textMessageBuilder;
 
     private LineMessagePayloadValidator $payloadValidator;
@@ -51,5 +54,40 @@ final class LineRenderer implements ChannelRendererInterface
         return $this->payloadValidator->validate([
             'messages' => $messages,
         ]);
+    }
+
+    /**
+     * @param array<string, mixed> $metadata
+     */
+    public function renderFromGeminiResponse(
+        GeminiResponseContract $response,
+        array $metadata = []
+    ): LineMessagePayload {
+        unset($metadata);
+
+        $text = trim($response->getReplyText());
+        if ($text === '') {
+            $text = '目前資料不足，請稍候由專人客服協助您。';
+        }
+
+        $text = $this->truncateTextForLine($text);
+
+        return $this->payloadValidator->validate([
+            'messages' => [
+                [
+                    'type' => 'text',
+                    'text' => $text,
+                ],
+            ],
+        ]);
+    }
+
+    private function truncateTextForLine(string $text): string
+    {
+        if (mb_strlen($text) <= self::MAX_LINE_TEXT_LENGTH) {
+            return $text;
+        }
+
+        return mb_substr($text, 0, self::MAX_LINE_TEXT_LENGTH - 1) . '…';
     }
 }

@@ -189,6 +189,30 @@ try {
     test_assert(false, 'case7 should pass: ' . $e->getMessage());
 }
 
+// Case 8: dry-run preview
+try {
+    $payload = buildPayloadFromPlan(buildLinePlan());
+    $preview = $sender->prepareDryRun($payload, [
+        'trace_id' => 'trace-case-8',
+    ]);
+    $encoded = json_encode($preview, JSON_UNESCAPED_UNICODE);
+
+    test_assert(($preview['dry_run'] ?? false) === true, 'case8 dry_run true');
+    test_assert(($preview['message_count'] ?? 0) === 1, 'case8 message_count');
+    test_assert(($preview['payload_size'] ?? 0) > 0, 'case8 payload_size positive');
+    test_assert(($preview['sender_type'] ?? '') === 'line_dry_run', 'case8 sender_type line_dry_run');
+    test_assert(($preview['trace_id'] ?? '') === 'trace-case-8', 'case8 trace_id');
+    test_assert(isset($preview['line_payload_preview']) && is_array($preview['line_payload_preview']), 'case8 line_payload_preview exists');
+    test_assert(stripos((string) $encoded, 'accessToken') === false, 'case8 no accessToken');
+    test_assert(stripos((string) $encoded, 'replyToken') === false, 'case8 no replyToken');
+    test_assert(stripos((string) $encoded, 'endpoint') === false, 'case8 no endpoint');
+    test_assert(stripos((string) $encoded, 'headers') === false, 'case8 no headers');
+    test_assert(stripos((string) $encoded, 'curl') === false, 'case8 no curl');
+    test_assert(true, 'case8 dry-run preview PASS');
+} catch (\Throwable $e) {
+    test_assert(false, 'case8 should pass: ' . $e->getMessage());
+}
+
 if ($failures > 0) {
     fwrite(STDERR, "\n{$failures} test failure(s)\n");
     exit(1);

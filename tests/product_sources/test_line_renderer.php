@@ -11,6 +11,7 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPA
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'channel_publish_plan' . DIRECTORY_SEPARATOR . 'ChannelPublishPlanValidator.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'renderer' . DIRECTORY_SEPARATOR . 'line' . DIRECTORY_SEPARATOR . 'LineRenderer.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'renderer' . DIRECTORY_SEPARATOR . 'line' . DIRECTORY_SEPARATOR . 'LineMessagePayloadValidator.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'renderer' . DIRECTORY_SEPARATOR . 'gemini' . DIRECTORY_SEPARATOR . 'GeminiResponseContract.php';
 
 $failures = 0;
 
@@ -185,6 +186,30 @@ try {
     test_assert(true, 'case7 forbidden transport keys PASS');
 } catch (\Throwable $e) {
     test_assert(false, 'case7 should pass: ' . $e->getMessage());
+}
+
+// Case 8: render from GeminiResponseContract
+try {
+    $response = GeminiResponseContract::fromArray([
+        'reply_text' => "您好😊\n目前找到 3 個東京商品來源。",
+        'reply_type' => 'normal_reply',
+        'used_fallback' => false,
+        'used_service_scope' => 'tour',
+        'voice_profile_used' => 'young_female',
+    ]);
+    $payload = $renderer->renderFromGeminiResponse($response, ['trace_id' => 'trace-line-8']);
+    $document = $payload->toArray();
+    $encoded = json_encode($document, JSON_UNESCAPED_UNICODE);
+
+    test_assert(isset($document['messages']) && is_array($document['messages']), 'case8 messages present');
+    test_assert(($document['messages'][0]['type'] ?? '') === 'text', 'case8 message type text');
+    test_assert(($document['messages'][0]['text'] ?? '') === $response->getReplyText(), 'case8 text from reply_text');
+    test_assert(stripos((string) $encoded, 'replyToken') === false, 'case8 no replyToken');
+    test_assert(stripos((string) $encoded, 'accessToken') === false, 'case8 no accessToken');
+    test_assert(stripos((string) $encoded, 'secret') === false, 'case8 no secret');
+    test_assert(true, 'case8 renderFromGeminiResponse PASS');
+} catch (\Throwable $e) {
+    test_assert(false, 'case8 should pass: ' . $e->getMessage());
 }
 
 if ($failures > 0) {

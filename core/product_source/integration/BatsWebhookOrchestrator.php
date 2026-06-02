@@ -3,7 +3,9 @@ declare(strict_types=1);
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'BatsFeatureGate.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'renderer' . DIRECTORY_SEPARATOR . 'gemini' . DIRECTORY_SEPARATOR . 'GeminiRenderer.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'renderer' . DIRECTORY_SEPARATOR . 'line' . DIRECTORY_SEPARATOR . 'LineRenderer.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'GeminiClient.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'sender' . DIRECTORY_SEPARATOR . 'line' . DIRECTORY_SEPARATOR . 'LineSender.php';
 
 /**
  * BATS webhook orchestrator skeleton (Phase 9-B-26B-1).
@@ -17,16 +19,22 @@ final class BatsWebhookOrchestrator
     private BatsFeatureGate $featureGate;
     private GeminiRenderer $geminiRenderer;
     private GeminiClient $geminiClient;
+    private LineRenderer $lineRenderer;
+    private LineSender $lineSender;
 
     public function __construct(
         ?BatsFeatureGate $featureGate = null,
         ?GeminiRenderer $geminiRenderer = null,
-        ?GeminiClient $geminiClient = null
+        ?GeminiClient $geminiClient = null,
+        ?LineRenderer $lineRenderer = null,
+        ?LineSender $lineSender = null
     )
     {
         $this->featureGate = $featureGate ?? new BatsFeatureGate();
         $this->geminiRenderer = $geminiRenderer ?? new GeminiRenderer();
         $this->geminiClient = $geminiClient ?? new GeminiClient();
+        $this->lineRenderer = $lineRenderer ?? new LineRenderer();
+        $this->lineSender = $lineSender ?? new LineSender();
     }
 
     /**
@@ -257,11 +265,24 @@ final class BatsWebhookOrchestrator
             'used_fallback' => null,
             'voice_profile_used' => null,
         ];
+        $lineRender = [
+            'available' => false,
+            'message_count' => 0,
+            'render_mode' => null,
+        ];
+        $lineSender = [
+            'available' => false,
+            'dry_run' => false,
+            'sender_type' => null,
+            'payload_size' => null,
+        ];
 
         if ($isDryRun && $hasCandidates) {
             $geminiResult = $this->buildGeminiDryRunSummary($traceId, $tenantSno, $candidateSummary);
             $geminiContext = $geminiResult['gemini_context'];
             $geminiReply = $geminiResult['gemini_reply'];
+            $lineRender = $geminiResult['line_render'];
+            $lineSender = $geminiResult['line_sender'];
         }
 
         return [
@@ -308,6 +329,8 @@ final class BatsWebhookOrchestrator
             ],
             'gemini_context' => $geminiContext,
             'gemini_reply' => $geminiReply,
+            'line_render' => $lineRender,
+            'line_sender' => $lineSender,
             'reason_code' => $reasonCode,
             'fallthrough_to_legacy' => true,
             'generated_at_unix' => time(),
@@ -316,7 +339,12 @@ final class BatsWebhookOrchestrator
 
     /**
      * @param array{count: int, result_count: int, items: list<array<string, mixed>>} $candidateSummary
-     * @return array{gemini_context: array<string, mixed>, gemini_reply: array<string, mixed>}
+     * @return array{
+     *   gemini_context: array<string, mixed>,
+     *   gemini_reply: array<string, mixed>,
+     *   line_render: array<string, mixed>,
+     *   line_sender: array<string, mixed>
+     * }
      */
     private function buildGeminiDryRunSummary(string $traceId, string $tenantSno, array $candidateSummary): array
     {
@@ -332,6 +360,17 @@ final class BatsWebhookOrchestrator
                 'reply_type' => null,
                 'used_fallback' => null,
                 'voice_profile_used' => null,
+            ],
+            'line_render' => [
+                'available' => false,
+                'message_count' => 0,
+                'render_mode' => null,
+            ],
+            'line_sender' => [
+                'available' => false,
+                'dry_run' => false,
+                'sender_type' => null,
+                'payload_size' => null,
             ],
         ];
 
@@ -350,6 +389,13 @@ final class BatsWebhookOrchestrator
 
             $response = $this->geminiClient->generateResponseFromPrompt($promptPayload, []);
             $responseArray = $response->toArray();
+            $linePayload = $this->lineRenderer->renderFromGeminiResponse($response, [
+                'trace_id' => $traceId,
+                'tenant_sno' => $tenantSno,
+            ]);
+            $lineDryRun = $this->lineSender->prepareDryRun($linePayload, [
+                'trace_id' => $traceId,
+            ]);
             $renderMetadata = isset($promptPayload['render_metadata']) && is_array($promptPayload['render_metadata'])
                 ? $promptPayload['render_metadata']
                 : [];
@@ -370,6 +416,17 @@ final class BatsWebhookOrchestrator
                     'voice_profile_used' => isset($responseArray['voice_profile_used'])
                         ? (string) $responseArray['voice_profile_used']
                         : null,
+                ],
+                'line_render' => [
+                    'available' => true,
+                    'message_count' => count($linePayload->getMessages()),
+                    'render_mode' => 'dry_run',
+                ],
+                'line_sender' => [
+                    'available' => true,
+                    'dry_run' => true,
+                    'sender_type' => isset($lineDryRun['sender_type']) ? (string) $lineDryRun['sender_type'] : 'line_dry_run',
+                    'payload_size' => isset($lineDryRun['payload_size']) ? (int) $lineDryRun['payload_size'] : 0,
                 ],
             ];
         } catch (\Throwable $e) {
@@ -471,6 +528,17 @@ final class BatsWebhookOrchestrator
                 'reply_type' => null,
                 'used_fallback' => null,
                 'voice_profile_used' => null,
+            ],
+            'line_render' => isset($snapshot['line_render']) && is_array($snapshot['line_render']) ? $snapshot['line_render'] : [
+                'available' => false,
+                'message_count' => 0,
+                'render_mode' => null,
+            ],
+            'line_sender' => isset($snapshot['line_sender']) && is_array($snapshot['line_sender']) ? $snapshot['line_sender'] : [
+                'available' => false,
+                'dry_run' => false,
+                'sender_type' => null,
+                'payload_size' => null,
             ],
             'reason_code' => isset($snapshot['reason_code']) ? trim((string) $snapshot['reason_code']) : '',
             'fallthrough_to_legacy' => isset($snapshot['fallthrough_to_legacy']) ? (bool) $snapshot['fallthrough_to_legacy'] : true,

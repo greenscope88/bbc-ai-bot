@@ -422,3 +422,54 @@ dry-run 且 candidates 可用時，新增摘要：
 - `gemini_reply.voice_profile_used`
 
 不在 router log 或 snapshot 泄漏完整 prompt 內容與敏感欄位。
+
+---
+
+## Phase 9-B-26C-5 — Gemini Reply to LineRenderer + LineSender Controlled Dry-run
+
+### 1. 範圍
+
+本 phase 在 dry-run 且 `gemini_reply.available=true` 時，加入：
+
+`GeminiResponseContract -> LineRenderer -> messages[] -> LineSender dry-run preview -> decision_snapshot summary`
+
+限制維持：
+
+- 不呼叫 LINE Reply API
+- 不送真實 LINE 訊息
+- 不接管 legacy 正式回覆
+
+### 2. LineRenderer 擴充
+
+新增 `renderFromGeminiResponse(...)`：
+
+- 以 `GeminiResponseContract.reply_text` 建立 LINE text `messages[]`
+- 保持 payload 僅含 `messages`
+- 加入最小長度保護（超長時截斷）
+
+### 3. LineSender 擴充
+
+新增 `prepareDryRun(...)`，回傳：
+
+- `dry_run = true`
+- `sender_type = line_dry_run`
+- `message_count`
+- `payload_size`
+- `trace_id`
+- `line_payload_preview`
+
+不帶入 token / secret / endpoint / headers / curl。
+
+### 4. Decision Snapshot 新增摘要
+
+在 dry-run 且 line 轉換成功時：
+
+- `line_render.available = true`
+- `line_render.message_count`
+- `line_render.render_mode = dry_run`
+- `line_sender.available = true`
+- `line_sender.dry_run = true`
+- `line_sender.sender_type = line_dry_run`
+- `line_sender.payload_size`
+
+無 Gemini reply 時維持 unavailable，且不 fatal。

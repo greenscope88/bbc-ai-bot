@@ -233,6 +233,13 @@ try {
     test_assert(($snapshot['gemini_reply']['available'] ?? false) === true, 'case8 gemini_reply available');
     test_assert(($snapshot['gemini_reply']['reply_type'] ?? '') !== '', 'case8 gemini_reply type present');
     test_assert(($snapshot['gemini_reply']['voice_profile_used'] ?? '') !== '', 'case8 gemini voice profile');
+    test_assert(($snapshot['line_render']['available'] ?? false) === true, 'case8 line_render available');
+    test_assert(($snapshot['line_render']['message_count'] ?? 0) > 0, 'case8 line_render message_count > 0');
+    test_assert(($snapshot['line_render']['render_mode'] ?? '') === 'dry_run', 'case8 line_render mode dry_run');
+    test_assert(($snapshot['line_sender']['available'] ?? false) === true, 'case8 line_sender available');
+    test_assert(($snapshot['line_sender']['dry_run'] ?? false) === true, 'case8 line_sender dry_run true');
+    test_assert(($snapshot['line_sender']['sender_type'] ?? '') === 'line_dry_run', 'case8 line_sender sender_type');
+    test_assert(($snapshot['line_sender']['payload_size'] ?? 0) > 0, 'case8 line_sender payload_size');
     test_assert(!isset($snapshot['system_prompt']), 'case8 no system_prompt leakage');
     test_assert(!isset($snapshot['user_prompt']), 'case8 no user_prompt leakage');
 
@@ -267,6 +274,8 @@ try {
     test_assert(($snapshot['reason_code'] ?? '') === 'DRY_RUN_SNAPSHOT_NO_CANDIDATES', 'case9 reason code no candidates');
     test_assert(($snapshot['gemini_context']['available'] ?? true) === false, 'case9 gemini_context unavailable');
     test_assert(($snapshot['gemini_reply']['available'] ?? true) === false, 'case9 gemini_reply unavailable');
+    test_assert(($snapshot['line_render']['available'] ?? true) === false, 'case9 line_render unavailable');
+    test_assert(($snapshot['line_sender']['available'] ?? true) === false, 'case9 line_sender unavailable');
     test_assert(true, 'case9 no candidate snapshot PASS');
 } catch (\Throwable $e) {
     test_assert(false, 'case9 should pass: ' . $e->getMessage());

@@ -76,6 +76,36 @@ final class LineSender
         return $this->prepare($payload, $sendContext);
     }
 
+    /**
+     * @param array<string, mixed> $metadata
+     * @return array<string, mixed>
+     */
+    public function prepareDryRun(LineMessagePayload $payload, array $metadata = []): array
+    {
+        $payloadDocument = $payload->toArray();
+        $this->payloadValidator->validate($payloadDocument);
+
+        $traceId = isset($metadata['trace_id']) ? trim((string) $metadata['trace_id']) : $this->generateTraceId();
+        if ($traceId === '') {
+            throw new \InvalidArgumentException('trace_id must not be empty');
+        }
+
+        $encoded = json_encode($payloadDocument, JSON_UNESCAPED_UNICODE);
+        $payloadSize = is_string($encoded) ? strlen($encoded) : 0;
+        $messageCount = count($payload->getMessages());
+
+        return [
+            'dry_run' => true,
+            'sender_type' => 'line_dry_run',
+            'message_count' => $messageCount,
+            'payload_size' => $payloadSize,
+            'trace_id' => $traceId,
+            'line_payload_preview' => [
+                'messages' => $payloadDocument['messages'],
+            ],
+        ];
+    }
+
     private function generateTraceId(): string
     {
         return 'line-' . bin2hex(random_bytes(8));
