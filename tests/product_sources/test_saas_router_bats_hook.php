@@ -48,6 +48,28 @@ $enabledInvalidTenantConfig = [
     'channels' => [],
 ];
 
+$controlledConfigOff = [
+    'defaults' => ['mode' => BatsFeatureGate::MODE_DISABLED],
+    'controlled_reply_enabled' => false,
+    'controlled_reply_tenants' => ['5f99b8d665e8444d'],
+    'controlled_reply_keyword_prefix' => 'BATS測試',
+    'tenants' => [
+        '5f99b8d665e8444d' => ['mode' => BatsFeatureGate::MODE_DRY_RUN],
+    ],
+    'channels' => [],
+];
+
+$controlledConfigOn = [
+    'defaults' => ['mode' => BatsFeatureGate::MODE_DISABLED],
+    'controlled_reply_enabled' => true,
+    'controlled_reply_tenants' => ['5f99b8d665e8444d'],
+    'controlled_reply_keyword_prefix' => 'BATS測試',
+    'tenants' => [
+        '5f99b8d665e8444d' => ['mode' => BatsFeatureGate::MODE_DRY_RUN],
+    ],
+    'channels' => [],
+];
+
 $tenantDryRun = [
     'sno' => 'cccccccccccccccc',
     'channel_id' => 'line-channel-1',
@@ -66,6 +88,11 @@ $tenantInvalid = [
 $tenantEmpty = [
     'sno' => '',
     'channel_id' => 'line-channel-4',
+];
+
+$tenantTravelB = [
+    'sno' => '5f99b8d665e8444d',
+    'channel_id' => 'travel-b-channel',
 ];
 
 // Case 1: default disabled → fall-through (null)
@@ -187,9 +214,107 @@ try {
         $gate->resolveMode(['tenant_sno' => '5f99b8d665e8444d', 'channel' => '']) === BatsFeatureGate::MODE_DRY_RUN,
         'case7 pilot tenant dry_run'
     );
+    test_assert(array_key_exists('controlled_reply_enabled', $loaded), 'case7 controlled_reply_enabled key exists');
+    test_assert(array_key_exists('controlled_reply_tenants', $loaded), 'case7 controlled_reply_tenants key exists');
+    test_assert(array_key_exists('controlled_reply_keyword_prefix', $loaded), 'case7 controlled_reply_keyword_prefix key exists');
     test_assert(true, 'case7 feature config load PASS');
 } catch (\Throwable $e) {
     test_assert(false, 'case7 should pass: ' . $e->getMessage());
+}
+
+// Case 8: controlled gate global flag off -> fallthrough
+try {
+    $eligible = SaaSRouter::isControlledReplyEligible($tenantTravelB, 'BATS測試 東京', $controlledConfigOff);
+    test_assert($eligible === false, 'case8 controlled gate disabled');
+    $result = SaaSRouter::attemptControlledReplyPath(
+        $tenantTravelB,
+        'BATS測試 東京',
+        'trace-case-8',
+        'travel-b-channel',
+        $controlledConfigOff
+    );
+    test_assert($result === null, 'case8 controlled path falls through');
+    test_assert(true, 'case8 controlled flag off PASS');
+} catch (\Throwable $e) {
+    test_assert(false, 'case8 should pass: ' . $e->getMessage());
+}
+
+// Case 9: tenant not in allowlist -> fallthrough
+try {
+    $eligible = SaaSRouter::isControlledReplyEligible(
+        ['sno' => 'aaaaaaaaaaaaaaaa', 'channel_id' => 'travel-b-channel'],
+        'BATS測試 東京',
+        $controlledConfigOn
+    );
+    test_assert($eligible === false, 'case9 tenant not allowlisted');
+    test_assert(true, 'case9 tenant allowlist PASS');
+} catch (\Throwable $e) {
+    test_assert(false, 'case9 should pass: ' . $e->getMessage());
+}
+
+// Case 10: keyword mismatch -> fallthrough
+try {
+    $eligible = SaaSRouter::isControlledReplyEligible($tenantTravelB, '東京', $controlledConfigOn);
+    test_assert($eligible === false, 'case10 keyword mismatch');
+    test_assert(true, 'case10 keyword trigger PASS');
+} catch (\Throwable $e) {
+    test_assert(false, 'case10 should pass: ' . $e->getMessage());
+}
+
+// Case 11: all three conditions pass -> controlled preview path
+try {
+    $eligible = SaaSRouter::isControlledReplyEligible($tenantTravelB, 'BATS測試 東京', $controlledConfigOn);
+    test_assert($eligible === true, 'case11 controlled gate eligible');
+    $result = SaaSRouter::attemptControlledReplyPath(
+        $tenantTravelB,
+        'BATS測試 東京',
+        'trace-case-11',
+        'travel-b-channel',
+        $controlledConfigOn
+    );
+    test_assert(is_array($result), 'case11 result array');
+    test_assert(($result['message'] ?? '') === 'bats_controlled_reply_preview', 'case11 preview mode message');
+    test_assert(($result['controlled_reply']['mode'] ?? '') === 'preview_only', 'case11 preview_only mode');
+    test_assert(($result['controlled_reply']['line_render_available'] ?? false) === true, 'case11 line render available');
+    test_assert(($result['controlled_reply']['line_sender_available'] ?? false) === true, 'case11 line sender available');
+    test_assert(($result['controlled_reply']['line_message_count'] ?? 0) > 0, 'case11 line message count');
+    test_assert(true, 'case11 controlled path PASS');
+} catch (\Throwable $e) {
+    test_assert(false, 'case11 should pass: ' . $e->getMessage());
+}
+
+// Case 12: hello/weather keywords do not match controlled prefix -> legacy gate
+try {
+    test_assert(
+        SaaSRouter::isControlledReplyEligible($tenantTravelB, '你好', $controlledConfigOn) === false,
+        'case12 hello not controlled'
+    );
+    test_assert(
+        SaaSRouter::isControlledReplyEligible($tenantTravelB, '今天天氣如何', $controlledConfigOn) === false,
+        'case12 weather not controlled'
+    );
+    test_assert(true, 'case12 hello/weather legacy PASS');
+} catch (\Throwable $e) {
+    test_assert(false, 'case12 should pass: ' . $e->getMessage());
+}
+
+// Case 13: controlled exception -> fallback legacy (null)
+try {
+    $result = SaaSRouter::attemptControlledReplyPath(
+        $tenantTravelB,
+        'BATS測試 東京',
+        'trace-case-13',
+        'travel-b-channel',
+        $controlledConfigOn,
+        static function (BatsFeatureGate $gate): BatsWebhookOrchestrator {
+            unset($gate);
+            throw new \RuntimeException('forced controlled path failure');
+        }
+    );
+    test_assert($result === null, 'case13 fallback to legacy on exception');
+    test_assert(true, 'case13 controlled error fallback PASS');
+} catch (\Throwable $e) {
+    test_assert(false, 'case13 should pass: ' . $e->getMessage());
 }
 
 if ($failures > 0) {

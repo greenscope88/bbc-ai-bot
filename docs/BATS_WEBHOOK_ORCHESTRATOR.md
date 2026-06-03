@@ -473,3 +473,42 @@ dry-run 且 candidates 可用時，新增摘要：
 - `line_sender.payload_size`
 
 無 Gemini reply 時維持 unavailable，且不 fatal。
+
+---
+
+## Phase 9-B-26C-6 — travel_b Controlled Reply Gate (Preview-only)
+
+### 1. 三重閘門
+
+Controlled path 僅在以下條件同時成立時啟用：
+
+1. `controlled_reply_enabled = true`
+2. `tenant_sno` 在 `controlled_reply_tenants` allowlist
+3. 訊息文字嚴格以 `controlled_reply_keyword_prefix` 開頭（目前 `BATS測試`）
+
+其餘情況全部 fallthrough 至 legacy。
+
+### 2. Config（安全預設）
+
+`config/bats_feature.php` 新增：
+
+- `controlled_reply_enabled`（預設 `false`）
+- `controlled_reply_tenants`（預設包含 travel_b `5f99b8d665e8444d`）
+- `controlled_reply_keyword_prefix`（預設 `BATS測試`）
+
+### 3. Controlled path 行為（本 phase）
+
+本 phase 為 **preview-only**：
+
+- 觸發時呼叫 orchestrator dry-run 取得 `gemini_reply` / `line_render` / `line_sender` 摘要
+- 記錄 `controlled_reply_preview`
+- 回傳 `bats_controlled_reply_preview`
+- 不送真 LINE 訊息、不呼叫 LINE Reply API
+
+### 4. 失敗保護
+
+Controlled path 任一例外：
+
+- 記錄 `controlled_reply_error`
+- 立即 fallback legacy（回傳 `null`）
+- 不中斷 webhook 主流程

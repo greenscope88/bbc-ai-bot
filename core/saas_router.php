@@ -190,6 +190,20 @@ class SaaSRouter
 
             $intent = IntentRouter::detect($userMessage);
 
+            // Phase 9-B-26C-6: controlled reply gate (travel_b + BATS測試*).
+            // Safe mode in this phase: preview-only, no LINE send, no legacy interception outside gate.
+            $controlledResult = self::attemptControlledReplyPath(
+                $tenant,
+                $userMessage,
+                $traceId,
+                (string) ($tenant['channel_id'] ?? ''),
+                null,
+                null
+            );
+            if (is_array($controlledResult)) {
+                return $controlledResult;
+            }
+
             $supportCheck = TourService::isServiceSupported($pdo, (string) $tenant['sno'], (string) $intent['service_name']);
             if (!$supportCheck['supported']) {
                 $replyText = '目前我們暫時沒有提供【' . (string) $intent['service_name'] . '】，若您需要，我可以協助您查詢其他目前有提供的服務。';
@@ -513,6 +527,179 @@ class SaaSRouter
             'ok' => true,
             'message' => $routerMessage,
             'bats' => $batsResult,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $tenant
+     */
+    public static function isControlledReplyEligible(
+        array $tenant,
+        string $userMessage,
+        ?array $batsFeatureConfig = null
+    ): bool {
+        $config = is_array($batsFeatureConfig) ? $batsFeatureConfig : self::loadBatsFeatureConfig();
+        $enabled = isset($config['controlled_reply_enabled']) && (bool) $config['controlled_reply_enabled'];
+        if (!$enabled) {
+            return false;
+        }
+
+        $tenantSno = trim((string) ($tenant['sno'] ?? ''));
+        if ($tenantSno === '') {
+            return false;
+        }
+
+        $allowedTenants = isset($config['controlled_reply_tenants']) && is_array($config['controlled_reply_tenants'])
+            ? $config['controlled_reply_tenants']
+            : [];
+        $allowedTenants = array_values(array_filter(array_map('strval', $allowedTenants)));
+        if (!in_array($tenantSno, $allowedTenants, true)) {
+            return false;
+        }
+
+        $prefix = isset($config['controlled_reply_keyword_prefix'])
+            ? trim((string) $config['controlled_reply_keyword_prefix'])
+            : 'BATS測試';
+        if ($prefix === '') {
+            return false;
+        }
+
+        $message = trim($userMessage);
+        if ($message === '') {
+            return false;
+        }
+
+        return mb_substr($message, 0, mb_strlen($prefix)) === $prefix;
+    }
+
+    /**
+     * Controlled reply path for Phase 9-B-26C-6.
+     *
+     * Preview-only in this phase: logs result and returns handled message without LINE send.
+     * Returns null when gate not eligible or when any error occurs (fallback to legacy).
+     *
+     * @param array<string, mixed> $tenant
+     * @param callable|null $orchestratorFactory fn(BatsFeatureGate): BatsWebhookOrchestrator
+     * @return array<string, mixed>|null
+     */
+    public static function attemptControlledReplyPath(
+        array $tenant,
+        string $userMessage,
+        string $traceId,
+        string $channelId = '',
+        ?array $batsFeatureConfig = null,
+        $orchestratorFactory = null
+    ): ?array {
+        $config = is_array($batsFeatureConfig) ? $batsFeatureConfig : self::loadBatsFeatureConfig();
+        if (!self::isControlledReplyEligible($tenant, $userMessage, $config)) {
+            return null;
+        }
+
+        try {
+            $tenantSno = trim((string) ($tenant['sno'] ?? ''));
+            if ($channelId === '') {
+                $channelId = trim((string) ($tenant['channel_id'] ?? ''));
+            }
+
+            $gate = new BatsFeatureGate($config);
+            if (is_callable($orchestratorFactory)) {
+                $orch = $orchestratorFactory($gate);
+                if (!$orch instanceof BatsWebhookOrchestrator) {
+                    throw new \RuntimeException('controlled orchestrator factory must return BatsWebhookOrchestrator');
+                }
+            } else {
+                $orch = new BatsWebhookOrchestrator($gate);
+            }
+
+            $batsResult = $orch->handle([
+                'tenant_sno' => $tenantSno,
+                'customer_message' => $userMessage,
+                'channel' => $channelId,
+                'trace_id' => $traceId,
+                'source_results' => self::controlledSourceResultsFixture($tenantSno),
+            ]);
+
+            $snapshot = isset($batsResult['decision_snapshot']) && is_array($batsResult['decision_snapshot'])
+                ? $batsResult['decision_snapshot']
+                : [];
+            $lineRenderAvailable = (bool) ($snapshot['line_render']['available'] ?? false);
+            $lineSenderAvailable = (bool) ($snapshot['line_sender']['available'] ?? false);
+            $lineMessageCount = (int) ($snapshot['line_render']['message_count'] ?? 0);
+            $linePayloadSize = isset($snapshot['line_sender']['payload_size'])
+                ? (int) $snapshot['line_sender']['payload_size']
+                : 0;
+
+            $previewPayload = [
+                'trace_id' => $traceId,
+                'tenant_sno' => $tenantSno,
+                'controlled_reply' => [
+                    'eligible' => true,
+                    'mode' => 'preview_only',
+                    'keyword_prefix' => (string) ($config['controlled_reply_keyword_prefix'] ?? 'BATS測試'),
+                    'line_render_available' => $lineRenderAvailable,
+                    'line_sender_available' => $lineSenderAvailable,
+                    'line_message_count' => $lineMessageCount,
+                    'line_payload_size' => $linePayloadSize,
+                ],
+                'bats_status' => isset($batsResult['status']) ? (string) $batsResult['status'] : '',
+                'reason_code' => isset($snapshot['reason_code']) ? (string) $snapshot['reason_code'] : '',
+            ];
+            Logger::log('saas_router.log', 'controlled_reply_preview', $previewPayload);
+            self::appendWebhookLog('controlled_reply_preview', $previewPayload);
+
+            return [
+                'ok' => true,
+                'message' => 'bats_controlled_reply_preview',
+                'controlled_reply' => $previewPayload['controlled_reply'],
+                'bats' => $batsResult,
+            ];
+        } catch (\Throwable $e) {
+            Logger::log('saas_router.log', 'controlled_reply_error', [
+                'trace_id' => $traceId,
+                'tenant_sno' => (string) ($tenant['sno'] ?? ''),
+                'message' => $e->getMessage(),
+                'fallthrough_to_legacy' => true,
+            ]);
+            self::appendWebhookLog('controlled_reply_error', [
+                'trace_id' => $traceId,
+                'tenant_sno' => (string) ($tenant['sno'] ?? ''),
+                'message' => $e->getMessage(),
+                'fallthrough_to_legacy' => true,
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * Controlled-test only source fixture for preview path (no external API calls).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function controlledSourceResultsFixture(string $tenantSno): array
+    {
+        if ($tenantSno !== '5f99b8d665e8444d') {
+            return [];
+        }
+
+        return [
+            [
+                'source_platform' => 'bbcshops',
+                'tenant_instance' => 'travel_b',
+                'product_category' => 'group_tour',
+                'result_count' => 10,
+            ],
+            [
+                'source_platform' => 'agenttour',
+                'tenant_instance' => 'travel_b_agenttour',
+                'product_category' => 'group_tour',
+                'result_count' => 8,
+            ],
+            [
+                'source_platform' => 'grp',
+                'tenant_instance' => 'travel_b_grp',
+                'product_category' => 'group_tour',
+                'result_count' => 12,
+            ],
         ];
     }
 
