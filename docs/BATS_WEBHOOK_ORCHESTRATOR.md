@@ -512,3 +512,55 @@ Controlled path 任一例外：
 - 記錄 `controlled_reply_error`
 - 立即 fallback legacy（回傳 `null`）
 - 不中斷 webhook 主流程
+
+---
+
+## Phase 9-B-26C-7 — Controlled Real LINE Reply Test Gate
+
+### 1. 三重閘門（正式 LINE Reply）
+
+僅在以下條件**同時**成立且 `controlled_real_reply_enabled = true` 時，走 BATS → Gemini(mock) → LINE 正式回覆：
+
+1. `tenant_sno` = `controlled_real_reply_tenant_sno`（travel_b：`5f99b8d665e8444d`）
+2. 若 tenant 帶 `tenant_key` / `tenant`，須符合 `controlled_real_reply_tenant_key`（`travel_b`）；未帶 key 時以 sno 為準
+3. 訊息嚴格以 `controlled_real_reply_keyword_prefix` 開頭（`BATS測試`）
+
+其餘訊息（含一般 tour query、`hello`、未帶前綴的旅遊查詢、其他 tenant）維持 legacy。  
+`hello` / `weather` 仍在 tenant resolve 之前處理，不受本 gate 影響。
+
+### 2. Config（安全預設 OFF）
+
+- `controlled_real_reply_enabled`（預設 `false`）
+- `controlled_real_reply_tenant_sno`
+- `controlled_real_reply_tenant_key`
+- `controlled_real_reply_keyword_prefix`
+
+26C-6 preview gate 獨立保留；real gate 未命中時才評估 preview gate。
+
+### 3. Trace / decision snapshot
+
+`evaluateControlledRealLineReplyGate()` 與 webhook log `controlled_real_reply_gate_decision` 含：
+
+- `controlled_real_reply_allowed`
+- `reason`
+- `tenant_sno` / `tenant_key`
+- `message_prefix_check_passed`
+- `final_route`：`bats_real_line_reply` 或 `legacy`
+
+正式送出時另記 `controlled_real_line_reply`（含 `line_reply` 結果）。
+
+### 4. 路由順序（SaaSRouter）
+
+```
+Tenant resolve
+  → evaluateControlledRealLineReplyGate (log)
+  → [allowed] attemptControlledRealLineReplyPath → LineService::replyToLine
+  → [else] attemptControlledReplyPath (26C-6 preview)
+  → legacy tour / unsupported / ...
+```
+
+Real path 失敗（例外或缺 reply credentials）回傳 `null`，**不**改走 preview，直接 legacy。
+
+### 5. CLI 測試
+
+`php tests/product_sources/test_saas_router_bats_hook.php`（Case 14–21 覆蓋 26C-7 六種情境）

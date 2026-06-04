@@ -18,6 +18,49 @@ function test_assert(bool $cond, string $message): void
     }
 }
 
+/**
+ * Extract a single PHP function body by name (brace-balanced).
+ */
+function extract_php_function_body(string $source, string $functionName): string
+{
+    $markers = [
+        'public static function ' . $functionName,
+        'private static function ' . $functionName,
+    ];
+    $start = false;
+    foreach ($markers as $marker) {
+        $pos = strpos($source, $marker);
+        if ($pos !== false) {
+            $start = $pos;
+            break;
+        }
+    }
+    if ($start === false) {
+        return '';
+    }
+
+    $braceStart = strpos($source, '{', $start);
+    if ($braceStart === false) {
+        return '';
+    }
+
+    $depth = 0;
+    $length = strlen($source);
+    for ($i = $braceStart; $i < $length; ++$i) {
+        $char = $source[$i];
+        if ($char === '{') {
+            ++$depth;
+        } elseif ($char === '}') {
+            --$depth;
+            if ($depth === 0) {
+                return substr($source, $braceStart, $i - $braceStart + 1);
+            }
+        }
+    }
+
+    return '';
+}
+
 $disabledConfig = [
     'defaults' => ['mode' => BatsFeatureGate::MODE_DISABLED],
     'tenants' => [],
@@ -93,6 +136,36 @@ $tenantEmpty = [
 $tenantTravelB = [
     'sno' => '5f99b8d665e8444d',
     'channel_id' => 'travel-b-channel',
+];
+
+$tenantTravelBWithKey = [
+    'sno' => '5f99b8d665e8444d',
+    'tenant_key' => 'travel_b',
+    'channel_id' => 'travel-b-channel',
+];
+
+$controlledRealConfigOff = [
+    'defaults' => ['mode' => BatsFeatureGate::MODE_DISABLED],
+    'controlled_real_reply_enabled' => false,
+    'controlled_real_reply_tenant_sno' => '5f99b8d665e8444d',
+    'controlled_real_reply_tenant_key' => 'travel_b',
+    'controlled_real_reply_keyword_prefix' => 'BATS測試',
+    'tenants' => [
+        '5f99b8d665e8444d' => ['mode' => BatsFeatureGate::MODE_DRY_RUN],
+    ],
+    'channels' => [],
+];
+
+$controlledRealConfigOn = [
+    'defaults' => ['mode' => BatsFeatureGate::MODE_DISABLED],
+    'controlled_real_reply_enabled' => true,
+    'controlled_real_reply_tenant_sno' => '5f99b8d665e8444d',
+    'controlled_real_reply_tenant_key' => 'travel_b',
+    'controlled_real_reply_keyword_prefix' => 'BATS測試',
+    'tenants' => [
+        '5f99b8d665e8444d' => ['mode' => BatsFeatureGate::MODE_DRY_RUN],
+    ],
+    'channels' => [],
 ];
 
 // Case 1: default disabled → fall-through (null)
@@ -181,20 +254,40 @@ try {
     test_assert(false, 'case5 should pass: ' . $e->getMessage());
 }
 
-// Case 6: hook path has no LINE / Gemini / HTTP calls
+// Case 6: read-only hook / preview gate / real reply gate are separated
 try {
     $routerSource = (string) file_get_contents(
         dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'saas_router.php'
     );
-    $hookStart = strpos($routerSource, 'function attemptBatsWebhookHook');
-    $hookEnd = strpos($routerSource, 'private static function loadBatsFeatureConfig');
-    test_assert($hookStart !== false && $hookEnd !== false && $hookEnd > $hookStart, 'case6 hook block found');
-    $hookBlock = substr($routerSource, $hookStart, $hookEnd - $hookStart);
-    test_assert(stripos($hookBlock, 'LineService') === false, 'case6 no LineService in hook');
-    test_assert(stripos($hookBlock, 'callGemini') === false, 'case6 no callGemini in hook');
-    test_assert(stripos($hookBlock, 'curl_') === false, 'case6 no curl in hook');
-    test_assert(stripos($hookBlock, 'api.line.me') === false, 'case6 no LINE API url in hook');
-    test_assert(true, 'case6 no HTTP/LINE/Gemini in hook PASS');
+
+    $hookBody = extract_php_function_body($routerSource, 'attemptBatsWebhookHook');
+    $previewBody = extract_php_function_body($routerSource, 'attemptControlledReplyPath');
+    $realBody = extract_php_function_body($routerSource, 'attemptControlledRealLineReplyPath');
+
+    test_assert($hookBody !== '', 'case6 hook function body found');
+    test_assert($previewBody !== '', 'case6 preview gate function body found');
+    test_assert($realBody !== '', 'case6 real reply gate function body found');
+
+    // A: read-only BATS hook must not send LINE replies
+    test_assert(stripos($hookBody, 'LineService::replyToLine') === false, 'case6 hook no replyToLine');
+    test_assert(stripos($hookBody, 'callGemini') === false, 'case6 hook no callGemini');
+    test_assert(stripos($hookBody, 'curl_') === false, 'case6 hook no curl');
+    test_assert(stripos($hookBody, 'api.line.me') === false, 'case6 hook no LINE API url');
+    test_assert(stripos($hookBody, 'attemptControlledReplyPath') === false, 'case6 hook does not call preview gate');
+    test_assert(stripos($hookBody, 'attemptControlledRealLineReplyPath') === false, 'case6 hook does not call real gate');
+
+    // B: controlled real reply gate may call LINE Reply API
+    test_assert(stripos($realBody, 'LineService::replyToLine') !== false, 'case6 real gate uses replyToLine');
+
+    // C: preview gate stays preview-only (no real LINE send)
+    test_assert(stripos($previewBody, 'LineService::replyToLine') === false, 'case6 preview gate no replyToLine');
+    test_assert(stripos($previewBody, 'preview_only') !== false, 'case6 preview gate preview_only mode');
+
+    // C: read-only trace hooks exist separately from controlled gates
+    test_assert(strpos($routerSource, 'traceBatsHookReadOnly') !== false, 'case6 read-only pre-resolve trace exists');
+    test_assert(strpos($routerSource, 'traceBatsHookAfterTenantReadOnly') !== false, 'case6 read-only post-resolve trace exists');
+
+    test_assert(true, 'case6 hook/preview/real separation PASS');
 } catch (\Throwable $e) {
     test_assert(false, 'case6 should pass: ' . $e->getMessage());
 }
@@ -217,6 +310,11 @@ try {
     test_assert(array_key_exists('controlled_reply_enabled', $loaded), 'case7 controlled_reply_enabled key exists');
     test_assert(array_key_exists('controlled_reply_tenants', $loaded), 'case7 controlled_reply_tenants key exists');
     test_assert(array_key_exists('controlled_reply_keyword_prefix', $loaded), 'case7 controlled_reply_keyword_prefix key exists');
+    test_assert(array_key_exists('controlled_real_reply_enabled', $loaded), 'case7 controlled_real_reply_enabled key exists');
+    test_assert(
+        ($loaded['controlled_real_reply_enabled'] ?? true) === false,
+        'case7 controlled_real_reply_enabled default off'
+    );
     test_assert(true, 'case7 feature config load PASS');
 } catch (\Throwable $e) {
     test_assert(false, 'case7 should pass: ' . $e->getMessage());
@@ -315,6 +413,182 @@ try {
     test_assert(true, 'case13 controlled error fallback PASS');
 } catch (\Throwable $e) {
     test_assert(false, 'case13 should pass: ' . $e->getMessage());
+}
+
+// Phase 9-B-26C-7: controlled real LINE reply gate
+
+$mockLineSender = static function (string $url, string $token, string $replyToken, string $text): array {
+    unset($url, $token);
+    return [
+        'status' => 200,
+        'reply_token' => $replyToken,
+        'text_length' => mb_strlen($text),
+        'mock' => true,
+    ];
+};
+
+// Case 14 (26C-7 #1): travel_b + correct sno + BATS測試* -> real route
+try {
+    $decision = SaaSRouter::evaluateControlledRealLineReplyGate(
+        $tenantTravelBWithKey,
+        'BATS測試 東京五日',
+        $controlledRealConfigOn
+    );
+    test_assert(($decision['controlled_real_reply_allowed'] ?? false) === true, 'case14 allowed');
+    test_assert(($decision['final_route'] ?? '') === 'bats_real_line_reply', 'case14 final_route real');
+    test_assert(($decision['message_prefix_check_passed'] ?? false) === true, 'case14 prefix ok');
+    $result = SaaSRouter::attemptControlledRealLineReplyPath(
+        $tenantTravelBWithKey,
+        'BATS測試 東京五日',
+        'trace-case-14',
+        'reply-token-14',
+        'https://api.line.me/v2/bot/message/reply',
+        'channel-token-14',
+        'travel-b-channel',
+        $controlledRealConfigOn,
+        null,
+        $mockLineSender
+    );
+    test_assert(is_array($result), 'case14 result array');
+    test_assert(($result['message'] ?? '') === 'bats_controlled_real_line_reply', 'case14 real reply message');
+    test_assert(
+        ($result['controlled_real_reply']['final_route'] ?? '') === 'bats_real_line_reply',
+        'case14 payload final_route'
+    );
+    test_assert(
+        (int) ($result['controlled_real_reply']['reply_text_length'] ?? 0) > 0,
+        'case14 reply text produced'
+    );
+    test_assert(true, 'case14 real route PASS');
+} catch (\Throwable $e) {
+    test_assert(false, 'case14 should pass: ' . $e->getMessage());
+}
+
+// Case 15 (26C-7 #2): 東京五日 without prefix -> legacy
+try {
+    $decision = SaaSRouter::evaluateControlledRealLineReplyGate(
+        $tenantTravelBWithKey,
+        '東京五日',
+        $controlledRealConfigOn
+    );
+    test_assert(($decision['controlled_real_reply_allowed'] ?? false) === false, 'case15 not allowed');
+    test_assert(($decision['final_route'] ?? '') === 'legacy', 'case15 legacy route');
+    test_assert(($decision['reason'] ?? '') === 'message_prefix_mismatch', 'case15 prefix reason');
+    test_assert(
+        SaaSRouter::attemptControlledRealLineReplyPath(
+            $tenantTravelBWithKey,
+            '東京五日',
+            'trace-case-15',
+            'reply-token-15',
+            'https://api.line.me/v2/bot/message/reply',
+            'channel-token-15',
+            'travel-b-channel',
+            $controlledRealConfigOn,
+            null,
+            $mockLineSender
+        ) === null,
+        'case15 path null'
+    );
+    test_assert(true, 'case15 tour query legacy PASS');
+} catch (\Throwable $e) {
+    test_assert(false, 'case15 should pass: ' . $e->getMessage());
+}
+
+// Case 16 (26C-7 #3): hello -> legacy
+try {
+    $decision = SaaSRouter::evaluateControlledRealLineReplyGate(
+        $tenantTravelBWithKey,
+        'hello',
+        $controlledRealConfigOn
+    );
+    test_assert(($decision['controlled_real_reply_allowed'] ?? false) === false, 'case16 hello legacy');
+    test_assert(true, 'case16 hello legacy PASS');
+} catch (\Throwable $e) {
+    test_assert(false, 'case16 should pass: ' . $e->getMessage());
+}
+
+// Case 17 (26C-7 #4): non travel_b tenant -> legacy
+try {
+    $decision = SaaSRouter::evaluateControlledRealLineReplyGate(
+        ['sno' => 'aaaaaaaaaaaaaaaa', 'tenant_key' => 'travel_a'],
+        'BATS測試 東京五日',
+        $controlledRealConfigOn
+    );
+    test_assert(($decision['controlled_real_reply_allowed'] ?? false) === false, 'case17 travel_a blocked');
+    test_assert(($decision['reason'] ?? '') === 'tenant_sno_not_allowlisted', 'case17 sno reason');
+    test_assert(true, 'case17 other tenant PASS');
+} catch (\Throwable $e) {
+    test_assert(false, 'case17 should pass: ' . $e->getMessage());
+}
+
+// Case 18 (26C-7 #5): travel_b key but wrong sno -> legacy
+try {
+    $decision = SaaSRouter::evaluateControlledRealLineReplyGate(
+        ['sno' => 'bbbbbbbbbbbbbbbb', 'tenant_key' => 'travel_b'],
+        'BATS測試 東京五日',
+        $controlledRealConfigOn
+    );
+    test_assert(($decision['controlled_real_reply_allowed'] ?? false) === false, 'case18 wrong sno');
+    test_assert(true, 'case18 wrong sno PASS');
+} catch (\Throwable $e) {
+    test_assert(false, 'case18 should pass: ' . $e->getMessage());
+}
+
+// Case 19 (26C-7 #6): prefix only BATS測試 -> allow + safe reply
+try {
+    $decision = SaaSRouter::evaluateControlledRealLineReplyGate(
+        $tenantTravelBWithKey,
+        'BATS測試',
+        $controlledRealConfigOn
+    );
+    test_assert(($decision['controlled_real_reply_allowed'] ?? false) === true, 'case19 prefix-only allowed');
+    $result = SaaSRouter::attemptControlledRealLineReplyPath(
+        $tenantTravelBWithKey,
+        'BATS測試',
+        'trace-case-19',
+        'reply-token-19',
+        'https://api.line.me/v2/bot/message/reply',
+        'channel-token-19',
+        'travel-b-channel',
+        $controlledRealConfigOn,
+        null,
+        $mockLineSender
+    );
+    test_assert(is_array($result), 'case19 result');
+    test_assert(
+        (int) ($result['controlled_real_reply']['reply_text_length'] ?? 0) > 0,
+        'case19 reply text or fallback'
+    );
+    test_assert(true, 'case19 prefix-only PASS');
+} catch (\Throwable $e) {
+    test_assert(false, 'case19 should pass: ' . $e->getMessage());
+}
+
+// Case 20: real gate disabled -> evaluate legacy, path null
+try {
+    $decision = SaaSRouter::evaluateControlledRealLineReplyGate(
+        $tenantTravelBWithKey,
+        'BATS測試 北海道',
+        $controlledRealConfigOff
+    );
+    test_assert(($decision['controlled_real_reply_allowed'] ?? false) === false, 'case20 flag off');
+    test_assert(($decision['reason'] ?? '') === 'real_reply_disabled', 'case20 disabled reason');
+    test_assert(true, 'case20 real flag off PASS');
+} catch (\Throwable $e) {
+    test_assert(false, 'case20 should pass: ' . $e->getMessage());
+}
+
+// Case 21: router orders real gate before preview gate
+try {
+    $routerSource = (string) file_get_contents(
+        dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'saas_router.php'
+    );
+    $realPos = strpos($routerSource, 'evaluateControlledRealLineReplyGate');
+    $previewPos = strpos($routerSource, 'attemptControlledReplyPath');
+    test_assert($realPos !== false && $previewPos !== false && $realPos < $previewPos, 'case21 real before preview');
+    test_assert(true, 'case21 router order PASS');
+} catch (\Throwable $e) {
+    test_assert(false, 'case21 should pass: ' . $e->getMessage());
 }
 
 if ($failures > 0) {

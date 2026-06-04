@@ -190,18 +190,40 @@ class SaaSRouter
 
             $intent = IntentRouter::detect($userMessage);
 
-            // Phase 9-B-26C-6: controlled reply gate (travel_b + BATS測試*).
-            // Safe mode in this phase: preview-only, no LINE send, no legacy interception outside gate.
-            $controlledResult = self::attemptControlledReplyPath(
-                $tenant,
-                $userMessage,
-                $traceId,
-                (string) ($tenant['channel_id'] ?? ''),
-                null,
-                null
-            );
-            if (is_array($controlledResult)) {
-                return $controlledResult;
+            $batsFeatureConfig = self::loadBatsFeatureConfig();
+
+            // Phase 9-B-26C-7: controlled real LINE reply gate (travel_b + sno + BATS測試*).
+            $realGateDecision = self::evaluateControlledRealLineReplyGate($tenant, $userMessage, $batsFeatureConfig);
+            Logger::log('saas_router.log', 'controlled_real_reply_gate_decision', $realGateDecision);
+            self::appendWebhookLog('controlled_real_reply_gate_decision', $realGateDecision);
+
+            if ($realGateDecision['controlled_real_reply_allowed']) {
+                $controlledRealResult = self::attemptControlledRealLineReplyPath(
+                    $tenant,
+                    $userMessage,
+                    $traceId,
+                    $replyToken,
+                    $lineReplyUrl,
+                    $lineToken,
+                    (string) ($tenant['channel_id'] ?? ''),
+                    $batsFeatureConfig
+                );
+                if (is_array($controlledRealResult)) {
+                    return $controlledRealResult;
+                }
+            } else {
+                // Phase 9-B-26C-6: controlled reply preview gate (travel_b + BATS測試*).
+                $controlledResult = self::attemptControlledReplyPath(
+                    $tenant,
+                    $userMessage,
+                    $traceId,
+                    (string) ($tenant['channel_id'] ?? ''),
+                    $batsFeatureConfig,
+                    null
+                );
+                if (is_array($controlledResult)) {
+                    return $controlledResult;
+                }
             }
 
             $supportCheck = TourService::isServiceSupported($pdo, (string) $tenant['sno'], (string) $intent['service_name']);
@@ -528,6 +550,218 @@ class SaaSRouter
             'message' => $routerMessage,
             'bats' => $batsResult,
         ];
+    }
+
+    /**
+     * Phase 9-B-26C-7: evaluate controlled real LINE reply gate (trace / decision snapshot).
+     *
+     * @param array<string, mixed> $tenant
+     * @return array<string, mixed>
+     */
+    public static function evaluateControlledRealLineReplyGate(
+        array $tenant,
+        string $userMessage,
+        ?array $batsFeatureConfig = null
+    ): array {
+        $config = is_array($batsFeatureConfig) ? $batsFeatureConfig : self::loadBatsFeatureConfig();
+        $enabled = isset($config['controlled_real_reply_enabled']) && (bool) $config['controlled_real_reply_enabled'];
+        $tenantSno = trim((string) ($tenant['sno'] ?? ''));
+        $tenantKey = self::resolveTenantKeyFromTenant($tenant);
+        $expectedSno = isset($config['controlled_real_reply_tenant_sno'])
+            ? trim((string) $config['controlled_real_reply_tenant_sno'])
+            : '5f99b8d665e8444d';
+        $expectedKey = isset($config['controlled_real_reply_tenant_key'])
+            ? trim((string) $config['controlled_real_reply_tenant_key'])
+            : 'travel_b';
+        $prefix = isset($config['controlled_real_reply_keyword_prefix'])
+            ? trim((string) $config['controlled_real_reply_keyword_prefix'])
+            : 'BATS測試';
+
+        $message = trim($userMessage);
+        $prefixCheckPassed = $prefix !== ''
+            && $message !== ''
+            && mb_substr($message, 0, mb_strlen($prefix)) === $prefix;
+        $snoMatch = $expectedSno !== '' && $tenantSno === $expectedSno;
+        $keyMatch = $expectedKey === ''
+            || $tenantKey === ''
+            || $tenantKey === $expectedKey;
+
+        $allowed = false;
+        $reason = 'real_reply_disabled';
+
+        if (!$enabled) {
+            $reason = 'real_reply_disabled';
+        } elseif ($tenantSno === '') {
+            $reason = 'missing_tenant_sno';
+        } elseif (!$snoMatch) {
+            $reason = 'tenant_sno_not_allowlisted';
+        } elseif (!$keyMatch) {
+            $reason = 'tenant_key_mismatch';
+        } elseif (!$prefixCheckPassed) {
+            $reason = 'message_prefix_mismatch';
+        } else {
+            $allowed = true;
+            $reason = 'all_conditions_met';
+        }
+
+        return [
+            'controlled_real_reply_allowed' => $allowed,
+            'reason' => $reason,
+            'tenant_sno' => $tenantSno,
+            'tenant_key' => $tenantKey,
+            'expected_tenant_sno' => $expectedSno,
+            'expected_tenant_key' => $expectedKey,
+            'message_prefix' => $prefix,
+            'message_prefix_check_passed' => $prefixCheckPassed,
+            'controlled_real_reply_enabled' => $enabled,
+            'final_route' => $allowed ? 'bats_real_line_reply' : 'legacy',
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $tenant
+     */
+    public static function isControlledRealLineReplyEligible(
+        array $tenant,
+        string $userMessage,
+        ?array $batsFeatureConfig = null
+    ): bool {
+        $decision = self::evaluateControlledRealLineReplyGate($tenant, $userMessage, $batsFeatureConfig);
+
+        return (bool) ($decision['controlled_real_reply_allowed'] ?? false);
+    }
+
+    /**
+     * Controlled real LINE reply path for Phase 9-B-26C-7.
+     *
+     * Sends one text reply via LineService when gate allows. Returns null on ineligible or error (legacy).
+     *
+     * @param array<string, mixed> $tenant
+     * @param callable|null $orchestratorFactory fn(BatsFeatureGate): BatsWebhookOrchestrator
+     * @param callable|null $lineReplySender fn(string $url, string $token, string $replyToken, string $text): array
+     * @return array<string, mixed>|null
+     */
+    public static function attemptControlledRealLineReplyPath(
+        array $tenant,
+        string $userMessage,
+        string $traceId,
+        string $replyToken,
+        string $lineReplyUrl,
+        string $lineToken,
+        string $channelId = '',
+        ?array $batsFeatureConfig = null,
+        $orchestratorFactory = null,
+        $lineReplySender = null
+    ): ?array {
+        $config = is_array($batsFeatureConfig) ? $batsFeatureConfig : self::loadBatsFeatureConfig();
+        $gateDecision = self::evaluateControlledRealLineReplyGate($tenant, $userMessage, $config);
+        if (!($gateDecision['controlled_real_reply_allowed'] ?? false)) {
+            return null;
+        }
+
+        if ($replyToken === '' || $lineReplyUrl === '' || $lineToken === '') {
+            Logger::log('saas_router.log', 'controlled_real_reply_error', [
+                'trace_id' => $traceId,
+                'reason' => 'missing_line_reply_credentials',
+                'fallthrough_to_legacy' => true,
+            ]);
+            self::appendWebhookLog('controlled_real_reply_error', [
+                'trace_id' => $traceId,
+                'reason' => 'missing_line_reply_credentials',
+                'fallthrough_to_legacy' => true,
+            ]);
+
+            return null;
+        }
+
+        try {
+            $tenantSno = trim((string) ($tenant['sno'] ?? ''));
+            if ($channelId === '') {
+                $channelId = trim((string) ($tenant['channel_id'] ?? ''));
+            }
+
+            $gate = new BatsFeatureGate($config);
+            if (is_callable($orchestratorFactory)) {
+                $orch = $orchestratorFactory($gate);
+                if (!$orch instanceof BatsWebhookOrchestrator) {
+                    throw new \RuntimeException('controlled real orchestrator factory must return BatsWebhookOrchestrator');
+                }
+            } else {
+                $orch = new BatsWebhookOrchestrator($gate);
+            }
+
+            $sourceResults = self::controlledSourceResultsFixture($tenantSno);
+            $batsResult = $orch->handle([
+                'tenant_sno' => $tenantSno,
+                'customer_message' => $userMessage,
+                'channel' => $channelId,
+                'trace_id' => $traceId,
+                'source_results' => $sourceResults,
+            ]);
+
+            $replyText = $orch->resolveControlledLineReplyText([
+                'tenant_sno' => $tenantSno,
+                'customer_message' => $userMessage,
+                'trace_id' => $traceId,
+                'source_results' => $sourceResults,
+            ]);
+            if ($replyText === null || $replyText === '') {
+                $replyText = 'BATS controlled test：目前無法產生回覆，請稍後再試。';
+            }
+
+            if (is_callable($lineReplySender)) {
+                $replyRes = $lineReplySender($lineReplyUrl, $lineToken, $replyToken, $replyText);
+            } else {
+                $replyRes = LineService::replyToLine($lineReplyUrl, $lineToken, $replyToken, $replyText);
+            }
+
+            $payload = array_merge($gateDecision, [
+                'trace_id' => $traceId,
+                'reply_text_length' => mb_strlen($replyText),
+                'line_reply' => $replyRes,
+                'bats_status' => isset($batsResult['status']) ? (string) $batsResult['status'] : '',
+                'final_route' => 'bats_real_line_reply',
+            ]);
+            Logger::log('saas_router.log', 'controlled_real_line_reply', $payload);
+            self::appendWebhookLog('controlled_real_line_reply', $payload);
+
+            return [
+                'ok' => true,
+                'message' => 'bats_controlled_real_line_reply',
+                'controlled_real_reply' => $payload,
+                'bats' => $batsResult,
+            ];
+        } catch (\Throwable $e) {
+            Logger::log('saas_router.log', 'controlled_real_reply_error', [
+                'trace_id' => $traceId,
+                'tenant_sno' => (string) ($tenant['sno'] ?? ''),
+                'message' => $e->getMessage(),
+                'fallthrough_to_legacy' => true,
+            ]);
+            self::appendWebhookLog('controlled_real_reply_error', [
+                'trace_id' => $traceId,
+                'tenant_sno' => (string) ($tenant['sno'] ?? ''),
+                'message' => $e->getMessage(),
+                'fallthrough_to_legacy' => true,
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $tenant
+     */
+    private static function resolveTenantKeyFromTenant(array $tenant): string
+    {
+        if (isset($tenant['tenant_key'])) {
+            return trim((string) $tenant['tenant_key']);
+        }
+        if (isset($tenant['tenant'])) {
+            return trim((string) $tenant['tenant']);
+        }
+
+        return '';
     }
 
     /**

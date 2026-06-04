@@ -338,6 +338,58 @@ final class BatsWebhookOrchestrator
     }
 
     /**
+     * Build LINE text reply for controlled real/preview paths (mock Gemini + LineRenderer).
+     *
+     * @param array<string, mixed> $input tenant_sno, customer_message, trace_id?, source_results?
+     */
+    public function resolveControlledLineReplyText(array $input): ?string
+    {
+        $tenantSno = isset($input['tenant_sno']) ? trim((string) $input['tenant_sno']) : '';
+        $traceId = isset($input['trace_id']) ? trim((string) $input['trace_id']) : '';
+        $sourceResults = isset($input['source_results']) && is_array($input['source_results'])
+            ? $input['source_results']
+            : [];
+
+        if ($tenantSno === '' || $sourceResults === []) {
+            return null;
+        }
+
+        $candidateSummary = $this->buildCandidateSourceSummary($sourceResults);
+        if ($candidateSummary['count'] <= 0) {
+            return null;
+        }
+
+        try {
+            $effectiveTraceId = $traceId !== '' ? $traceId : $this->generateTraceId();
+            $promptPayload = $this->geminiRenderer->renderPrompts(
+                $candidateSummary['items'],
+                [
+                    'source_count' => $candidateSummary['count'],
+                    'result_count' => $candidateSummary['result_count'],
+                ],
+                [
+                    'trace_id' => $effectiveTraceId,
+                    'tenant_sno' => $tenantSno,
+                ]
+            );
+            $response = $this->geminiClient->generateResponseFromPrompt($promptPayload, []);
+            $linePayload = $this->lineRenderer->renderFromGeminiResponse($response, [
+                'trace_id' => $effectiveTraceId,
+                'tenant_sno' => $tenantSno,
+            ]);
+            $messages = $linePayload->getMessages();
+            if ($messages === []) {
+                return null;
+            }
+
+            $text = isset($messages[0]['text']) ? trim((string) $messages[0]['text']) : '';
+            return $text !== '' ? $text : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
      * @param array{count: int, result_count: int, items: list<array<string, mixed>>} $candidateSummary
      * @return array{
      *   gemini_context: array<string, mixed>,
