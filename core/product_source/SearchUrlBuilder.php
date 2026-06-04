@@ -11,7 +11,7 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'SourceInstanceUrlTemplateBuilder.p
  *
  * Does not modify SourceInstanceUrlTemplateBuilder. Keyword → region mapping reserved for future phase.
  */
-final class SearchUrlBuilder
+final class ProductSourceSearchUrlBuilder
 {
     private SearchUrlBuilderRegistry $registry;
 

@@ -19,20 +19,20 @@ final class MultiSourceSearchUrlBuilder
 
     private SearchUrlBuilderRegistry $searchUrlBuilderRegistry;
 
-    private SearchUrlBuilder $searchUrlBuilder;
+    private ProductSourceSearchUrlBuilder $searchUrlBuilder;
 
     private RegionKeywordMapper $keywordMapper;
 
     public function __construct(
         MultiSourceSearchUrlBuilderRegistry $sourceInstanceRegistry,
         SearchUrlBuilderRegistry $searchUrlBuilderRegistry,
-        ?SearchUrlBuilder $searchUrlBuilder = null,
+        ?ProductSourceSearchUrlBuilder $searchUrlBuilder = null,
         ?RegionKeywordMapper $keywordMapper = null
     ) {
         $this->sourceInstanceRegistry = $sourceInstanceRegistry;
         $this->searchUrlBuilderRegistry = $searchUrlBuilderRegistry;
         $this->keywordMapper = $keywordMapper ?? new RegionKeywordMapper();
-        $this->searchUrlBuilder = $searchUrlBuilder ?? new SearchUrlBuilder(
+        $this->searchUrlBuilder = $searchUrlBuilder ?? new ProductSourceSearchUrlBuilder(
             $searchUrlBuilderRegistry,
             null,
             $this->keywordMapper

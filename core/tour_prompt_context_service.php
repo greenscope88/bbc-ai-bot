@@ -22,6 +22,7 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'H
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridSearchDryRunLogger.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridSearchApiDebugLogger.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'TravelBMultiSourceLinkBuilder.php';
 
 
 
@@ -433,6 +434,20 @@ final class TourPromptContextService
 
                 $buildOptions['storeNo'] = $storeNo;
 
+            }
+
+            $multiSourceConfig = isset($params['travelBMultiSourceLinksConfig']) && is_array($params['travelBMultiSourceLinksConfig'])
+                ? $params['travelBMultiSourceLinksConfig']
+                : null;
+            if (TravelBMultiSourceLinkBuilder::isEnabledForSno($sno, $multiSourceConfig)) {
+                $linkBuilder = isset($params['travelBMultiSourceLinkBuilder'])
+                    && $params['travelBMultiSourceLinkBuilder'] instanceof TravelBMultiSourceLinkBuilder
+                    ? $params['travelBMultiSourceLinkBuilder']
+                    : new TravelBMultiSourceLinkBuilder($multiSourceConfig);
+                $multiSourceLinks = $linkBuilder->buildFromHybridCondition($condition, $sno);
+                if ($multiSourceLinks !== []) {
+                    $buildOptions['multi_source_links'] = $multiSourceLinks;
+                }
             }
 
 

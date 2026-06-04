@@ -28,6 +28,9 @@ final class GeminiTourContextBuilder
     /** Footer label before list search_url (LINE / Gemini / fallback). */
     public const SEARCH_URL_LABEL = '更多行程 & 出團日：';
 
+    /** Phase 9-B-27: multi-source search URLs for Gemini context (travel_b pilot). */
+    public const MULTI_SOURCE_LINKS_LABEL = '多商品源搜尋連結：';
+
     /** Departure dates line label (LINE / Gemini / fallback). */
     public const DEPARTURE_DATE_LABEL = '最近出團：';
 
@@ -91,6 +94,7 @@ final class GeminiTourContextBuilder
         if (($apiResult['success'] ?? false) !== true) {
             $lines[] = '目前未能取得可推薦的行程資料，請以禮貌用語回覆客人，並建議稍後再試或聯繫客服。';
             $this->appendSearchUrlLines($lines, $this->safeSearchUrl($apiResult));
+            $this->appendMultiSourceLinkLines($lines, $options);
             if ($includeInstructions) {
                 $lines[] = '';
                 $lines[] = $this->instructionBlock();
@@ -120,6 +124,7 @@ final class GeminiTourContextBuilder
         if ($total <= 0 && $normalizedItems === []) {
             $lines[] = '目前沒有找到符合條件的行程。';
             $this->appendSearchUrlLines($lines, $this->safeSearchUrl($apiResult));
+            $this->appendMultiSourceLinkLines($lines, $options);
             if ($includeInstructions) {
                 $lines[] = '';
                 $lines[] = $this->instructionBlock();
@@ -151,6 +156,7 @@ final class GeminiTourContextBuilder
 
         $lines[] = '';
         $this->appendSearchUrlLines($lines, $this->safeSearchUrl($apiResult));
+        $this->appendMultiSourceLinkLines($lines, $options);
 
         if ($includeInstructions) {
             $lines[] = '';
@@ -158,6 +164,34 @@ final class GeminiTourContextBuilder
         }
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * @param list<string> $lines
+     * @param array<string, mixed> $options
+     */
+    private function appendMultiSourceLinkLines(array &$lines, array $options): void
+    {
+        $links = isset($options['multi_source_links']) && is_array($options['multi_source_links'])
+            ? $options['multi_source_links']
+            : [];
+        if ($links === []) {
+            return;
+        }
+
+        $lines[] = '';
+        $lines[] = self::MULTI_SOURCE_LINKS_LABEL;
+        foreach ($links as $link) {
+            if (!is_array($link)) {
+                continue;
+            }
+            $platform = isset($link['platform']) ? trim((string) $link['platform']) : '';
+            $searchUrl = isset($link['search_url']) ? trim((string) $link['search_url']) : '';
+            if ($platform === '' || $searchUrl === '') {
+                continue;
+            }
+            $lines[] = $platform . ': ' . $searchUrl;
+        }
     }
 
     /**

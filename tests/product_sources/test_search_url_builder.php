@@ -76,7 +76,7 @@ $registry = new SearchUrlBuilderRegistry(
     ['agenttour_group_tour_entry_v1' => $agentTourUrlTemplate]
 );
 
-$searchBuilder = new SearchUrlBuilder($registry);
+$searchBuilder = new ProductSourceSearchUrlBuilder($registry);
 
 // Case 1: agenttour
 $expectedUrl = 'https://rechoice-travel.agenttour.com.tw/Index.aspx?WebArea=D10T2&BizType=Tour&RegionCode=C&LinkParams=0000107929248116';
