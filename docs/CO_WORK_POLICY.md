@@ -7,6 +7,27 @@
 
 ---
 
+## 文件目錄
+
+| 章節 | 標題 |
+|------|------|
+| §1 | 文件目的 |
+| §2 | 核心原則 |
+| §3 | 文件治理原則 |
+| §4 | 架構治理原則 |
+| §5 | Git Safe 原則 |
+| §6 | P1 / P2 / P3 原則 |
+| §7 | Cursor 協作原則 |
+| §8 | 文件優先順序 |
+| §9 | Git / Commit / Push 決策流程 |
+| §10 | 技術債管理 |
+| §11 | 例外情況 |
+| §13 | 文件驅動開發（Document-Driven Development） |
+| §14 | Recovery First 原則 |
+| §15 | 結論 |
+
+---
+
 ## 1. 文件目的
 
 本文件為 **最高治理文件**，用於規範 ChatGPT、Cursor、開發者之間的協作方式。
@@ -17,6 +38,7 @@
 - 明確工作優先順序（P1 / P2 / P3）
 - 規範文件與程式的先後順序
 - 規範 Git Safe 流程（Commit ≠ Push）
+- 確立文件驅動開發（Document-Driven Development）與 Recovery First 原則
 - 降低範圍失控、重工、架構散落與 Production 風險
 
 本文件不取代各領域的專項政策（如日期規則、tenant registry、短網址策略），但定義其 **優先順序與治理邊界**。
@@ -230,6 +252,8 @@ CO_WORK_POLICY.md                          ← 本文件（最高）
     ↓
 DOCUMENTATION_GOVERNANCE_POLICY.md
     ↓
+RECOVERY_AND_ROLLBACK_POLICY.md
+    ↓
 BATS_HYBRID_DATE_POLICY.md
     ↓
 TENANT_SOURCE_REGISTRY_POLICY.md
@@ -331,16 +355,81 @@ C:\bbc-ai-bot\docs\TECH_DEBT.md
 
 ---
 
-## 12. 結論
+## 13. 文件驅動開發（Document-Driven Development）
+
+### 13.1 原則
+
+1. **重要架構決策必須文件化。**
+2. **文件為正式依據（SSOT）。** 實作、審查、驗收皆以已採納之正式文件為準。
+3. **ChatGPT、Cursor、工程師** 進行分析與實作前，應 **優先查閱對應文件**（本文件 → `DOCUMENTATION_GOVERNANCE_POLICY.md` → 領域 SSOT）。
+4. **若缺少正式文件：** **先建立文件，再進行實作。**
+5. **禁止長期依賴** 以下來源作為正式規格：
+   - 聊天室歷史
+   - 個人記憶
+   - 口頭約定
+6. **重大架構調整** 必須依序進行：
+
+```
+文件更新
+  ↓
+文件確認
+  ↓
+程式修改
+```
+
+**禁止反向操作**（先改程式、後補文件；P1 hotfix 例外見 §11）。
+
+7. **所有 L0 / L1 / L2 文件應形成完整治理鏈**（見 §8、`DOCUMENTATION_GOVERNANCE_POLICY.md` §4），避免平行 SSOT 或規則漂移。
+
+### 13.2 與本文件其他章節的關係
+
+| 章節 | 關聯 |
+|------|------|
+| §3 文件治理原則 | 定義「文件先於程式」流程 |
+| §8 文件優先順序 | 定義 L0–L3 解讀順序 |
+| `DOCUMENTATION_GOVERNANCE_POLICY.md` | L0 文件治理細則（SSOT、命名、生命週期） |
+
+---
+
+## 14. Recovery First 原則
+
+### 14.1 原則
+
+1. **任何變更都必須：** **可恢復**、**可追蹤**、**可驗證**。
+2. **功能開發速度不得優先於 Recovery 能力。**
+3. **任何上線前必須能回答：**
+   - 如何 rollback？
+   - Rollback 需要多久？
+   - 如何驗證 rollback 成功？
+
+   **若無法回答 → 禁止上線。**
+
+4. **Commit 視為 Recovery Point**（本機還原點）。
+5. **Git Safe 為 Recovery 機制的一部分**（見 §5、§9）；Commit ≠ Push，累積安全 Commit 後再評估 Push。
+6. **任何 Apache、IIS、SQL、API、LINE OA、BATS 相關修改，** 都必須 **先評估 Recovery 方案**（備份、還原步驟、驗證方式）。
+7. **詳細流程以 `RECOVERY_AND_ROLLBACK_POLICY.md` 為正式依據**（L1 架構政策層；若尚未建立，應於高風險變更前補齊）。
+
+### 14.2 與核心原則的關係
+
+| 原則 | 對應 |
+|------|------|
+| §2「所有修改必須可 rollback」 | Recovery First 的基礎要求 |
+| §5 Git Safe | Commit 作為 Recovery Point |
+| §11 P1 Hotfix | 可先修復，但事後必須補文件與復盤 |
+
+---
+
+## 15. 結論
 
 **`CO_WORK_POLICY.md` 是最高治理文件。**
 
 未來所有重要架構決策、流程調整、治理規則變更，必須：
 
 1. **先更新本文件**，或其下層正式政策文件
-2. **經確認後** 再修改程式
+2. **經確認後** 再修改程式（**文件驅動開發**，見 §13）
 3. **依 Git Safe** 單獨 Commit；預設不 Push
 4. **依 P1 / P2 / P3** 決定執行優先順序
+5. **依 Recovery First**（§14）確保可恢復、可追蹤、可驗證後再上線
 
 ChatGPT、Cursor、開發者皆應以本文件為協作起點；若與其他文件或實作衝突，**以本文件為準**。
 
@@ -351,3 +440,4 @@ ChatGPT、Cursor、開發者皆應以本文件為協作起點；若與其他文�
 | 版本 | 日期 | 說明 |
 |------|------|------|
 | 1.0 | 2026-06-05 | Initial Version |
+| 1.1 | 2026-06-05 | Add Document-Driven Development and Recovery First principles. |
