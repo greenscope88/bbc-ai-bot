@@ -24,7 +24,8 @@
 | §11 | 例外情況 |
 | §13 | 文件驅動開發（Document-Driven Development） |
 | §14 | Recovery First 原則 |
-| §15 | 結論 |
+| §15 | SSOT First 原則 |
+| §16 | 結論 |
 
 ---
 
@@ -38,7 +39,7 @@
 - 明確工作優先順序（P1 / P2 / P3）
 - 規範文件與程式的先後順序
 - 規範 Git Safe 流程（Commit ≠ Push）
-- 確立文件驅動開發（Document-Driven Development）與 Recovery First 原則
+- 確立文件驅動開發（Document-Driven Development）、Recovery First 與 **SSOT First** 原則
 - 降低範圍失控、重工、架構散落與 Production 風險
 
 本文件不取代各領域的專項政策（如日期規則、tenant registry、短網址策略），但定義其 **優先順序與治理邊界**。
@@ -387,6 +388,7 @@ C:\bbc-ai-bot\docs\TECH_DEBT.md
 |------|------|
 | §3 文件治理原則 | 定義「文件先於程式」流程 |
 | §8 文件優先順序 | 定義 L0–L3 解讀順序 |
+| §15 SSOT First 原則 | 工作前 SSOT 確認與五步流程 |
 | `DOCUMENTATION_GOVERNANCE_POLICY.md` | L0 文件治理細則（SSOT、命名、生命週期） |
 
 ---
@@ -419,7 +421,91 @@ C:\bbc-ai-bot\docs\TECH_DEBT.md
 
 ---
 
-## 15. 結論
+## 15. SSOT First 原則
+
+### 15.1 SSOT First
+
+**任何工作開始前，必須先確認是否已有正式 SSOT 文件。**
+
+### 15.2 若已有 SSOT
+
+**必須依序：**
+
+1. **閱讀 SSOT**
+2. **依據 SSOT 分析**
+3. **依據 SSOT 設計**
+4. **依據 SSOT 開發**
+5. **依據 SSOT 驗證**
+
+### 15.3 若尚未有 SSOT
+
+**必須：**
+
+- **先建立正式文件**
+- **完成審查（Adopted）後**，才能開始設計與開發
+
+詳見 `DOCUMENTATION_GOVERNANCE_POLICY.md` §5 文件建立判斷原則。
+
+### 15.4 禁止作為正式依據
+
+以下情況 **禁止** 直接作為正式規格來源：
+
+- 聊天室歷史
+- ChatGPT 記憶
+- Cursor 記憶
+- 個人記憶
+- 口頭約定
+
+### 15.5 正式依據順序
+
+```
+L0 — CO_WORK_POLICY.md
+    ↓
+L0 — DOCUMENTATION_GOVERNANCE_POLICY.md
+    ↓
+L1 — Policy Files（如 RECOVERY、TENANT_SOURCE_REGISTRY、PRODUCT_SOURCE_SHORTURL …）
+    ↓
+L2 — Design Files（如 BATS_HYBRID_DATE_POLICY …）
+    ↓
+程式碼
+    ↓
+聊天室（僅背景參考）
+```
+
+### 15.6 衝突裁決
+
+| 衝突情境 | 裁決 |
+|----------|------|
+| **Cursor 建議** 與 **ChatGPT 建議** 不同 | **以 SSOT 文件為準** |
+| **程式** 與 **SSOT** 衝突 | **先更新文件**，或 **先修正程式**；**不得長期不一致** |
+
+### 15.7 單一領域單一 SSOT
+
+**每個領域只能有一份正式 SSOT。**
+
+| 領域 | 正式 SSOT |
+|------|-----------|
+| 日期規則 | `BATS_HYBRID_DATE_POLICY.md` |
+| Recovery / Rollback | `RECOVERY_AND_ROLLBACK_POLICY.md` |
+| Tenant / Source Registry | `TENANT_SOURCE_REGISTRY_POLICY.md` |
+| Short URL | `PRODUCT_SOURCE_SHORTURL_POLICY.md` |
+| 文件治理 | `DOCUMENTATION_GOVERNANCE_POLICY.md` |
+| 最高協作治理 | 本文件 |
+
+**禁止** 同一領域平行多份 SSOT 互相矛盾（詳 §8、`DOCUMENTATION_GOVERNANCE_POLICY.md` §2、§5.6）。
+
+### 15.8 與本文件其他章節的關係
+
+| 章節 | 關聯 |
+|------|------|
+| §3 文件治理原則 | 文件先於程式 |
+| §13 文件驅動開發 | 實作前查閱 SSOT |
+| §8 文件優先順序 | L0–L2 鏈 |
+| §7 Cursor 協作原則 | AI 建議不得凌駕 SSOT |
+
+---
+
+## 16. 結論
 
 **`CO_WORK_POLICY.md` 是最高治理文件。**
 
@@ -430,6 +516,7 @@ C:\bbc-ai-bot\docs\TECH_DEBT.md
 3. **依 Git Safe** 單獨 Commit；預設不 Push
 4. **依 P1 / P2 / P3** 決定執行優先順序
 5. **依 Recovery First**（§14）確保可恢復、可追蹤、可驗證後再上線
+6. **依 SSOT First**（§15）任何工作先確認並遵循正式 SSOT
 
 ChatGPT、Cursor、開發者皆應以本文件為協作起點；若與其他文件或實作衝突，**以本文件為準**。
 
@@ -441,3 +528,4 @@ ChatGPT、Cursor、開發者皆應以本文件為協作起點；若與其他文�
 |------|------|------|
 | 1.0 | 2026-06-05 | Initial Version |
 | 1.1 | 2026-06-05 | Add Document-Driven Development and Recovery First principles. |
+| 1.2 | 2026-06-05 | Add SSOT first principle and single-source governance rules. |
