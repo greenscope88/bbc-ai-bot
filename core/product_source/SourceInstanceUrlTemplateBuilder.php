@@ -114,10 +114,16 @@ final class SourceInstanceUrlTemplateBuilder
         ], $values);
 
         $query = $this->buildQueryFromTemplate($urlTemplate, $values, $platformDomain);
+        $pathPattern = $this->templateString($urlTemplate, 'path', '/');
+        $path = $this->substitutePlaceholders($pathPattern, [
+            'subdomain' => $subdomain,
+            'tenant_subdomain' => $subdomain,
+            'platform_domain' => $platformDomain,
+        ], $values);
         $url = $this->composeUrl(
             $this->templateString($urlTemplate, 'scheme', 'https'),
             $host,
-            $this->templateString($urlTemplate, 'path', '/'),
+            $path,
             $query
         );
 

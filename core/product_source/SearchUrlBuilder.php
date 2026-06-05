@@ -175,6 +175,16 @@ final class ProductSourceSearchUrlBuilder
             $values['region_code'] = trim((string) $input['region_code']);
         }
 
+        $keyword = isset($input['keyword']) ? trim((string) $input['keyword']) : '';
+        if ($keyword !== '') {
+            $values['keyword'] = $keyword;
+        }
+
+        $departurePathCode = isset($input['departure_path_code']) ? trim((string) $input['departure_path_code']) : '';
+        if ($departurePathCode !== '') {
+            $values['departure_path_code'] = $departurePathCode;
+        }
+
         $runtime['identifier_values'] = $values;
 
         return $runtime;

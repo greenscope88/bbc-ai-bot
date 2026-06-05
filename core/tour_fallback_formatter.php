@@ -20,6 +20,9 @@ final class TourFallbackFormatter
     private const LINE_DETAIL_LABEL = '📄 詳細內容：';
     private const LINE_SCHEDULE_LABEL = '🗓️ 行程表：';
 
+    /** LINE output header for multi-source URLs parsed from tour context (Phase 9-B-27 pilot). */
+    private const LINE_MULTI_SOURCE_HEADER = '更多商品來源：';
+
     /**
      * Build a customer-visible message from tour context text (Gemini adjunct block).
      */
@@ -31,16 +34,18 @@ final class TourFallbackFormatter
         }
 
         $body = self::stripInstructionBlock($ctx);
-        $url = self::extractSearchUrl($body);
+        $multiSourceLinks = self::extractMultiSourceLinks($body);
+        $bodyForParse = self::stripMultiSourceBlock($body);
+        $url = self::extractSearchUrl($bodyForParse);
 
         $lines = [];
         $lines[] = '哈囉，您好～';
         $lines[] = '我是旅遊 AI 助理，以下為您整理最新的出團資訊：';
         $lines[] = '';
 
-        $items = self::parseItemBlocks($body);
+        $items = self::parseItemBlocks($bodyForParse);
         if ($items === []) {
-            foreach (explode("\n", $body) as $ln) {
+            foreach (explode("\n", $bodyForParse) as $ln) {
                 $t = trim($ln);
                 if ($t === '' || strpos($t, '請 Gemini') !== false || self::isSearchUrlBodyLine($t)) {
                     continue;
@@ -73,6 +78,10 @@ final class TourFallbackFormatter
             $lines[] = $url;
         }
 
+        if ($multiSourceLinks !== []) {
+            self::appendMultiSourceLines($lines, $multiSourceLinks);
+        }
+
         $lines[] = '';
         $lines[] = '如需更多協助，歡迎再告訴我們。';
 
@@ -89,8 +98,113 @@ final class TourFallbackFormatter
         return $ctx;
     }
 
+    /**
+     * @return list<array{platform: string, url: string}>
+     */
+    private static function extractMultiSourceLinks(string $body): array
+    {
+        $label = GeminiTourContextBuilder::MULTI_SOURCE_LINKS_LABEL;
+        $pos = mb_strpos($body, $label, 0, 'UTF-8');
+        if ($pos === false) {
+            return [];
+        }
+
+        $after = mb_substr($body, $pos + mb_strlen($label, 'UTF-8'), null, 'UTF-8');
+        $links = [];
+        foreach (preg_split("/\r\n|\n|\r/", $after) ?: [] as $rawLine) {
+            $line = trim($rawLine);
+            if ($line === '') {
+                if ($links !== []) {
+                    break;
+                }
+                continue;
+            }
+            if (strpos($line, '請 Gemini') === 0
+                || $line === GeminiTourContextBuilder::SEARCH_URL_LABEL
+                || preg_match('/^【/u', $line) === 1) {
+                break;
+            }
+            if (preg_match('/^([a-zA-Z0-9_]+):\s*(https?:\/\/\S+)/u', $line, $m) !== 1) {
+                continue;
+            }
+            $platform = trim($m[1]);
+            $url = trim(rtrim($m[2], '.,;)]'));
+            if ($platform === '' || $url === '') {
+                continue;
+            }
+            $links[] = [
+                'platform' => $platform,
+                'url' => $url,
+            ];
+        }
+
+        return $links;
+    }
+
+    private static function stripMultiSourceBlock(string $body): string
+    {
+        $label = GeminiTourContextBuilder::MULTI_SOURCE_LINKS_LABEL;
+        if (mb_strpos($body, $label, 0, 'UTF-8') === false) {
+            return $body;
+        }
+
+        $lines = preg_split("/\r\n|\n|\r/", $body) ?: [];
+        $out = [];
+        $skipping = false;
+        foreach ($lines as $raw) {
+            $line = trim($raw);
+            if ($line === $label) {
+                $skipping = true;
+                continue;
+            }
+            if ($skipping) {
+                if ($line === ''
+                    || $line === GeminiTourContextBuilder::SEARCH_URL_LABEL
+                    || strpos($line, '請 Gemini') === 0
+                    || preg_match('/^【/u', $line) === 1) {
+                    $skipping = false;
+                    $out[] = $raw;
+                } elseif (preg_match('/^([a-zA-Z0-9_]+):\s*https?:\/\//u', $line) !== 1) {
+                    $skipping = false;
+                    $out[] = $raw;
+                }
+                continue;
+            }
+            $out[] = $raw;
+        }
+
+        return trim(implode("\n", $out));
+    }
+
+    /**
+     * @param list<string> $lines
+     * @param list<array{platform: string, url: string}> $links
+     */
+    private static function appendMultiSourceLines(array &$lines, array $links): void
+    {
+        if ($links === []) {
+            return;
+        }
+
+        $lines[] = '';
+        $lines[] = self::LINE_MULTI_SOURCE_HEADER;
+        foreach ($links as $link) {
+            $lines[] = $link['platform'] . '：';
+            $lines[] = $link['url'];
+        }
+    }
+
     private static function isSearchUrlBodyLine(string $line): bool
     {
+        if ($line === GeminiTourContextBuilder::MULTI_SOURCE_LINKS_LABEL
+            || $line === self::LINE_MULTI_SOURCE_HEADER) {
+            return true;
+        }
+
+        if (preg_match('/^([a-zA-Z0-9_]+):\s*https?:\/\//u', $line) === 1) {
+            return true;
+        }
+
         if ($line === GeminiTourContextBuilder::SEARCH_URL_LABEL) {
             return true;
         }

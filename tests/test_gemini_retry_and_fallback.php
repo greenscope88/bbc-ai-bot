@@ -215,6 +215,37 @@ test_assert(strpos($fb4, '測試D') !== false, 'fallback: no-price title');
 test_assert(strpos($fb4, '💰 售價：未提供') !== false, 'fallback: 售價未提供');
 test_assert(strpos($fb4, '💰直售價：') === false, 'fallback: no 直售價 label on no-price item');
 
+// --- TourFallbackFormatter: Phase 9-B-27 multi_source_links in fixed LINE list ---
+test_assert(strpos($fb, '更多商品來源') === false, 'fallback baseline: no multi-source when context lacks block');
+
+$fixtureWithMultiSource = <<<CTX
+【旅遊產品搜尋結果】
+1. 東京測試行程A
+   最近出團：2026-06-01
+   直售價：NT$33,800 起
+   出發地：台北
+
+更多行程 & 出團日：
+https://bbcshops.com/TEST01
+
+多商品源搜尋連結：
+agenttour: https://rechoice-travel.agenttour.com.tw/Index.aspx?test=1
+grp: https://www.grp.com.tw/Tour/Search?GetStore=dayitravel
+bbctravel: https://www.bbctravel.com.tw/search/tour?GetStore=dayitravel
+
+請 Gemini 回覆客人時：
+- x
+CTX;
+$fbMs = TourFallbackFormatter::formatFromTourContext($fixtureWithMultiSource);
+test_assert(strpos($fbMs, '更多商品來源') !== false, 'fallback multi: header present');
+test_assert(strpos($fbMs, "agenttour：\nhttps://rechoice-travel.agenttour.com.tw/Index.aspx?test=1") !== false, 'fallback multi: agenttour url');
+test_assert(strpos($fbMs, "grp：\nhttps://www.grp.com.tw/Tour/Search?GetStore=dayitravel") !== false, 'fallback multi: grp url');
+test_assert(strpos($fbMs, "bbctravel：\nhttps://www.bbctravel.com.tw/search/tour?GetStore=dayitravel") !== false, 'fallback multi: bbctravel url');
+$searchPos = strpos($fbMs, GeminiTourContextBuilder::SEARCH_URL_LABEL);
+$multiPos = strpos($fbMs, '更多商品來源');
+test_assert($searchPos !== false && $multiPos !== false && $searchPos < $multiPos, 'fallback multi: legacy search before multi-source block');
+test_assert(strpos($fbMs, 'https://bbcshops.com/TEST01') !== false, 'fallback multi: legacy search url preserved');
+
 // --- callGeminiUrl: immediate success (mock) ---
 $calls4 = 0;
 $mockOk = static function (string $u, array $p) use (&$calls4): array {

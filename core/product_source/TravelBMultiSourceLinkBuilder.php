@@ -104,7 +104,6 @@ final class TravelBMultiSourceLinkBuilder
         if ($departureCity !== null && trim($departureCity) !== '') {
             $document['departure_city'] = trim($departureCity);
         }
-
         $dateFrom = $condition->getDateFrom();
         if ($dateFrom !== null && trim($dateFrom) !== '') {
             $document['date_from'] = trim($dateFrom);
@@ -115,7 +114,27 @@ final class TravelBMultiSourceLinkBuilder
             $document['date_to'] = trim($dateTo);
         }
 
-        return SearchConditionContract::normalize($document);
+        $normalized = SearchConditionContract::normalize($document);
+        $normalized['departure_path_code'] = self::resolveBbctravelDeparturePathCode($departureCity);
+
+        return $normalized;
+    }
+
+    /**
+     * bbctravel /searchlist/{code}/ — 中文出發地 → path code；未指定時預設台北 tpetsa。
+     */
+    private static function resolveBbctravelDeparturePathCode(?string $departureCity): string
+    {
+        $city = $departureCity !== null ? trim($departureCity) : '';
+        $map = [
+            '高雄' => 'khh',
+            '台南' => 'tnn',
+            '台北' => 'tpetsa',
+            '桃園' => 'tpe',
+            '松山' => 'tsa',
+        ];
+
+        return $map[$city] ?? 'tpetsa';
     }
 
     /**
