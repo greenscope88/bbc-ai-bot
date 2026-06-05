@@ -336,12 +336,18 @@ final class SourceInstanceUrlTemplateBuilder
                 'platform_domain' => $platformDomain,
             ], $values);
             $trimmed = trim($resolved);
-            if ($trimmed !== '') {
-                $query[$key] = $trimmed;
+            if ($trimmed === '' || $this->containsUnresolvedPlaceholder($trimmed)) {
+                continue;
             }
+            $query[$key] = $trimmed;
         }
 
         return $query;
+    }
+
+    private function containsUnresolvedPlaceholder(string $value): bool
+    {
+        return preg_match('/\{[a-zA-Z0-9_]+\}/', $value) === 1;
     }
 
     private function assertNoUnreplacedPlaceholders(string $url): string

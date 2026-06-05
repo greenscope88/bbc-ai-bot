@@ -14,6 +14,8 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'gemini_tour_context_builder.php';
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridSearchConditionBuilder.php';
 
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridDateRequiredGate.php';
+
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'ApiQueryMapper.php';
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'SearchUrlBuilder.php';
@@ -319,7 +321,81 @@ final class TourPromptContextService
 
             ]);
 
+            $keywordProbe = $condition->getKeyword();
+            if ($keywordProbe === null || trim($keywordProbe) === '') {
+                $keywordProbe = $condition->getDestination();
+            }
+            if ($keywordProbe === null || trim($keywordProbe) === '') {
+                $keywordProbe = $condition->getArea();
+            }
 
+            if ($keywordProbe === null || trim((string) $keywordProbe) === '') {
+                $this->writeHybridDryRunLog(
+
+                    $traceId,
+
+                    $sno,
+
+                    $channelId,
+
+                    $userText,
+
+                    $condition,
+
+                    [],
+
+                    [],
+
+                    'legacy_fallback',
+
+                    'empty_keyword_hybrid',
+
+                    $condition->getParserFlags(),
+
+                    $hybridConfig,
+
+                    $intent
+
+                );
+
+                return null;
+            }
+
+            $dateGate = isset($params['hybridDateRequiredGate']) && $params['hybridDateRequiredGate'] instanceof HybridDateRequiredGate
+                ? $params['hybridDateRequiredGate']
+                : new HybridDateRequiredGate();
+            $dateGateResult = $dateGate->evaluate($condition);
+            if ($dateGateResult->requiresDateClarification()) {
+                $this->writeHybridDryRunLog(
+
+                    $traceId,
+
+                    $sno,
+
+                    $channelId,
+
+                    $userText,
+
+                    $condition,
+
+                    [],
+
+                    [],
+
+                    'date_clarification',
+
+                    $dateGateResult->getReasonCode(),
+
+                    $condition->getParserFlags(),
+
+                    $hybridConfig,
+
+                    $intent
+
+                );
+
+                return HybridDateRequiredGate::buildClarificationContext($condition, $userText);
+            }
 
             $apiParamsInternal = $apiMapper->toClientParams($condition, [
 
@@ -340,46 +416,6 @@ final class TourPromptContextService
                 'include_sno' => $sno,
 
             ]);
-
-
-
-            $keyword = isset($apiParams['keyword']) ? trim((string) $apiParams['keyword']) : '';
-
-            if ($keyword === '') {
-
-                $this->writeHybridDryRunLog(
-
-                    $traceId,
-
-                    $sno,
-
-                    $channelId,
-
-                    $userText,
-
-                    $condition,
-
-                    $apiParamsInternal,
-
-                    [],
-
-                    'legacy_fallback',
-
-                    'empty_keyword_hybrid',
-
-                    $condition->getParserFlags(),
-
-                    $hybridConfig,
-
-                    $intent
-
-                );
-
-
-
-                return null;
-
-            }
 
 
 

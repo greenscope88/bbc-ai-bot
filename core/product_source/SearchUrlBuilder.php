@@ -185,6 +185,16 @@ final class ProductSourceSearchUrlBuilder
             $values['departure_path_code'] = $departurePathCode;
         }
 
+        $dateFrom = isset($input['date_from']) ? trim((string) $input['date_from']) : '';
+        if ($dateFrom !== '') {
+            $values['date_from'] = $dateFrom;
+        }
+
+        $dateTo = isset($input['date_to']) ? trim((string) $input['date_to']) : '';
+        if ($dateTo !== '') {
+            $values['date_to'] = $dateTo;
+        }
+
         $runtime['identifier_values'] = $values;
 
         return $runtime;

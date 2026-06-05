@@ -7,6 +7,7 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tour_prompt_context_service.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridSearchConditionBuilder.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'SearchCondition.php';
 
 $failures = 0;
 
@@ -19,8 +20,49 @@ function bridge_assert(bool $cond, string $message): void
     }
 }
 
+function hybrid_has_resolved_dates(?string $dateFrom, ?string $dateTo): bool
+{
+    $from = $dateFrom !== null ? trim($dateFrom) : '';
+    $to = $dateTo !== null ? trim($dateTo) : '';
+
+    return $from !== '' || $to !== '';
+}
+
+function assert_bbctravel_date_mapping(?string $dateFrom, ?string $dateTo, string $url, string $label): void
+{
+    if (!hybrid_has_resolved_dates($dateFrom, $dateTo)) {
+        bridge_assert(
+            preg_match('/datefrom=\d{4}-\d{2}-\d{2}/', $url) !== 1,
+            $label . ': bbctravel URL must not include resolved datefrom when SearchCondition dates are null'
+        );
+        bridge_assert(
+            preg_match('/dateto=\d{4}-\d{2}-\d{2}/', $url) !== 1,
+            $label . ': bbctravel URL must not include resolved dateto when SearchCondition dates are null'
+        );
+
+        return;
+    }
+
+    if ($dateFrom !== null && trim($dateFrom) !== '') {
+        bridge_assert(
+            strpos($url, 'datefrom=' . trim($dateFrom)) !== false,
+            $label . ': bbctravel URL must map date_from to datefrom=' . trim($dateFrom)
+        );
+    }
+
+    if ($dateTo !== null && trim($dateTo) !== '') {
+        bridge_assert(
+            strpos($url, 'dateto=' . trim($dateTo)) !== false,
+            $label . ': bbctravel URL must map date_to to dateto=' . trim($dateTo)
+        );
+    }
+}
+
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'DateParser.php';
+
 $travelBSno = TravelBMultiSourceLinkBuilder::TRAVEL_B_SNO;
-$userText = '東京五日';
+$referenceDate = new DateTimeImmutable('2026-06-05', new DateTimeZone('Asia/Taipei'));
+$userText = '六月底東京';
 
 $multiSourceConfigOn = [
     'enabled' => true,
@@ -38,6 +80,10 @@ $hybridConfigOn = [
     'allowed_channels' => [],
     'dry_run_log_enabled' => false,
 ];
+
+$hybridBuilder = new HybridSearchConditionBuilder(new DateParser($referenceDate));
+$multiBuilder = new TravelBMultiSourceLinkBuilder($multiSourceConfigOn);
+$searchCondition = $hybridBuilder->parse($userText, ['merge_legacy_keyword' => true, 'reference_date' => $referenceDate]);
 
 $mockClient = new TourSearchApiClient('https://example.test/tour/search', 5, static function (): array {
     $body = json_encode([
@@ -67,6 +113,7 @@ $contextOff = $service->buildTourContextForPrompt([
     'searchClient' => $mockClient,
     'hybridSearchConfig' => $hybridConfigOn,
     'travelBMultiSourceLinksConfig' => ['enabled' => false, 'tenant_sno' => $travelBSno],
+    'referenceDate' => $referenceDate,
     'includeInstructions' => false,
 ]);
 
@@ -83,6 +130,7 @@ $contextOn = $service->buildTourContextForPrompt([
     'searchClient' => $mockClient,
     'hybridSearchConfig' => $hybridConfigOn,
     'travelBMultiSourceLinksConfig' => $multiSourceConfigOn,
+    'referenceDate' => $referenceDate,
 ]);
 
 bridge_assert($contextOn !== '', 'flag on: context non-empty');
@@ -102,12 +150,10 @@ bridge_assert(
     strpos($contextOn, 'q=%E6%9D%B1%E4%BA%AC') !== false || strpos($contextOn, 'q=%e6%9d%b1%e4%ba%ac') !== false,
     'flag on: bbctravel q URL-encoded 東京'
 );
-bridge_assert(strpos($contextOn, 'datefrom=') === false && strpos($contextOn, 'dateto=') === false, 'flag on: no date params in multi-source URLs');
 bridge_assert(strpos($contextOn, 'dayitourcenter.com.tw') !== false, 'flag on: dayitourcenter host');
 
-$condition = (new HybridSearchConditionBuilder())->parse($userText, ['merge_legacy_keyword' => true]);
-$links = (new TravelBMultiSourceLinkBuilder($multiSourceConfigOn))->buildFromHybridCondition($condition, $travelBSno);
-bridge_assert(count($links) === 3, 'builder returns 3 links for 東京五日');
+$links = $multiBuilder->buildFromHybridCondition($searchCondition, $travelBSno);
+bridge_assert(count($links) === 3, 'builder returns 3 links for 六月底東京');
 
 $bbctravelUrlTokyo = '';
 foreach ($links as $row) {
@@ -116,15 +162,23 @@ foreach ($links as $row) {
         break;
     }
 }
-bridge_assert(strpos($bbctravelUrlTokyo, '/searchlist/tpetsa/') !== false, '東京五日: bbctravel path tpetsa default');
+bridge_assert(strpos($bbctravelUrlTokyo, '/searchlist/tpetsa/') !== false, '六月底東京: bbctravel path tpetsa default');
 bridge_assert(
     strpos($bbctravelUrlTokyo, 'q=%E6%9D%B1%E4%BA%AC') !== false || strpos($bbctravelUrlTokyo, 'q=%e6%9d%b1%e4%ba%ac') !== false,
-    '東京五日: bbctravel q encoded 東京'
+    '六月底東京: bbctravel q encoded 東京'
 );
-bridge_assert(strpos($bbctravelUrlTokyo, 'datefrom=') === false && strpos($bbctravelUrlTokyo, 'dateto=') === false, '東京五日: no date query');
-
-$hybridBuilder = new HybridSearchConditionBuilder();
-$multiBuilder = new TravelBMultiSourceLinkBuilder($multiSourceConfigOn);
+assert_bbctravel_date_mapping(
+    $searchCondition->getDateFrom(),
+    $searchCondition->getDateTo(),
+    $bbctravelUrlTokyo,
+    '六月底東京'
+);
+assert_bbctravel_date_mapping(
+    $searchCondition->getDateFrom(),
+    $searchCondition->getDateTo(),
+    $contextOn,
+    'flag on: context bbctravel date mapping'
+);
 
 function bbctravel_url_from_links(array $links): string
 {
@@ -137,9 +191,10 @@ function bbctravel_url_from_links(array $links): string
     return '';
 }
 
+$kaohsiungCondition = $hybridBuilder->parse('高雄出發東京', ['merge_legacy_keyword' => true, 'reference_date' => $referenceDate]);
 $kaohsiungUrl = bbctravel_url_from_links(
     $multiBuilder->buildFromHybridCondition(
-        $hybridBuilder->parse('高雄出發東京', ['merge_legacy_keyword' => true]),
+        $kaohsiungCondition,
         $travelBSno
     )
 );
@@ -149,9 +204,17 @@ bridge_assert(
     '高雄出發東京: bbctravel q encoded 東京'
 );
 
+assert_bbctravel_date_mapping(
+    $kaohsiungCondition->getDateFrom(),
+    $kaohsiungCondition->getDateTo(),
+    $kaohsiungUrl,
+    '高雄出發東京'
+);
+
+$tainanCondition = $hybridBuilder->parse('台南出發東京', ['merge_legacy_keyword' => true, 'reference_date' => $referenceDate]);
 $tainanUrl = bbctravel_url_from_links(
     $multiBuilder->buildFromHybridCondition(
-        $hybridBuilder->parse('台南出發東京', ['merge_legacy_keyword' => true]),
+        $tainanCondition,
         $travelBSno
     )
 );
@@ -160,6 +223,74 @@ bridge_assert(
     strpos($tainanUrl, 'q=%E6%9D%B1%E4%BA%AC') !== false || strpos($tainanUrl, 'q=%e6%9d%b1%e4%ba%ac') !== false,
     '台南出發東京: bbctravel q encoded 東京'
 );
+
+assert_bbctravel_date_mapping(
+    $tainanCondition->getDateFrom(),
+    $tainanCondition->getDateTo(),
+    $tainanUrl,
+    '台南出發東京'
+);
+
+function assert_bbctravel_url_contains(string $url, string $label, array $fragments): void
+{
+    foreach ($fragments as $fragment) {
+        if ($fragment === 'q=東京') {
+            bridge_assert(
+                strpos($url, 'q=%E6%9D%B1%E4%BA%AC') !== false || strpos($url, 'q=%e6%9d%b1%e4%ba%ac') !== false,
+                $label . ': bbctravel URL must contain encoded q=東京'
+            );
+            continue;
+        }
+        bridge_assert(strpos($url, $fragment) !== false, $label . ': bbctravel URL must contain ' . $fragment);
+    }
+}
+
+// Phase B: BBCTravel datefrom/dateto from Hybrid SearchCondition (platform mapping only)
+$case1Url = bbctravel_url_from_links(
+    $multiBuilder->buildFromHybridCondition(
+        new SearchCondition(
+            SearchCondition::INTENT_TOUR_SEARCH,
+            '東京',
+            null,
+            null,
+            '高雄',
+            '2026-06-05',
+            '2026-08-04'
+        ),
+        $travelBSno
+    )
+);
+assert_bbctravel_url_contains($case1Url, 'case1 高雄東京近期', [
+    '/searchlist/khh/',
+    'q=東京',
+    'datefrom=2026-06-05',
+    'dateto=2026-08-04',
+    'order=1',
+    'standby=1',
+]);
+
+$case2Url = bbctravel_url_from_links(
+    $multiBuilder->buildFromHybridCondition(
+        new SearchCondition(
+            SearchCondition::INTENT_TOUR_SEARCH,
+            '東京',
+            null,
+            null,
+            '高雄',
+            '2026-06-21',
+            '2026-06-30'
+        ),
+        $travelBSno
+    )
+);
+assert_bbctravel_url_contains($case2Url, 'case2 高雄東京6月底', [
+    '/searchlist/khh/',
+    'q=東京',
+    'datefrom=2026-06-21',
+    'dateto=2026-06-30',
+    'order=1',
+    'standby=1',
+]);
 
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tour_fallback_formatter.php';
 $lineReply = TourFallbackFormatter::formatFromTourContext($contextOn);
@@ -175,5 +306,5 @@ if ($failures > 0) {
     exit(1);
 }
 
-fwrite(STDOUT, "OK: test_travel_b_multi_source_gemini_context (東京五日 → 3 URLs in context)\n");
+fwrite(STDOUT, "OK: test_travel_b_multi_source_gemini_context (六月底東京 → 3 URLs in context)\n");
 exit(0);

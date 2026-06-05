@@ -220,6 +220,10 @@ return [
 
                 'q' => '{keyword}',
 
+                'datefrom' => '{date_from}',
+
+                'dateto' => '{date_to}',
+
                 'order' => '1',
 
                 'standby' => '1',
