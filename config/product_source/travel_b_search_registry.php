@@ -42,7 +42,7 @@ return [
 
             'adapter' => 'StubProductSourceAdapter',
 
-            'url_template_id' => 'grp_dayitravel_subdomain_v1',
+            'url_template_id' => 'grp_dayitravel_classify_v1',
 
         ],
 
@@ -102,15 +102,13 @@ return [
 
             'identifier_type' => 'subdomain',
 
-            'url_template_id' => 'grp_dayitravel_subdomain_v1',
+            'url_template_id' => 'grp_dayitravel_classify_v1',
 
             'identifier_values' => [
 
                 'tenant_subdomain' => 'dayitravel',
 
                 'product_category' => 'group_tour',
-
-                'GetStore' => 'dayitravel',
 
             ],
 
@@ -178,9 +176,45 @@ return [
 
     'templates' => [
 
+        'grp_dayitravel_classify_v1' => [
+
+            'template_id' => 'grp_dayitravel_classify_v1',
+
+            'identifier_type' => 'subdomain',
+
+            'scheme' => 'http',
+
+            'host_pattern' => '{tenant_subdomain}.{platform_domain}',
+
+            'path' => '/ClassifyProduct.aspx',
+
+            'query_template' => [
+
+                'l' => 'l',
+
+                'RadDatePicker1' => '{date_from}',
+
+                'RadDatePicker2' => '{date_to}',
+
+                'tp' => '{keyword}',
+
+            ],
+
+            'required_identifier_keys' => [
+
+                'tenant_subdomain',
+
+                'keyword',
+
+            ],
+
+        ],
+
         'grp_dayitravel_subdomain_v1' => [
 
             'template_id' => 'grp_dayitravel_subdomain_v1',
+
+            'deprecated' => true,
 
             'identifier_type' => 'subdomain',
 
