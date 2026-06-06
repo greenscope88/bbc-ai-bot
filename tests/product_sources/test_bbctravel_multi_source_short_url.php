@@ -145,7 +145,8 @@ short_url_assert($short1 === $mockProvider->shortenSearchUrl($long1, [
     'product_category' => 'group_tour',
 ]), 'case1: short URL matches MockShortUrlProvider');
 short_url_assert(strpos($line1, '🔎 更多【大阪】行程 & 出團日：') !== false, 'case1: LINE search footer with 大阪');
-short_url_assert(strpos($line1, '🌏 更多【大阪】行程也可參考：') !== false, 'case1: LINE multi-source footer with 大阪');
+short_url_assert(strpos($line1, '📢 更多【大阪】行程如下，歡迎利用以下網頁直接線上報名：') !== false, 'case1: LINE CTA footer with 大阪');
+short_url_assert(strpos($line1, '👉 https://bbcshops.com/') !== false, 'case1: LINE CTA url prefix');
 short_url_assert(strpos($line1, 'https://bbcshops.com/') !== false, 'case1: LINE reply shows bbcshops short URL');
 short_url_assert(strpos($line1, 'dayitravel.bbctravel.com.tw') === false, 'case1: LINE reply no long bbctravel host');
 short_url_assert(strpos($line1, 'bbctravel：') === false, 'case1: LINE reply no platform label');
@@ -185,12 +186,36 @@ short_url_assert(strpos($short3, 'https://bbcshops.com/') === 0, 'case3: context
 short_url_assert(strpos($line3, 'https://bbcshops.com/') !== false, 'case3: LINE reply short URL');
 short_url_assert(strpos($line3, '/searchlist/RMG/') === false, 'case3: LINE reply no long path');
 
-// grp/tourcenter unchanged when only bbctravel in config — verify bbctravel-only scope
+function platform_url_from_context(string $context, string $platform): string
+{
+    foreach (preg_split("/\r\n|\n|\r/", $context) ?: [] as $line) {
+        if (preg_match('/^' . preg_quote($platform, '/') . ':\s*(https?:\/\/\S+)/u', trim($line), $m) === 1) {
+            return trim($m[1]);
+        }
+    }
+
+    return '';
+}
+
+// Unified short URL: bbctravel + grp + tourcenter
 $fullMultiConfig = [
     'enabled' => true,
     'tenant_sno' => $travelBSno,
     'source_instance_keys' => ['dayitravel_grp', 'dayitravel_bbctravel', 'dayitravel_tourcenter'],
 ];
+$multiBuilderFull = new TravelBMultiSourceLinkBuilder($fullMultiConfig);
+$hybridBuilderFull = new HybridSearchConditionBuilder(new DateParser($refCase2));
+$conditionFull = $hybridBuilderFull->parse('六月底東京', ['merge_legacy_keyword' => true, 'reference_date' => $refCase2]);
+$longGrp = '';
+$longTourcenter = '';
+foreach ($multiBuilderFull->buildFromHybridCondition($conditionFull, $travelBSno) as $row) {
+    if (($row['platform'] ?? '') === 'grp') {
+        $longGrp = (string) ($row['search_url'] ?? '');
+    }
+    if (($row['platform'] ?? '') === 'tourcenter') {
+        $longTourcenter = (string) ($row['search_url'] ?? '');
+    }
+}
 $contextFull = $service->buildTourContextForPrompt([
     'userText' => '六月底東京',
     'sno' => $travelBSno,
@@ -202,9 +227,26 @@ $contextFull = $service->buildTourContextForPrompt([
     'referenceDate' => $refCase2,
     'includeInstructions' => false,
 ]);
-short_url_assert(strpos($contextFull, 'dayitravel.grp.com.tw') !== false, 'scope: grp still long URL');
-short_url_assert(strpos($contextFull, 'dayitourcenter.com.tw') !== false, 'scope: tourcenter still long URL');
-short_url_assert(strpos(bbctravel_line_from_context($contextFull), 'https://bbcshops.com/') === 0, 'scope: bbctravel shortened only');
+$shortGrp = platform_url_from_context($contextFull, 'grp');
+$shortTourcenter = platform_url_from_context($contextFull, 'tourcenter');
+short_url_assert(strpos($longGrp, 'ClassifyProduct.aspx') !== false, 'scope: grp long URL has ClassifyProduct');
+short_url_assert(strpos($shortGrp, 'https://bbcshops.com/') === 0, 'scope: grp context short URL');
+short_url_assert($shortGrp === $mockProvider->shortenSearchUrl($longGrp, [
+    'source_id' => 'grp',
+    'short_url_domain' => 'bbcshops.com',
+    'domain_namespace' => 'bbcshops',
+    'product_category' => 'group_tour',
+]), 'scope: grp short matches provider');
+short_url_assert(strpos($contextFull, 'dayitravel.grp.com.tw') === false, 'scope: grp no long URL in context');
+short_url_assert(strpos($shortTourcenter, 'https://bbcshops.com/') === 0, 'scope: tourcenter context short URL');
+short_url_assert($shortTourcenter === $mockProvider->shortenSearchUrl($longTourcenter, [
+    'source_id' => 'tourcenter',
+    'short_url_domain' => 'bbcshops.com',
+    'domain_namespace' => 'bbcshops',
+    'product_category' => 'group_tour',
+]), 'scope: tourcenter short matches provider');
+short_url_assert(strpos($contextFull, 'dayitourcenter.com.tw') === false, 'scope: tourcenter no long URL in context');
+short_url_assert(strpos(bbctravel_line_from_context($contextFull), 'https://bbcshops.com/') === 0, 'scope: bbctravel shortened');
 
 if ($failures > 0) {
     fwrite(STDERR, "\n{$failures} test failure(s)\n");

@@ -23,8 +23,9 @@ final class TourFallbackFormatter
     /** LINE output headers (destination from GeminiTourContextBuilder::SEARCH_DESTINATION_LABEL). */
     private const LINE_SEARCH_URL_HEADER_TEMPLATE = '🔎 更多【%s】行程 & 出團日：';
     private const LINE_SEARCH_URL_HEADER_FALLBACK = '🔎 更多行程 & 出團日：';
-    private const LINE_MULTI_SOURCE_HEADER_TEMPLATE = '🌏 更多【%s】行程也可參考：';
-    private const LINE_MULTI_SOURCE_HEADER_FALLBACK = '🌏 更多行程也可參考：';
+    private const LINE_MULTI_SOURCE_HEADER_TEMPLATE = '📢 更多【%s】行程如下，歡迎利用以下網頁直接線上報名：';
+    private const LINE_MULTI_SOURCE_HEADER_FALLBACK = '📢 更多行程如下，歡迎利用以下網頁直接線上報名：';
+    private const LINE_MULTI_SOURCE_URL_PREFIX = '👉 ';
 
     /**
      * Build a customer-visible message from tour context text (Gemini adjunct block).
@@ -245,7 +246,7 @@ final class TourFallbackFormatter
         $lines[] = '';
         $lastIndex = count($links) - 1;
         foreach ($links as $i => $link) {
-            $lines[] = $link['url'];
+            $lines[] = self::LINE_MULTI_SOURCE_URL_PREFIX . $link['url'];
             if ($i < $lastIndex) {
                 $lines[] = '';
             }
@@ -259,7 +260,10 @@ final class TourFallbackFormatter
             return true;
         }
 
-        if (preg_match('/^🔎\s*更多/u', $line) === 1 || preg_match('/^🌏\s*更多/u', $line) === 1) {
+        if (preg_match('/^🔎\s*更多/u', $line) === 1
+            || preg_match('/^📢\s*更多/u', $line) === 1
+            || preg_match('/^🌏\s*更多/u', $line) === 1
+            || preg_match('/^👉\s*https?:\/\//u', $line) === 1) {
             return true;
         }
 

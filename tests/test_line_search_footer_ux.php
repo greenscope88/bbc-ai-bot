@@ -87,9 +87,18 @@ function build_line_reply(
     return [$context, TourFallbackFormatter::formatFromTourContext($context)];
 }
 
-function is_http_url_line(string $line): bool
+function multi_source_header_for(string $destination): string
 {
-    return strpos($line, 'https://') === 0 || strpos($line, 'http://') === 0;
+    $dest = trim($destination);
+
+    return $dest === ''
+        ? '📢 更多行程如下，歡迎利用以下網頁直接線上報名：'
+        : '📢 更多【' . $dest . '】行程如下，歡迎利用以下網頁直接線上報名：';
+}
+
+function is_footer_cta_url_line(string $line): bool
+{
+    return preg_match('/^👉\s+https:\/\/bbcshops\.com\//u', $line) === 1;
 }
 
 function assert_multi_source_url_spacing(string $lineReply, string $multiHeader, string $label): void
@@ -106,17 +115,16 @@ function assert_multi_source_url_spacing(string $lineReply, string $multiHeader,
         $afterHeader = substr($afterHeader, 0, $footerPos);
     }
 
-    $blankThenUrl = strpos($afterHeader, "\n\nhttps://") === 0 || strpos($afterHeader, "\n\nhttp://") === 0;
-    ux_assert($blankThenUrl, $label . ': blank line after multi-source header');
+    ux_assert(strpos($afterHeader, "\n\n👉 https://bbcshops.com/") === 0, $label . ': blank line then CTA url after header');
 
     $urlLines = [];
     foreach (explode("\n", trim($afterHeader)) as $line) {
         $line = trim($line);
-        if ($line !== '' && is_http_url_line($line)) {
+        if ($line !== '' && is_footer_cta_url_line($line)) {
             $urlLines[] = $line;
         }
     }
-    ux_assert(count($urlLines) >= 3, $label . ': at least three multi-source urls');
+    ux_assert(count($urlLines) >= 3, $label . ': at least three CTA short urls');
     if (count($urlLines) >= 2) {
         $between = "\n\n" . $urlLines[1];
         ux_assert(strpos($afterHeader, $between) !== false, $label . ': blank line between first and second url');
@@ -130,22 +138,24 @@ function assert_multi_source_url_spacing(string $lineReply, string $multiHeader,
 function assert_footer_ux(string $lineReply, string $destination, string $label): void
 {
     $searchHeader = '🔎 更多【' . $destination . '】行程 & 出團日：';
-    $multiHeader = '🌏 更多【' . $destination . '】行程也可參考：';
+    $multiHeader = multi_source_header_for($destination);
 
     ux_assert(strpos($lineReply, '我是旅遊 AI 客服，以下為您整理最新的出團資訊：') !== false, $label . ': greeting uses 客服');
     ux_assert(strpos($lineReply, '我是旅遊 AI 助理') === false, $label . ': no legacy 助理 greeting');
     ux_assert(strpos($lineReply, $searchHeader) !== false, $label . ': search header with destination');
-    ux_assert(strpos($lineReply, $multiHeader) !== false, $label . ': multi-source header with destination');
+    ux_assert(strpos($lineReply, $multiHeader) !== false, $label . ': CTA multi-source header');
+    ux_assert(strpos($lineReply, '🌏 更多【') === false, $label . ': no legacy 🌏 header');
     ux_assert(strpos($lineReply, GeminiTourContextBuilder::SEARCH_URL_LABEL) === false, $label . ': no legacy search label');
     ux_assert(strpos($lineReply, '更多商品來源') === false, $label . ': no legacy multi-source header');
     ux_assert(strpos($lineReply, "grp：\n") === false && strpos($lineReply, "grp：") === false, $label . ': no grp platform label');
     ux_assert(strpos($lineReply, "bbctravel：") === false, $label . ': no bbctravel platform label');
     ux_assert(strpos($lineReply, "tourcenter：") === false, $label . ': no tourcenter platform label');
-    ux_assert(strpos($lineReply, 'dayitravel.grp.com.tw') !== false, $label . ': grp URL present');
-    ux_assert(strpos($lineReply, 'ClassifyProduct.aspx') !== false, $label . ': grp ClassifyProduct.aspx');
+    ux_assert(strpos($lineReply, 'dayitravel.grp.com.tw') === false, $label . ': no grp long URL');
+    ux_assert(strpos($lineReply, 'dayitourcenter.com.tw') === false, $label . ': no tourcenter long URL');
+    ux_assert(strpos($lineReply, 'ClassifyProduct.aspx') === false, $label . ': no grp long path in footer');
     ux_assert(strpos($lineReply, 'Tour/Search') === false, $label . ': no legacy grp Tour/Search');
+    ux_assert(strpos($lineReply, '👉 https://bbcshops.com/') !== false, $label . ': CTA short URL prefix present');
     ux_assert(strpos($lineReply, 'https://bbcshops.com/') !== false, $label . ': short URL present');
-    ux_assert(strpos($lineReply, 'dayitourcenter.com.tw') !== false, $label . ': tourcenter URL present');
 
     $searchPos = strpos($lineReply, $searchHeader);
     $multiPos = strpos($lineReply, $multiHeader);
@@ -168,12 +178,11 @@ $ref3 = new DateTimeImmutable('2026-06-05', new DateTimeZone('Asia/Taipei'));
 [, $line3] = build_line_reply($service, '北海道暑假', $ref3, $mockClient, $hybridConfig, $multiSourceConfig, $mockProvider, $travelBSno);
 assert_footer_ux($line3, '北海道', 'case3 北海道暑假');
 
-// Case 4: 高雄東京近期 — grp ignores departure; bbctravel still short URL
+// Case 4: 高雄東京近期 — grp ignores departure; all sources short URL in footer
 $ref4 = new DateTimeImmutable('2026-06-06', new DateTimeZone('Asia/Taipei'));
 [, $line4] = build_line_reply($service, '高雄東京近期', $ref4, $mockClient, $hybridConfig, $multiSourceConfig, $mockProvider, $travelBSno);
 assert_footer_ux($line4, '東京', 'case4 高雄東京近期');
-ux_assert(strpos($line4, '/khh/') === false, 'case4 高雄東京近期: grp LINE footer no khh');
-ux_assert(strpos($line4, 'http://dayitravel.grp.com.tw/ClassifyProduct.aspx') !== false, 'case4 高雄東京近期: grp http ClassifyProduct');
+ux_assert(strpos($line4, '/khh/') === false, 'case4 高雄東京近期: LINE footer no khh');
 
 if ($failures > 0) {
     fwrite(STDERR, "\n{$failures} test failure(s)\n");

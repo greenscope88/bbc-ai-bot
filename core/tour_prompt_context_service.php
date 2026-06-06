@@ -645,8 +645,12 @@ final class TourPromptContextService
 
     }
 
+    /** @var list<string> */
+    private const MULTI_SOURCE_SHORT_URL_PLATFORMS = ['bbctravel', 'grp', 'tourcenter'];
+
     /**
-     * BBCTravel multi-source search URLs → bbcshops short URLs before Gemini context (grp/tourcenter unchanged).
+     * Multi-source search URLs (bbctravel / grp / tourcenter) → bbcshops short URLs before Gemini context.
+     * Fail-open: ShortUrlService errors leave the original long URL unchanged.
      *
      * @param list<array{platform: string, search_url: string}> $links
      * @param array<string, mixed> $params optional multiSourceShortUrlProvider (tests)
@@ -677,20 +681,13 @@ final class TourPromptContextService
             $shortService = new ShortUrlService();
         }
 
-        $context = [
-            'source_id' => 'bbctravel',
-            'short_url_domain' => 'bbcshops.com',
-            'domain_namespace' => 'bbcshops',
-            'product_category' => 'group_tour',
-        ];
-
         $out = [];
         foreach ($links as $link) {
             if (!is_array($link)) {
                 continue;
             }
             $platform = isset($link['platform']) ? trim((string) $link['platform']) : '';
-            if ($platform !== 'bbctravel') {
+            if ($platform === '' || !in_array($platform, self::MULTI_SOURCE_SHORT_URL_PLATFORMS, true)) {
                 $out[] = $link;
                 continue;
             }
@@ -699,6 +696,12 @@ final class TourPromptContextService
                 $out[] = $link;
                 continue;
             }
+            $context = [
+                'source_id' => $platform,
+                'short_url_domain' => 'bbcshops.com',
+                'domain_namespace' => 'bbcshops',
+                'product_category' => 'group_tour',
+            ];
             if ($provider instanceof ShortUrlProviderInterface) {
                 $link['search_url'] = $provider->shortenSearchUrl($longUrl, $context);
             } else {
