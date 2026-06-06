@@ -29,23 +29,17 @@ hybrid_test_assert($c1->getDateFrom() === null && $c1->getDateTo() === null, 'ca
 $c2 = hybrid_parse($builder, '東京行程', $ref);
 hybrid_test_assert($gate->evaluate($c2)->requiresDateClarification(), 'case2 gate: 東京行程 requires clarification');
 
-// Case 3: 近期東京 — gate allows when dates resolved (parser may lag; verify explicit range)
-$c3 = hybrid_parse($builder, '近期東京', $ref);
-if ($c3->getDateFrom() !== null || $c3->getDateTo() !== null) {
-    hybrid_test_assert($gate->evaluate($c3)->allowsSearch(), 'case3 gate: 近期東京 allows when parser produced dates');
-} else {
-    hybrid_test_assert($gate->evaluate($c3)->requiresDateClarification(), 'case3 gate: 近期東京 blocked until DateParser implements 近期');
-    $c3Explicit = new SearchCondition(
-        SearchCondition::INTENT_TOUR_SEARCH,
-        '東京',
-        null,
-        null,
-        null,
-        '2026-06-05',
-        '2026-08-04'
-    );
-    hybrid_test_assert($gate->evaluate($c3Explicit)->allowsSearch(), 'case3 gate: explicit date range allows search');
-}
+// Case 3: 近期東京 — fuzzy date semantics allow search
+$refFuzzy = new DateTimeImmutable('2026-06-06', new DateTimeZone('Asia/Taipei'));
+$builderFuzzy = new HybridSearchConditionBuilder(new DateParser($refFuzzy));
+$c3 = hybrid_parse($builderFuzzy, '近期東京', $refFuzzy);
+hybrid_test_assert($c3->getDateFrom() === '2026-06-06' && $c3->getDateTo() === '2026-08-05', 'case3 parse: 近期東京 dates');
+hybrid_test_assert($gate->evaluate($c3)->allowsSearch(), 'case3 gate: 近期東京 allows search');
+
+$c3b = hybrid_parse($builderFuzzy, '大阪近期', $refFuzzy);
+hybrid_test_assert($c3b->getKeyword() === '大阪', 'case3b parse: 大阪近期 keyword');
+hybrid_test_assert($c3b->getDateFrom() === '2026-06-06' && $c3b->getDateTo() === '2026-08-05', 'case3b parse: 大阪近期 dates');
+hybrid_test_assert($gate->evaluate($c3b)->allowsSearch(), 'case3b gate: 大阪近期 allows search');
 
 // Case 4: 高雄東京6月底
 $c4 = hybrid_parse($builder, '高雄東京6月底', $ref);

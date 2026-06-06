@@ -271,33 +271,106 @@ date_to
 
 **出發地不是必要條件。**
 
+### `departure_city = null` 語意（Hybrid Layer）
+
+若使用者**未指定出發地**，Hybrid Layer 必須寫入：
+
+```text
+departure_city = null
+```
+
+語意為：
+
+```text
+不限出發地
+```
+
+**不是**「預設台北」或任何平台 path 代碼。
+
+Hybrid Layer **不得**將 `null` 自行轉換為 `tpetsa`、`all`、`khh` 等平台代碼；僅保存中文語意欄位（或 `null`）。
+
+### 出發地解析格式（Hybrid Layer）
+
+#### 格式 A：`{城市}出發` 後綴
+
 | 客戶輸入 | `departure_city` | 說明 |
 |----------|------------------|------|
-| **東京** | `null` | 允許 |
 | **高雄出發東京** | `高雄` | 明確出發地 |
+| **高雄出發東京6月底** | `高雄` | 出發地 + 日期語意並存 |
 | **高雄或台北都可以** | `高雄` | **採第一個出發地**，避免產生多組搜尋網址 |
+
+#### 格式 B：裸出發地前綴（正式支援）
+
+當訊息以**已知台灣出發城市**開頭，且後接已解析之目的地／關鍵字（如東京）時，寫入對應 `departure_city`：
+
+| 客戶輸入 | `departure_city` |
+|----------|------------------|
+| **高雄東京6月底** | `高雄` |
+| **台南東京6月底** | `台南` |
+| **台中東京6月底** | `台中` |
+| **台北東京6月底** | `台北` |
+| **桃園東京6月底** | `桃園` |
+| **松山東京6月底** | `松山` |
+
+裸前綴規則屬 **Hybrid Layer 語意解析**；path code（如 `khh`、`RMG`）由 Platform Mapping Layer 處理（見章節六）。
+
+#### 未指定出發地
+
+| 客戶輸入 | `departure_city` | 說明 |
+|----------|------------------|------|
+| **東京** | `null` | 僅目的地，不限出發地 |
+| **東京6月底** | `null` | 有日期語意，仍不限出發地 |
 
 ### 若客戶未提供出發地
 
 **不得追問。**
 
-Platform Mapping 層依本文件與平台規則套用預設出發地代碼（見章節六；實作細節由 URL Builder／registry 處理，**不得**在 Hybrid 層硬編平台 path）。
+Hybrid Layer 保持 `departure_city = null`。各商品源平台依 **Platform Mapping Layer** 規則自行映射（見章節六、`TENANT_SOURCE_REGISTRY_POLICY.md` §Platform Mapping）；**不得**在 Hybrid 層硬編平台 path 或預設城市。
 
 ---
 
-## 章節六：出發地代碼 Mapping
+## 章節六：出發地代碼 Mapping（Platform Mapping Layer）
 
-**正式定義（中文出發地 → bbctravel path code）：**
+本章定義 **bbctravel.com.tw** 之出發地 path 映射；屬 **Platform Mapping Layer**，**不是** Hybrid Rule。
 
-| departure_city | path code |
-|----------------|-----------|
+### BBCTravel 正式 Mapping（中文 → path code）
+
+| `departure_city`（中文） | path code |
+|--------------------------|-----------|
 | 台北 | `tpetsa` |
 | 桃園 | `tpe` |
 | 松山 | `tsa` |
+| 台中 | `RMG` |
 | 高雄 | `khh` |
 | 台南 | `tnn` |
 
-此表屬 **Platform Mapping Layer**；Hybrid Layer 僅產出 `departure_city`（中文），不產出 `tpetsa` / `khh` 等平台代碼。
+### BBCTravel 不限出發地（`departure_city = null`）
+
+當 Hybrid 產出 `departure_city = null`（使用者未指定出發地）時，bbctravel 平台映射為：
+
+```text
+/searchlist/all/
+```
+
+範例：
+
+```text
+https://dayitravel.bbctravel.com.tw/searchlist/all/?q=東京&datefrom=2026-06-21&dateto=2026-06-30&order=1&standby=1
+```
+
+**`/all/` 僅屬 bbctravel Platform Rule**，不得視為 Hybrid Rule，亦不得套用到 grp、tourcenter 或未來其它商品源。
+
+日期參數 `datefrom` / `dateto` 仍須來自 Hybrid 解析之 `date_from` / `date_to`（本文件日期規則）；平台層不得硬寫固定出團日。
+
+### 分層摘要
+
+| 層級 | 職責 |
+|------|------|
+| **Hybrid Layer** | 解析並寫入 `departure_city`（中文或 `null`） |
+| **Platform Mapping Layer** | `departure_city` → 平台 path code（如 `khh`、`all`） |
+| **URL Builder Layer** | 組裝 `/searchlist/{code}/` 與 query 參數 |
+
+Hybrid Layer 僅產出 `departure_city`（中文），不產出 `tpetsa` / `khh` / `RMG` / `all` 等平台代碼。
 
 ---
 
@@ -321,15 +394,12 @@ Platform Mapping 層依本文件與平台規則套用預設出發地代碼（見
 
 ### Platform Mapping Layer
 
-負責出發地等平台專屬代碼：
+負責出發地等平台專屬代碼（依平台而異；bbctravel 範例）：
 
-- `tpetsa`
-- `tpe`
-- `tsa`
-- `khh`
-- `tnn`
+- `tpetsa`、`tpe`、`tsa`、`RMG`、`khh`、`tnn`
+- `all`（**僅 bbctravel**：對應 Hybrid `departure_city = null`）
 
-不得在此層重新解析自然語言日期。
+不得在此層重新解析自然語言日期。不得將 bbctravel 的 `all` 規則套用到 grp、tourcenter 或其它平台。
 
 ### URL Builder Layer
 
@@ -413,3 +483,4 @@ Platform Mapping 層依本文件與平台規則套用預設出發地代碼（見
 |------|------|
 | 2026-06-05 | 初版建立：BATS Hybrid 日期解析正式規範（SSOT） |
 | 2026-06-05 | Add Date Semantic Required Rule（日期語意必要）與日期語意對照表 |
+| 2026-06-06 | Phase C-1A：裸出發地前綴、`departure_city = null` 語意、BBCTravel `null → all` 與台中→RMG（Platform Layer） |

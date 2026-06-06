@@ -40,4 +40,40 @@ $pastParser = new DateParser($refPast);
 $r10 = $pastParser->parse('六月三十');
 hybrid_test_assert($r10->getDateFrom() === '2027-06-30', 'past ref bumps June 30 to next year');
 
+$refFuzzy = new \DateTimeImmutable('2026-06-06', new \DateTimeZone('Asia/Taipei'));
+$fuzzyParser = new DateParser($refFuzzy);
+
+$f1 = $fuzzyParser->parse('大阪近期');
+hybrid_test_assert($f1->getDateFrom() === '2026-06-06' && $f1->getDateTo() === '2026-08-05', '大阪近期 today+60');
+
+$f2 = $fuzzyParser->parse('大阪最近');
+hybrid_test_assert($f2->getDateFrom() === '2026-06-06' && $f2->getDateTo() === '2026-08-05', '大阪最近 today+60');
+
+$f3 = $fuzzyParser->parse('東京本月');
+hybrid_test_assert($f3->getDateFrom() === '2026-06-01' && $f3->getDateTo() === '2026-06-30', '東京本月');
+
+$f4 = $fuzzyParser->parse('東京下月');
+hybrid_test_assert($f4->getDateFrom() === '2026-07-01' && $f4->getDateTo() === '2026-07-31', '東京下月');
+
+$f5 = $fuzzyParser->parse('東京月底');
+hybrid_test_assert($f5->getDateFrom() === '2026-06-21' && $f5->getDateTo() === '2026-06-30', '東京月底');
+
+$f6 = $fuzzyParser->parse('東京月初');
+hybrid_test_assert($f6->getDateFrom() === '2026-06-01' && $f6->getDateTo() === '2026-06-10', '東京月初');
+
+$f7 = $fuzzyParser->parse('東京月中');
+hybrid_test_assert($f7->getDateFrom() === '2026-06-11' && $f7->getDateTo() === '2026-06-20', '東京月中');
+
+$f8 = $fuzzyParser->parse('東京暑假');
+hybrid_test_assert($f8->getDateFrom() === '2026-07-01' && $f8->getDateTo() === '2026-08-31', '東京暑假');
+
+$f9 = $fuzzyParser->parse('東京寒假');
+hybrid_test_assert($f9->getDateFrom() === '2026-01-15' && $f9->getDateTo() === '2026-02-15', '東京寒假');
+
+$f10 = $fuzzyParser->parse('東京明年');
+hybrid_test_assert($f10->getDateFrom() === '2027-01-01' && $f10->getDateTo() === '2027-12-31', '東京明年');
+
+$f11 = $fuzzyParser->parse('六月底東京');
+hybrid_test_assert($f11->getDateFrom() === '2026-06-21' && $f11->getDateTo() === '2026-06-30', '六月底 still month-specific not standalone 月底');
+
 hybrid_test_finish('DateParser');

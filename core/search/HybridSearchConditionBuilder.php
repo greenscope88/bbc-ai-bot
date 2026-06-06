@@ -68,12 +68,30 @@ final class HybridSearchConditionBuilder
 
     private function extractDepartureCity(string $message, SearchCondition $condition): SearchCondition
     {
-        if (preg_match('/(台北|高雄|台中|桃園|松山|花蓮|台南)出發/u', $message, $m) !== 1) {
+        $citiesPattern = '台北|高雄|台中|桃園|松山|花蓮|台南';
+
+        if (preg_match('/(' . $citiesPattern . ')出發/u', $message, $m) === 1) {
+            return $this->withDepartureCity($condition, $m[1]);
+        }
+
+        $anchor = $condition->getDestination() ?? $condition->getKeyword();
+        if ($anchor === null || trim($anchor) === '') {
             return $condition;
         }
 
+        $bareCitiesPattern = '台北|高雄|台中|桃園|松山|台南';
+        $pattern = '/^(' . $bareCitiesPattern . ')(' . preg_quote(trim($anchor), '/') . ')/u';
+        if (preg_match($pattern, $message, $m) === 1) {
+            return $this->withDepartureCity($condition, $m[1]);
+        }
+
+        return $condition;
+    }
+
+    private function withDepartureCity(SearchCondition $condition, string $city): SearchCondition
+    {
         return $condition
-            ->with(['departure_city' => $m[1]])
+            ->with(['departure_city' => $city])
             ->flag('departure_parsed')
             ->bumpConfidence(0.1);
     }

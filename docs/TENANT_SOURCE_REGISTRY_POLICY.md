@@ -247,24 +247,55 @@ search_url（long）
 
 平台級映射規則應位於 **Platform Layer**（adapter / registry / platform mapper），**不得進入 Hybrid Layer**。
 
-### 範例：bbctravel departure_city → departure_code
+### BBCTravel Platform Mapping（departure_city → departure_path_code）
 
-| departure_city（中文） | departure_code（path） |
-|------------------------|-------------------------|
+**平台：** `bbctravel.com.tw`（registry template：`bbctravel_dayitravel_searchlist_v1`，path `/searchlist/{departure_path_code}/`）
+
+| departure_city（中文） | departure_path_code |
+|------------------------|---------------------|
 | 台北 | `tpetsa` |
 | 桃園 | `tpe` |
 | 松山 | `tsa` |
+| 台中 | `RMG` |
 | 高雄 | `khh` |
 | 台南 | `tnn` |
-| （未指定／其他） | 預設 `tpetsa`（須與 `BATS_HYBRID_DATE_POLICY.md` 一致） |
+| **`null`（未指定出發地）** | **`all`** |
+
+#### BBCTravel 不限出發地（`null → all`，BBCTravel Only）
+
+當 Hybrid Layer 產出 `departure_city = null`（語意：**不限出發地**，見 `BATS_HYBRID_DATE_POLICY.md` 章節五），bbctravel 映射為：
+
+```text
+/searchlist/all/
+```
+
+範例：
+
+```text
+https://dayitravel.bbctravel.com.tw/searchlist/all/?q=東京&datefrom=2026-06-21&dateto=2026-06-30&order=1&standby=1
+```
+
+**注意：** `null` 語意不等於「預設台北」；`tpetsa` 僅在 `departure_city = 台北` 時使用。
+
+### 平台隔離：不得套用 BBCTravel `/all/` 規則
+
+下列商品源**不得**直接套用 bbctravel 的 `null → all` 映射：
+
+| 平台 | 現況（travel_b pilot） | 說明 |
+|------|------------------------|------|
+| **grp** | `/Tour/Search?GetStore=dayitravel` | 無 `/searchlist/all/` 語意；未指定出發地之 URL 行為由 grp 平台規則定義 |
+| **tourcenter** | 固定入口 `https://dayitourcenter.com.tw/` | 無 departure path；未指定出發地之 URL 行為由 tourcenter 平台規則定義 |
+| **未來其它商品源** | 依各平台 registry／adapter | 須於 Platform Layer 獨立定義；**禁止**假設與 bbctravel 相同 |
+
+Hybrid Layer 對所有平台統一產出 `departure_city`（中文或 `null`）；各平台在 Platform Mapping Layer 自行決定 path／query 映射。
 
 ### 規則
 
-- Hybrid Layer 產出 **`departure_city`**、日期、keyword 等 **語意欄位**
+- Hybrid Layer 產出 **`departure_city`**、日期、keyword 等 **語意欄位**（含裸出發地前綴；見 `BATS_HYBRID_DATE_POLICY.md` 章節五）
 - Platform Layer 負責 **departure_city → departure_path_code** 等平台專用映射
 - **agenttour** 之 RegionCode 等平台映射同屬 Platform Layer（如 `RegionKeywordMapper`）
 
-日期語意規則見 **`BATS_HYBRID_DATE_POLICY.md`**（L2）。
+日期語意規則見 **`BATS_HYBRID_DATE_POLICY.md`**（L2）。出發地語意與裸前綴見同文件章節五；bbctravel path 細節見同文件章節六。
 
 ---
 

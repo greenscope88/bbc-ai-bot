@@ -145,7 +145,7 @@ bridge_assert(strpos($contextOn, 'tourcenter:') !== false, 'flag on: tourcenter 
 bridge_assert(strpos($contextOn, 'rechoice-travel.agenttour.com.tw') === false, 'flag on: no agenttour URL host');
 bridge_assert(strpos($contextOn, 'dayitravel.grp.com.tw') !== false, 'flag on: dayitravel grp host');
 bridge_assert(strpos($contextOn, 'dayitravel.bbctravel.com.tw') !== false, 'flag on: dayitravel bbctravel host');
-bridge_assert(strpos($contextOn, '/searchlist/tpetsa/') !== false, 'flag on: bbctravel default path tpetsa');
+bridge_assert(strpos($contextOn, '/searchlist/all/') !== false, 'flag on: bbctravel unlimited departure path all');
 bridge_assert(
     strpos($contextOn, 'q=%E6%9D%B1%E4%BA%AC') !== false || strpos($contextOn, 'q=%e6%9d%b1%e4%ba%ac') !== false,
     'flag on: bbctravel q URL-encoded 東京'
@@ -162,7 +162,7 @@ foreach ($links as $row) {
         break;
     }
 }
-bridge_assert(strpos($bbctravelUrlTokyo, '/searchlist/tpetsa/') !== false, '六月底東京: bbctravel path tpetsa default');
+bridge_assert(strpos($bbctravelUrlTokyo, '/searchlist/all/') !== false, '六月底東京: bbctravel path all (no departure)');
 bridge_assert(
     strpos($bbctravelUrlTokyo, 'q=%E6%9D%B1%E4%BA%AC') !== false || strpos($bbctravelUrlTokyo, 'q=%e6%9d%b1%e4%ba%ac') !== false,
     '六月底東京: bbctravel q encoded 東京'
@@ -245,46 +245,54 @@ function assert_bbctravel_url_contains(string $url, string $label, array $fragme
     }
 }
 
-// Phase B: BBCTravel datefrom/dateto from Hybrid SearchCondition (platform mapping only)
-$case1Url = bbctravel_url_from_links(
-    $multiBuilder->buildFromHybridCondition(
-        new SearchCondition(
-            SearchCondition::INTENT_TOUR_SEARCH,
-            '東京',
-            null,
-            null,
-            '高雄',
-            '2026-06-05',
-            '2026-08-04'
-        ),
-        $travelBSno
-    )
-);
-assert_bbctravel_url_contains($case1Url, 'case1 高雄東京近期', [
+$tainanBareCondition = $hybridBuilder->parse('台南出發東京6月底', ['merge_legacy_keyword' => true, 'reference_date' => $referenceDate]);
+$tainanBareUrl = bbctravel_url_from_links($multiBuilder->buildFromHybridCondition($tainanBareCondition, $travelBSno));
+bridge_assert(strpos($tainanBareUrl, '/searchlist/tnn/') !== false, '台南出發東京6月底: bbctravel path tnn');
+
+$taichungCondition = $hybridBuilder->parse('台中出發東京6月底', ['merge_legacy_keyword' => true, 'reference_date' => $referenceDate]);
+$taichungUrl = bbctravel_url_from_links($multiBuilder->buildFromHybridCondition($taichungCondition, $travelBSno));
+bridge_assert(strpos($taichungUrl, '/searchlist/RMG/') !== false, '台中出發東京6月底: bbctravel path RMG');
+
+// Phase C-1B: bare prefix + BBCTravel departure mapping from real Hybrid parse
+$case1Condition = $hybridBuilder->parse('高雄東京6月底', ['merge_legacy_keyword' => true, 'reference_date' => $referenceDate]);
+bridge_assert($case1Condition->getDepartureCity() === '高雄', 'case1 parse: 高雄東京6月底 departure 高雄');
+$case1Url = bbctravel_url_from_links($multiBuilder->buildFromHybridCondition($case1Condition, $travelBSno));
+assert_bbctravel_url_contains($case1Url, 'case1 高雄東京6月底', [
     '/searchlist/khh/',
     'q=東京',
-    'datefrom=2026-06-05',
-    'dateto=2026-08-04',
+    'datefrom=2026-06-21',
+    'dateto=2026-06-30',
     'order=1',
     'standby=1',
 ]);
 
-$case2Url = bbctravel_url_from_links(
-    $multiBuilder->buildFromHybridCondition(
-        new SearchCondition(
-            SearchCondition::INTENT_TOUR_SEARCH,
-            '東京',
-            null,
-            null,
-            '高雄',
-            '2026-06-21',
-            '2026-06-30'
-        ),
-        $travelBSno
-    )
-);
-assert_bbctravel_url_contains($case2Url, 'case2 高雄東京6月底', [
-    '/searchlist/khh/',
+$case2Condition = $hybridBuilder->parse('台南東京6月底', ['merge_legacy_keyword' => true, 'reference_date' => $referenceDate]);
+$case2Url = bbctravel_url_from_links($multiBuilder->buildFromHybridCondition($case2Condition, $travelBSno));
+assert_bbctravel_url_contains($case2Url, 'case2 台南東京6月底', [
+    '/searchlist/tnn/',
+    'q=東京',
+    'datefrom=2026-06-21',
+    'dateto=2026-06-30',
+    'order=1',
+    'standby=1',
+]);
+
+$case3Condition = $hybridBuilder->parse('台中東京6月底', ['merge_legacy_keyword' => true, 'reference_date' => $referenceDate]);
+$case3Url = bbctravel_url_from_links($multiBuilder->buildFromHybridCondition($case3Condition, $travelBSno));
+assert_bbctravel_url_contains($case3Url, 'case3 台中東京6月底', [
+    '/searchlist/RMG/',
+    'q=東京',
+    'datefrom=2026-06-21',
+    'dateto=2026-06-30',
+    'order=1',
+    'standby=1',
+]);
+
+$case4Condition = $hybridBuilder->parse('東京6月底', ['merge_legacy_keyword' => true, 'reference_date' => $referenceDate]);
+bridge_assert($case4Condition->getDepartureCity() === null, 'case4 parse: 東京6月底 departure null');
+$case4Url = bbctravel_url_from_links($multiBuilder->buildFromHybridCondition($case4Condition, $travelBSno));
+assert_bbctravel_url_contains($case4Url, 'case4 東京6月底', [
+    '/searchlist/all/',
     'q=東京',
     'datefrom=2026-06-21',
     'dateto=2026-06-30',

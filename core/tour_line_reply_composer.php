@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'date_clarification_line_formatter.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'tour_fallback_formatter.php';
 
 /**
@@ -24,6 +25,18 @@ final class TourLineReplyComposer
         bool $allowFixedFormatter = true
     ): array {
         $ctx = trim($tourContext);
+        if ($allowFixedFormatter && $ctx !== '' && DateClarificationLineFormatter::isClarificationContext($ctx)) {
+            $clarificationReply = DateClarificationLineFormatter::formatFromTourContext($ctx);
+            if ($clarificationReply !== '') {
+                return [
+                    'reply_text' => $clarificationReply,
+                    'ai_ok' => true,
+                    'used_fixed_tour_list' => false,
+                    'used_tour_fallback' => false,
+                ];
+            }
+        }
+
         if ($allowFixedFormatter && $ctx !== '') {
             $fixed = TourFallbackFormatter::formatFromTourContext($ctx);
             if ($fixed !== '') {

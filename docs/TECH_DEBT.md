@@ -188,3 +188,5 @@
 |------|------|
 | 2026-06-05 | 初版建立 TECH_DEBT.md，作為 P2/P3 技術債治理登錄 SSOT。 |
 | 2026-06-05 | 技術債與 Roadmap 條目中文化（Title、Risk、Notes、Suggested Timing 等以中文為主）。 |
+| 2026-06-06 | 新增 P2-TD-006：BBCTravel Departure Mapping 規格漂移（null→tpetsa vs null→all） |
+| 2026-06-06 | 移除 P2-TD-006：已轉為 Phase C-1 主線工作（C-1A 文件、C-1B 程式），不屬技術債 |

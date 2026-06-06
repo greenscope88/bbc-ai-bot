@@ -101,7 +101,135 @@ final class DateParser
             }
         }
 
+        $fuzzy = $this->parseSsotFuzzySemantics($text);
+        if ($fuzzy !== null) {
+            return $this->applyRange(
+                $base,
+                $fuzzy['from'],
+                $fuzzy['to'],
+                self::PRECISION_FUZZY,
+                $fuzzy['label'],
+                $fuzzy['confidence']
+            );
+        }
+
         return $base;
+    }
+
+    /**
+     * BATS_HYBRID_DATE_POLICY.md fuzzy date semantics (reference-month relative).
+     *
+     * @return ?array{from: string, to: string, label: string, confidence: float}
+     */
+    private function parseSsotFuzzySemantics(string $text): ?array
+    {
+        $ref = $this->reference->setTime(0, 0, 0);
+        $year = (int) $ref->format('Y');
+        $month = (int) $ref->format('m');
+
+        if (mb_strpos($text, '明年', 0, 'UTF-8') !== false) {
+            $nextYear = $year + 1;
+
+            return [
+                'from' => sprintf('%04d-01-01', $nextYear),
+                'to' => sprintf('%04d-12-31', $nextYear),
+                'label' => '明年',
+                'confidence' => 0.72,
+            ];
+        }
+
+        if (mb_strpos($text, '寒假', 0, 'UTF-8') !== false) {
+            return [
+                'from' => sprintf('%04d-01-15', $year),
+                'to' => sprintf('%04d-02-15', $year),
+                'label' => '寒假',
+                'confidence' => 0.72,
+            ];
+        }
+
+        if (mb_strpos($text, '下月', 0, 'UTF-8') !== false) {
+            $nextMonthRef = $ref->modify('first day of next month');
+            $range = $this->fullMonthRange(
+                (int) $nextMonthRef->format('Y'),
+                (int) $nextMonthRef->format('m')
+            );
+
+            return [
+                'from' => $range[0],
+                'to' => $range[1],
+                'label' => '下月',
+                'confidence' => 0.74,
+            ];
+        }
+
+        if (mb_strpos($text, '本月', 0, 'UTF-8') !== false) {
+            $range = $this->fullMonthRange($year, $month);
+
+            return [
+                'from' => $range[0],
+                'to' => $range[1],
+                'label' => '本月',
+                'confidence' => 0.74,
+            ];
+        }
+
+        if (mb_strpos($text, '最近', 0, 'UTF-8') !== false) {
+            return $this->recentWindowRange($ref, '最近');
+        }
+
+        if (mb_strpos($text, '近期', 0, 'UTF-8') !== false) {
+            return $this->recentWindowRange($ref, '近期');
+        }
+
+        $monthPartGuard = '(?<![一二三四五六七八九十兩\d]月)';
+
+        if (preg_match('/' . $monthPartGuard . '月初/u', $text) === 1) {
+            $range = $this->monthPartRange($year, $month, '初');
+
+            return [
+                'from' => $range[0],
+                'to' => $range[1],
+                'label' => '月初',
+                'confidence' => 0.74,
+            ];
+        }
+
+        if (preg_match('/' . $monthPartGuard . '月中/u', $text) === 1) {
+            $range = $this->monthPartRange($year, $month, '中');
+
+            return [
+                'from' => $range[0],
+                'to' => $range[1],
+                'label' => '月中',
+                'confidence' => 0.74,
+            ];
+        }
+
+        if (preg_match('/' . $monthPartGuard . '(月底|月末)/u', $text) === 1) {
+            $range = $this->monthPartRange($year, $month, '底');
+
+            return [
+                'from' => $range[0],
+                'to' => $range[1],
+                'label' => '月底',
+                'confidence' => 0.74,
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{from: string, to: string, label: string, confidence: float}
+     */
+    private function recentWindowRange(\DateTimeImmutable $ref, string $label): array
+    {
+        return [
+            'from' => $ref->format('Y-m-d'),
+            'to' => $ref->modify('+60 days')->format('Y-m-d'),
+            'label' => $label,
+            'confidence' => 0.76,
+        ];
     }
 
     /**

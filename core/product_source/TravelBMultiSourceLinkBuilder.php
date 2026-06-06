@@ -121,20 +121,25 @@ final class TravelBMultiSourceLinkBuilder
     }
 
     /**
-     * bbctravel /searchlist/{code}/ — 中文出發地 → path code；未指定時預設台北 tpetsa。
+     * bbctravel /searchlist/{code}/ — 中文出發地 → path code；未指定時 all（不限出發地）。
      */
     private static function resolveBbctravelDeparturePathCode(?string $departureCity): string
     {
         $city = $departureCity !== null ? trim($departureCity) : '';
+        if ($city === '') {
+            return 'all';
+        }
+
         $map = [
-            '高雄' => 'khh',
-            '台南' => 'tnn',
             '台北' => 'tpetsa',
             '桃園' => 'tpe',
             '松山' => 'tsa',
+            '台中' => 'RMG',
+            '高雄' => 'khh',
+            '台南' => 'tnn',
         ];
 
-        return $map[$city] ?? 'tpetsa';
+        return $map[$city] ?? 'all';
     }
 
     /**

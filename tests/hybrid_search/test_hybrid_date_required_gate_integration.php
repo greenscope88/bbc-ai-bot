@@ -84,18 +84,26 @@ $ctx2 = hybrid_gate_build_context($service, '東京行程');
 hybrid_test_assert(strpos($ctx2, HybridDateRequiredGate::CLARIFICATION_MARKER) !== false, 'case2: date clarification');
 hybrid_test_assert($GLOBALS['hybrid_date_gate_api_calls'] === 0, 'case2: no API call');
 
-// Case 3: 近期東京 — allow search when Hybrid produces dates; otherwise clarification (DateParser gap)
+// Case 3: 大阪近期 — fuzzy dates allow search (no clarification)
+$refFuzzy = new DateTimeImmutable('2026-06-06', new DateTimeZone('Asia/Taipei'));
 hybrid_gate_reset_counters();
-$ctx3 = hybrid_gate_build_context($service, '近期東京');
-$builderProbe = new HybridSearchConditionBuilder(new DateParser($ref));
-$probe3 = $builderProbe->parse('近期東京', ['reference_date' => $ref, 'merge_legacy_keyword' => true]);
-if ($probe3->getDateFrom() !== null || $probe3->getDateTo() !== null) {
-    hybrid_test_assert(strpos($ctx3, HybridDateRequiredGate::CLARIFICATION_MARKER) === false, 'case3: search context when dates parsed');
-    hybrid_test_assert($GLOBALS['hybrid_date_gate_api_calls'] === 1, 'case3: API called when dates present');
-} else {
-    hybrid_test_assert(strpos($ctx3, HybridDateRequiredGate::CLARIFICATION_MARKER) !== false, 'case3: clarification until 近期 parser exists');
-    hybrid_test_assert($GLOBALS['hybrid_date_gate_api_calls'] === 0, 'case3: no API without dates');
-}
+$ctx3 = $service->buildTourContextForPrompt([
+    'userText' => '大阪近期',
+    'sno' => $travelBSno,
+    'featureEnabled' => true,
+    'searchClient' => $mockClient,
+    'hybridSearchConfig' => $hybridConfig,
+    'travelBMultiSourceLinksConfig' => $multiSourceConfig,
+    'referenceDate' => $refFuzzy,
+]);
+hybrid_test_assert(strpos($ctx3, HybridDateRequiredGate::CLARIFICATION_MARKER) === false, 'case3: 大阪近期 not clarification');
+hybrid_test_assert($GLOBALS['hybrid_date_gate_api_calls'] === 1, 'case3: 大阪近期 API called');
+hybrid_test_assert(strpos($ctx3, '【旅遊產品搜尋結果】') !== false, 'case3: 大阪近期 search context');
+hybrid_test_assert(
+    strpos($ctx3, 'q=%E5%A4%A7%E9%98%AA') !== false || strpos($ctx3, 'q=%e5%a4%a7%e9%98%aa') !== false,
+    'case3: 大阪近期 bbctravel q encoded 大阪'
+);
+hybrid_test_assert(strpos($ctx3, 'datefrom=2026-06-06') !== false, 'case3: 大阪近期 bbctravel datefrom');
 
 // Case 4: 高雄東京6月底
 hybrid_gate_reset_counters();
