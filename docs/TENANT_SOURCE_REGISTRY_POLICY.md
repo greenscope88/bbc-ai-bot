@@ -247,9 +247,11 @@ search_url（long）
 
 平台級映射規則應位於 **Platform Layer**（adapter / registry / platform mapper），**不得進入 Hybrid Layer**。
 
-### BBCTravel Platform Mapping（departure_city → departure_path_code）
+### BBCTravel Platform Mapping（departure_city → departure_path_code，BBCTravel Only）
 
 **平台：** `bbctravel.com.tw`（registry template：`bbctravel_dayitravel_searchlist_v1`，path `/searchlist/{departure_path_code}/`）
+
+> **BBCTravel Only：** 下列 departure mapping **僅適用 bbctravel**；grp.com.tw、tourcenter 及其它平台不得套用。
 
 | departure_city（中文） | departure_path_code |
 |------------------------|---------------------|
@@ -277,25 +279,70 @@ https://dayitravel.bbctravel.com.tw/searchlist/all/?q=東京&datefrom=2026-06-21
 
 **注意：** `null` 語意不等於「預設台北」；`tpetsa` 僅在 `departure_city = 台北` 時使用。
 
-### 平台隔離：不得套用 BBCTravel `/all/` 規則
+### GRP Platform Mapping（grp.com.tw — travel_b / dayitravel）
 
-下列商品源**不得**直接套用 bbctravel 的 `null → all` 映射：
+**平台：** `grp`（`platform_id`；文件別名 `grp_com_tw`）  
+**Source Instance：** `dayitravel_grp` → `dayitravel.grp.com.tw`  
+**正式 SSOT：** `GRP_GOLDEN_REFERENCE_PLATFORM_RULE.md`
 
-| 平台 | 現況（travel_b pilot） | 說明 |
-|------|------------------------|------|
-| **grp** | `/Tour/Search?GetStore=dayitravel` | 無 `/searchlist/all/` 語意；未指定出發地之 URL 行為由 grp 平台規則定義 |
-| **tourcenter** | 固定入口 `https://dayitourcenter.com.tw/` | 無 departure path；未指定出發地之 URL 行為由 tourcenter 平台規則定義 |
+#### 正確 URL 規格（Golden Reference）
+
+```text
+http://{source_instance}.grp.com.tw/ClassifyProduct.aspx?l=l&RadDatePicker1={date_from}&RadDatePicker2={date_to}&tp={keyword}
+```
+
+`dayitravel` 為 travel_b 在 grp.com.tw 之 **Source Instance**（`source_instance` / `subdomain`）。
+
+**travel_b 範例（日期區間）：**
+
+```text
+http://dayitravel.grp.com.tw/ClassifyProduct.aspx?l=l&RadDatePicker1=2026-07-01&RadDatePicker2=2026-07-03&tp=瑞士
+```
+
+| 參數 | 規則 |
+|------|------|
+| `l` | 固定 `l` |
+| `RadDatePicker1` | Hybrid `date_from`（出發起日，`YYYY-MM-DD`） |
+| `RadDatePicker2` | Hybrid `date_to`（出發截止日，`YYYY-MM-DD`） |
+| `tp` | Hybrid `keyword`（**明文** `tp={keyword}`；URL Encode 不屬 Platform Rule） |
+
+**單日搜尋：** `date_from = date_to` 時，`RadDatePicker1` 與 `RadDatePicker2` 帶相同日期（仍為雙參數格式）。
+
+#### grp 平台限制
+
+| 項目 | grp 行為 |
+|------|----------|
+| **出發地** | **不支援**；忽略 `departure_city` |
+| **BBCTravel Departure Mapping** | **不得套用**（`khh`、`RMG`、`all`、`tpetsa` 等） |
+| **日期區間** | 直接使用 Hybrid `date_from` / `date_to`；模糊語意（近期、最近、本月、下月、月初、月中、月底、暑假、寒假、明年等）**不採用單日代表日策略** |
+
+#### Deprecated（舊資料，不可作 Golden Reference）
+
+```text
+/Tour/Search?GetStore=dayitravel
+```
+
+上述路徑為舊 registry／文件描述，**已廢止**作為 grp Golden Reference。Phase 2 須以 `ClassifyProduct.aspx` 模板取代。
+
+### 平台隔離：不得套用 BBCTravel Departure Mapping
+
+下列商品源**不得**套用 bbctravel 之 `departure_path_code` 映射（含 `null → all`）：
+
+| 平台 | Golden Reference URL（travel_b pilot） | 說明 |
+|------|----------------------------------------|------|
+| **grp** | `ClassifyProduct.aspx?l=l&RadDatePicker1=…&RadDatePicker2=…&tp=…` | 支援日期區間；無出發地；詳見 `GRP_GOLDEN_REFERENCE_PLATFORM_RULE.md` |
+| **tourcenter** | 固定入口 `https://dayitourcenter.com.tw/` | 無 departure path；規則待 tourcenter Golden Reference 定義 |
 | **未來其它商品源** | 依各平台 registry／adapter | 須於 Platform Layer 獨立定義；**禁止**假設與 bbctravel 相同 |
 
-Hybrid Layer 對所有平台統一產出 `departure_city`（中文或 `null`）；各平台在 Platform Mapping Layer 自行決定 path／query 映射。
+Hybrid Layer 對所有平台統一產出 `departure_city`（中文或 `null`）；各平台在 Platform Mapping Layer **自行決定是否使用、如何映射**（grp：**不使用**）。
 
 ### 規則
 
 - Hybrid Layer 產出 **`departure_city`**、日期、keyword 等 **語意欄位**（含裸出發地前綴；見 `BATS_HYBRID_DATE_POLICY.md` 章節五）
-- Platform Layer 負責 **departure_city → departure_path_code** 等平台專用映射
+- Platform Layer 負責平台專用映射：**bbctravel** → `departure_path_code`；**grp** → 忽略 `departure_city`；**agenttour** → RegionCode 等
 - **agenttour** 之 RegionCode 等平台映射同屬 Platform Layer（如 `RegionKeywordMapper`）
 
-日期語意規則見 **`BATS_HYBRID_DATE_POLICY.md`**（L2）。出發地語意與裸前綴見同文件章節五；bbctravel path 細節見同文件章節六。
+日期語意規則見 **`BATS_HYBRID_DATE_POLICY.md`**（L2）。平台如何消費 `date_from`/`date_to` 見同文件「平台日期參數消費規則」。出發地語意見章節五；bbctravel path 細節見章節六（**BBCTravel Only**）。
 
 ---
 
@@ -429,3 +476,6 @@ ChatGPT、Cursor、開發者進行 tenant / product source 相關決策或實作
 | 版本 | 日期 | 狀態 | 說明 |
 |------|------|------|------|
 | 1.0 | 2026-06-05 | Adopted | Initial Version |
+| 1.1 | 2026-06-06 | Adopted | Phase 1B：grp.com.tw Platform Mapping（ClassifyProduct.aspx）；deprecated Tour/Search |
+| 1.2 | 2026-06-06 | Superseded | Phase 1B-Revise v1：grp 日期區間 RadDatePicker1/RadDatePicker2 |
+| 1.3 | 2026-06-06 | Adopted | Phase 1B-Revise v2：tp 明文規格、source_instance、模糊語意擴充 |

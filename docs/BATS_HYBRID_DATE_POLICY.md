@@ -412,6 +412,49 @@ Hybrid Layer 僅產出 `departure_city`（中文），不產出 `tpetsa` / `khh`
 
 僅消費 Hybrid 產出的 `keyword`、`departure_city`、`date_from`、`date_to`（及 Mapping 產出的平台代碼），**不得**自行定義日期解析規則。
 
+各平台**如何**將 `date_from` / `date_to` 映射至 URL query，見下方「平台日期參數消費規則」。
+
+---
+
+## 章節七之一：平台日期參數消費規則
+
+### 原則
+
+| 層級 | 職責 |
+|------|------|
+| **Hybrid Layer** | 統一解析日期語意；產出 `date_from`、`date_to`（及 Date Clarification Gate） |
+| **SearchCondition** | 可同時保留 `date_from`、`date_to` |
+| **Platform Rule** | 決定各平台 URL **實際使用哪些欄位、對應哪些參數名** |
+
+**禁止：** 將 `datefrom` / `dateto` 視為所有平台通用 URL 參數名稱。
+
+### 平台對照（Phase 1）
+
+| 平台 | 日期 URL 參數 | 消費規則 |
+|------|---------------|----------|
+| **bbctravel** | `datefrom`、`dateto` | 使用 `date_from` → `datefrom`；`date_to` → `dateto` |
+| **grp.com.tw** | `RadDatePicker1`、`RadDatePicker2` | `date_from` → `RadDatePicker1`；`date_to` → `RadDatePicker2` |
+| **tourcenter** | （待 Golden Reference 定義） | 獨立 Platform Rule |
+| **bbcshops** | 依 storefront 規格 | 獨立規格 |
+
+### grp.com.tw 補充
+
+- grp **支援日期區間**；直接使用 Hybrid 已產出的 `date_from` / `date_to`。
+- 資料流：`Hybrid Date Parser` → `date_from` / `date_to` → `grp URL Builder` → `RadDatePicker1` / `RadDatePicker2`。
+- 模糊語意（近期、最近、本月、下月、月初、月中、月底、6月底、暑假、寒假、明年等）由 Hybrid Date Parser 解析為區間後，**原樣映射**至 `RadDatePicker1` / `RadDatePicker2`；**不採用單日代表日策略**。
+- 單日搜尋（`date_from = date_to`）時，兩參數帶相同日期（仍維持雙參數格式）。
+- `tp={keyword}` 為明文關鍵字；URL Encode 屬 Transport Layer，不屬 Platform Rule（見 `GRP_GOLDEN_REFERENCE_PLATFORM_RULE.md`）。
+- 詳見 `GRP_GOLDEN_REFERENCE_PLATFORM_RULE.md`。
+
+### 出發地隔離（與日期並列）
+
+**BBCTravel Departure Mapping**（`tpetsa`、`khh`、`RMG`、`all` 等）**僅適用 bbctravel**。
+
+- **grp.com.tw** 不支援出發地；須**忽略** `departure_city`。
+- 不得將 bbctravel path code 套用至 grp URL。
+
+詳見：`GRP_GOLDEN_REFERENCE_PLATFORM_RULE.md`、`TENANT_SOURCE_REGISTRY_POLICY.md` §Platform Mapping。
+
 ---
 
 ## 章節八：多商品源共用原則
@@ -428,7 +471,7 @@ Hybrid Layer 僅產出 `departure_city`（中文），不產出 `tpetsa` / `khh`
 - travel_b 一套日期規則、travel_c 另一套
 - grp 一套、bbctravel 一套、各自解析「近期」「六月底」
 
-所有差異僅允許出現在 **Platform Mapping** 與 **URL 參數命名**（例如 `datefrom` / `dateto`），不允許出現在 **日期語意解析**。
+所有差異僅允許出現在 **Platform Mapping** 與 **URL 參數命名／消費方式**（例如 bbctravel 的 `datefrom`/`dateto`、grp 的 `RadDatePicker1`/`RadDatePicker2`），不允許出現在 **日期語意解析**。
 
 ---
 
@@ -484,3 +527,6 @@ Hybrid Layer 僅產出 `departure_city`（中文），不產出 `tpetsa` / `khh`
 | 2026-06-05 | 初版建立：BATS Hybrid 日期解析正式規範（SSOT） |
 | 2026-06-05 | Add Date Semantic Required Rule（日期語意必要）與日期語意對照表 |
 | 2026-06-06 | Phase C-1A：裸出發地前綴、`departure_city = null` 語意、BBCTravel `null → all` 與台中→RMG（Platform Layer） |
+| 2026-06-06 | Phase 1B：平台日期參數消費規則；BBCTravel departure 隔離加註 |
+| 2026-06-06 | Phase 1B-Revise v1：grp 日期區間 `RadDatePicker1`/`RadDatePicker2` |
+| 2026-06-06 | Phase 1B-Revise v2：grp tp 明文規格、模糊語意擴充、單日代表日策略廢止 |
