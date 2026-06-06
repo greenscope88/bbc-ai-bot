@@ -6,6 +6,7 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPA
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridDateRequiredGate.php';
 
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'DateParser.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'MockShortUrlProvider.php';
 
 $travelBSno = TravelBMultiSourceLinkBuilder::TRAVEL_B_SNO;
 $ref = new DateTimeImmutable('2026-06-05', new DateTimeZone('Asia/Taipei'));
@@ -47,6 +48,7 @@ $multiSourceConfig = [
 ];
 
 $service = new TourPromptContextService();
+$mockShortUrlProvider = new MockShortUrlProvider();
 
 function hybrid_gate_reset_counters(): void
 {
@@ -56,7 +58,7 @@ function hybrid_gate_reset_counters(): void
 
 function hybrid_gate_build_context(TourPromptContextService $service, string $userText): string
 {
-    global $travelBSno, $mockClient, $hybridConfig, $multiSourceConfig, $ref;
+    global $travelBSno, $mockClient, $hybridConfig, $multiSourceConfig, $ref, $mockShortUrlProvider;
 
     return $service->buildTourContextForPrompt([
         'userText' => $userText,
@@ -65,6 +67,7 @@ function hybrid_gate_build_context(TourPromptContextService $service, string $us
         'searchClient' => $mockClient,
         'hybridSearchConfig' => $hybridConfig,
         'travelBMultiSourceLinksConfig' => $multiSourceConfig,
+        'multiSourceShortUrlProvider' => $mockShortUrlProvider,
         'referenceDate' => $ref,
     ]);
 }
@@ -94,16 +97,27 @@ $ctx3 = $service->buildTourContextForPrompt([
     'searchClient' => $mockClient,
     'hybridSearchConfig' => $hybridConfig,
     'travelBMultiSourceLinksConfig' => $multiSourceConfig,
+    'multiSourceShortUrlProvider' => $mockShortUrlProvider,
     'referenceDate' => $refFuzzy,
 ]);
 hybrid_test_assert(strpos($ctx3, HybridDateRequiredGate::CLARIFICATION_MARKER) === false, 'case3: 大阪近期 not clarification');
 hybrid_test_assert($GLOBALS['hybrid_date_gate_api_calls'] === 1, 'case3: 大阪近期 API called');
 hybrid_test_assert(strpos($ctx3, '【旅遊產品搜尋結果】') !== false, 'case3: 大阪近期 search context');
+hybrid_test_assert(strpos($ctx3, 'bbctravel: https://bbcshops.com/') !== false, 'case3: 大阪近期 bbctravel short URL in context');
+$osakaBuilder = new HybridSearchConditionBuilder(new DateParser($refFuzzy));
+$osakaCondition = $osakaBuilder->parse('大阪近期', ['merge_legacy_keyword' => true, 'reference_date' => $refFuzzy]);
+$osakaLongUrl = '';
+foreach ((new TravelBMultiSourceLinkBuilder($multiSourceConfig))->buildFromHybridCondition($osakaCondition, $travelBSno) as $row) {
+    if (($row['platform'] ?? '') === 'bbctravel') {
+        $osakaLongUrl = (string) ($row['search_url'] ?? '');
+        break;
+    }
+}
 hybrid_test_assert(
-    strpos($ctx3, 'q=%E5%A4%A7%E9%98%AA') !== false || strpos($ctx3, 'q=%e5%a4%a7%e9%98%aa') !== false,
-    'case3: 大阪近期 bbctravel q encoded 大阪'
+    strpos($osakaLongUrl, 'q=%E5%A4%A7%E9%98%AA') !== false || strpos($osakaLongUrl, 'q=%e5%a4%a7%e9%98%aa') !== false,
+    'case3: builder bbctravel q encoded 大阪'
 );
-hybrid_test_assert(strpos($ctx3, 'datefrom=2026-06-06') !== false, 'case3: 大阪近期 bbctravel datefrom');
+hybrid_test_assert(strpos($osakaLongUrl, 'datefrom=2026-06-06') !== false, 'case3: builder bbctravel datefrom');
 
 // Case 4: 高雄東京6月底
 hybrid_gate_reset_counters();

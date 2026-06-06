@@ -28,6 +28,9 @@ final class GeminiTourContextBuilder
     /** Footer label before list search_url (LINE / Gemini / fallback). */
     public const SEARCH_URL_LABEL = '更多行程 & 出團日：';
 
+    /** Parsed by TourFallbackFormatter for destination-aware LINE headers (not shown to customer verbatim). */
+    public const SEARCH_DESTINATION_LABEL = '搜尋目的地：';
+
     /** Phase 9-B-27: multi-source search URLs for Gemini context (travel_b pilot). */
     public const MULTI_SOURCE_LINKS_LABEL = '多商品源搜尋連結：';
 
@@ -90,6 +93,7 @@ final class GeminiTourContextBuilder
 
         $lines = [];
         $lines[] = '【' . $title . '】';
+        $this->appendSearchDestinationLine($lines, $apiResult, $options);
 
         if (($apiResult['success'] ?? false) !== true) {
             $lines[] = '目前未能取得可推薦的行程資料，請以禮貌用語回覆客人，並建議稍後再試或聯繫客服。';
@@ -164,6 +168,47 @@ final class GeminiTourContextBuilder
         }
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * @param list<string> $lines
+     * @param array<string, mixed> $apiResult
+     * @param array<string, mixed> $options
+     */
+    private function appendSearchDestinationLine(array &$lines, array $apiResult, array $options): void
+    {
+        $destination = $this->resolveSearchDestination($apiResult, $options);
+        if ($destination === '') {
+            return;
+        }
+
+        $lines[] = self::SEARCH_DESTINATION_LABEL . $destination;
+    }
+
+    /**
+     * @param array<string, mixed> $apiResult
+     * @param array<string, mixed> $options
+     */
+    private function resolveSearchDestination(array $apiResult, array $options): string
+    {
+        if (isset($options['search_destination']) && is_string($options['search_destination'])) {
+            $fromOption = trim($options['search_destination']);
+            if ($fromOption !== '') {
+                return $fromOption;
+            }
+        }
+
+        $keyword = $apiResult['keyword'] ?? null;
+        if (is_string($keyword) && trim($keyword) !== '') {
+            return trim($keyword);
+        }
+
+        $destination = $apiResult['destination'] ?? null;
+        if (is_string($destination) && trim($destination) !== '') {
+            return trim($destination);
+        }
+
+        return '';
     }
 
     /**

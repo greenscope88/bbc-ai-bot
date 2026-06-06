@@ -81,7 +81,7 @@ test_assert($svcFail->toPublicShortUrl('') === '', '3: empty URL passthrough');
 test_assert($svcFail->toPublicShortUrl($fakeLong) === $fakeLong || preg_match('#^https://bbcshops\.com/#', $svcFail->toPublicShortUrl($fakeLong)) === 1, '3: fail-open or short for real long URL');
 
 // 4. TourFallbackFormatter extracts bbcshops short URL
-$context = "【旅遊產品搜尋結果】\n\n" . GeminiTourContextBuilder::SEARCH_URL_LABEL . "\nhttps://bbcshops.com/AMUCA\n";
+$context = "【旅遊產品搜尋結果】\n" . GeminiTourContextBuilder::SEARCH_DESTINATION_LABEL . "東京\n\n" . GeminiTourContextBuilder::SEARCH_URL_LABEL . "\nhttps://bbcshops.com/AMUCA\n";
 $formatted = TourFallbackFormatter::formatFromTourContext($context);
 test_assert(strpos($formatted, 'https://bbcshops.com/AMUCA') !== false, '4: fallback formatter keeps bbcshops short URL');
 

@@ -59,6 +59,7 @@ function assert_bbctravel_date_mapping(?string $dateFrom, ?string $dateTo, strin
 }
 
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'DateParser.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'MockShortUrlProvider.php';
 
 $travelBSno = TravelBMultiSourceLinkBuilder::TRAVEL_B_SNO;
 $referenceDate = new DateTimeImmutable('2026-06-05', new DateTimeZone('Asia/Taipei'));
@@ -123,6 +124,7 @@ bridge_assert(
     'flag off: no multi-source block'
 );
 
+$mockShortUrlProvider = new MockShortUrlProvider();
 $contextOn = $service->buildTourContextForPrompt([
     'userText' => $userText,
     'sno' => $travelBSno,
@@ -130,6 +132,7 @@ $contextOn = $service->buildTourContextForPrompt([
     'searchClient' => $mockClient,
     'hybridSearchConfig' => $hybridConfigOn,
     'travelBMultiSourceLinksConfig' => $multiSourceConfigOn,
+    'multiSourceShortUrlProvider' => $mockShortUrlProvider,
     'referenceDate' => $referenceDate,
 ]);
 
@@ -144,12 +147,8 @@ bridge_assert(strpos($contextOn, 'bbctravel:') !== false, 'flag on: bbctravel li
 bridge_assert(strpos($contextOn, 'tourcenter:') !== false, 'flag on: tourcenter line');
 bridge_assert(strpos($contextOn, 'rechoice-travel.agenttour.com.tw') === false, 'flag on: no agenttour URL host');
 bridge_assert(strpos($contextOn, 'dayitravel.grp.com.tw') !== false, 'flag on: dayitravel grp host');
-bridge_assert(strpos($contextOn, 'dayitravel.bbctravel.com.tw') !== false, 'flag on: dayitravel bbctravel host');
-bridge_assert(strpos($contextOn, '/searchlist/all/') !== false, 'flag on: bbctravel unlimited departure path all');
-bridge_assert(
-    strpos($contextOn, 'q=%E6%9D%B1%E4%BA%AC') !== false || strpos($contextOn, 'q=%e6%9d%b1%e4%ba%ac') !== false,
-    'flag on: bbctravel q URL-encoded 東京'
-);
+bridge_assert(strpos($contextOn, 'dayitravel.bbctravel.com.tw') === false, 'flag on: bbctravel context uses short URL not long host');
+bridge_assert(strpos($contextOn, 'bbctravel: https://bbcshops.com/') !== false, 'flag on: bbctravel short URL in context');
 bridge_assert(strpos($contextOn, 'dayitourcenter.com.tw') !== false, 'flag on: dayitourcenter host');
 
 $links = $multiBuilder->buildFromHybridCondition($searchCondition, $travelBSno);
@@ -172,12 +171,6 @@ assert_bbctravel_date_mapping(
     $searchCondition->getDateTo(),
     $bbctravelUrlTokyo,
     '六月底東京'
-);
-assert_bbctravel_date_mapping(
-    $searchCondition->getDateFrom(),
-    $searchCondition->getDateTo(),
-    $contextOn,
-    'flag on: context bbctravel date mapping'
 );
 
 function bbctravel_url_from_links(array $links): string
@@ -302,12 +295,16 @@ assert_bbctravel_url_contains($case4Url, 'case4 東京6月底', [
 
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tour_fallback_formatter.php';
 $lineReply = TourFallbackFormatter::formatFromTourContext($contextOn);
-bridge_assert(strpos($lineReply, '更多商品來源') !== false, 'formatter: multi-source header');
+bridge_assert(strpos($lineReply, '🌏 更多【') !== false && strpos($lineReply, '】行程也可參考：') !== false, 'formatter: destination multi-source header');
+bridge_assert(strpos($lineReply, '更多商品來源') === false, 'formatter: no legacy multi-source header');
 bridge_assert(strpos($lineReply, 'agenttour') === false, 'formatter: no agenttour');
 bridge_assert(strpos($lineReply, 'grp') !== false && strpos($lineReply, 'dayitravel.grp.com.tw') !== false, 'formatter: grp');
-bridge_assert(strpos($lineReply, 'bbctravel') !== false && strpos($lineReply, 'dayitravel.bbctravel.com.tw') !== false, 'formatter: bbctravel');
+bridge_assert(strpos($lineReply, 'https://bbcshops.com/') !== false, 'formatter: bbctravel short URL');
+bridge_assert(strpos($lineReply, 'dayitravel.bbctravel.com.tw') === false, 'formatter: no long bbctravel host');
 bridge_assert(strpos($lineReply, 'tourcenter') !== false && strpos($lineReply, 'dayitourcenter.com.tw') !== false, 'formatter: tourcenter');
-bridge_assert(strpos($lineReply, GeminiTourContextBuilder::SEARCH_URL_LABEL) !== false, 'formatter: legacy search label preserved');
+bridge_assert(strpos($lineReply, '🔎 更多【') !== false && strpos($lineReply, '】行程 & 出團日：') !== false, 'formatter: destination search footer');
+bridge_assert(preg_match('/^' . preg_quote(GeminiTourContextBuilder::SEARCH_URL_LABEL, '/') . '$/mu', $lineReply) !== 1, 'formatter: no legacy search label line without emoji');
+bridge_assert(strpos($lineReply, "grp：") === false && strpos($lineReply, "bbctravel：") === false, 'formatter: no platform labels');
 
 if ($failures > 0) {
     fwrite(STDERR, "\n{$failures} test failure(s)\n");

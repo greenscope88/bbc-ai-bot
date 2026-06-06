@@ -20,8 +20,11 @@ final class TourFallbackFormatter
     private const LINE_DETAIL_LABEL = '📄 詳細內容：';
     private const LINE_SCHEDULE_LABEL = '🗓️ 行程表：';
 
-    /** LINE output header for multi-source URLs parsed from tour context (Phase 9-B-27 pilot). */
-    private const LINE_MULTI_SOURCE_HEADER = '更多商品來源：';
+    /** LINE output headers (destination from GeminiTourContextBuilder::SEARCH_DESTINATION_LABEL). */
+    private const LINE_SEARCH_URL_HEADER_TEMPLATE = '🔎 更多【%s】行程 & 出團日：';
+    private const LINE_SEARCH_URL_HEADER_FALLBACK = '🔎 更多行程 & 出團日：';
+    private const LINE_MULTI_SOURCE_HEADER_TEMPLATE = '🌏 更多【%s】行程也可參考：';
+    private const LINE_MULTI_SOURCE_HEADER_FALLBACK = '🌏 更多行程也可參考：';
 
     /**
      * Build a customer-visible message from tour context text (Gemini adjunct block).
@@ -34,13 +37,15 @@ final class TourFallbackFormatter
         }
 
         $body = self::stripInstructionBlock($ctx);
+        $destination = self::extractSearchDestination($body);
         $multiSourceLinks = self::extractMultiSourceLinks($body);
         $bodyForParse = self::stripMultiSourceBlock($body);
+        $bodyForParse = self::stripSearchDestinationLine($bodyForParse);
         $url = self::extractSearchUrl($bodyForParse);
 
         $lines = [];
         $lines[] = '哈囉，您好～';
-        $lines[] = '我是旅遊 AI 助理，以下為您整理最新的出團資訊：';
+        $lines[] = '我是旅遊 AI 客服，以下為您整理最新的出團資訊：';
         $lines[] = '';
 
         $items = self::parseItemBlocks($bodyForParse);
@@ -74,12 +79,12 @@ final class TourFallbackFormatter
 
         if ($url !== '') {
             $lines[] = '';
-            $lines[] = GeminiTourContextBuilder::SEARCH_URL_LABEL;
+            $lines[] = self::formatSearchUrlHeader($destination);
             $lines[] = $url;
         }
 
         if ($multiSourceLinks !== []) {
-            self::appendMultiSourceLines($lines, $multiSourceLinks);
+            self::appendMultiSourceLines($lines, $multiSourceLinks, $destination);
         }
 
         $lines[] = '';
@@ -176,28 +181,85 @@ final class TourFallbackFormatter
         return trim(implode("\n", $out));
     }
 
+    private static function extractSearchDestination(string $body): string
+    {
+        $label = GeminiTourContextBuilder::SEARCH_DESTINATION_LABEL;
+        foreach (preg_split("/\r\n|\n|\r/", $body) ?: [] as $rawLine) {
+            $line = trim($rawLine);
+            if (strpos($line, $label) === 0) {
+                return trim(substr($line, strlen($label)));
+            }
+        }
+
+        return '';
+    }
+
+    private static function stripSearchDestinationLine(string $body): string
+    {
+        $label = GeminiTourContextBuilder::SEARCH_DESTINATION_LABEL;
+        $lines = preg_split("/\r\n|\n|\r/", $body) ?: [];
+        $out = [];
+        foreach ($lines as $raw) {
+            $line = trim($raw);
+            if ($line !== '' && strpos($line, $label) === 0) {
+                continue;
+            }
+            $out[] = $raw;
+        }
+
+        return trim(implode("\n", $out));
+    }
+
+    private static function formatSearchUrlHeader(string $destination): string
+    {
+        $dest = trim($destination);
+        if ($dest === '') {
+            return self::LINE_SEARCH_URL_HEADER_FALLBACK;
+        }
+
+        return sprintf(self::LINE_SEARCH_URL_HEADER_TEMPLATE, $dest);
+    }
+
+    private static function formatMultiSourceHeader(string $destination): string
+    {
+        $dest = trim($destination);
+        if ($dest === '') {
+            return self::LINE_MULTI_SOURCE_HEADER_FALLBACK;
+        }
+
+        return sprintf(self::LINE_MULTI_SOURCE_HEADER_TEMPLATE, $dest);
+    }
+
     /**
      * @param list<string> $lines
      * @param list<array{platform: string, url: string}> $links
      */
-    private static function appendMultiSourceLines(array &$lines, array $links): void
+    private static function appendMultiSourceLines(array &$lines, array $links, string $destination): void
     {
         if ($links === []) {
             return;
         }
 
         $lines[] = '';
-        $lines[] = self::LINE_MULTI_SOURCE_HEADER;
-        foreach ($links as $link) {
-            $lines[] = $link['platform'] . '：';
+        $lines[] = self::formatMultiSourceHeader($destination);
+        $lines[] = '';
+        $lastIndex = count($links) - 1;
+        foreach ($links as $i => $link) {
             $lines[] = $link['url'];
+            if ($i < $lastIndex) {
+                $lines[] = '';
+            }
         }
     }
 
     private static function isSearchUrlBodyLine(string $line): bool
     {
         if ($line === GeminiTourContextBuilder::MULTI_SOURCE_LINKS_LABEL
-            || $line === self::LINE_MULTI_SOURCE_HEADER) {
+            || strpos($line, GeminiTourContextBuilder::SEARCH_DESTINATION_LABEL) === 0) {
+            return true;
+        }
+
+        if (preg_match('/^🔎\s*更多/u', $line) === 1 || preg_match('/^🌏\s*更多/u', $line) === 1) {
             return true;
         }
 

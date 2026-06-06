@@ -48,6 +48,7 @@ function buildMultiSchContext(): string
             ],
         ],
         'search_url' => 'https://bonusmee.com/view/cloud/cloud_store_tourdate.php?keyword=test',
+        'keyword' => '釜山',
     ], [
         'includeInstructions' => false,
         'storeNo' => 6290,
@@ -61,7 +62,8 @@ function assertNewLabels(string $text, string $label): void
     test_assert(strpos($text, '📅 最近出團：') !== false, $label . ': 最近出團');
     test_assert(strpos($text, '💰 售價：') !== false, $label . ': 售價 label');
     test_assert(strpos($text, '💰直售價：') === false, $label . ': no 直售價 label');
-    test_assert(strpos($text, GeminiTourContextBuilder::SEARCH_URL_LABEL) !== false, $label . ': footer');
+    test_assert(strpos($text, '🔎 更多【釜山】行程 & 出團日：') !== false, $label . ': destination search footer');
+    test_assert(preg_match('/^' . preg_quote(GeminiTourContextBuilder::SEARCH_URL_LABEL, '/') . '$/mu', $text) !== 1, $label . ': no legacy search label line without emoji');
     test_assert(strpos($text, '──────────────') !== false, $label . ': item separator');
     test_assert(strpos($text, '━━━━━━━━━━━━━━━━━━━') === false, $label . ': no heavy footer divider');
     test_assert(strpos($text, "   📅") === false, $label . ': no indent before emoji');

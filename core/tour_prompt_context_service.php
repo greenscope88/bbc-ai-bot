@@ -25,6 +25,7 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'H
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridSearchDryRunLogger.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridSearchApiDebugLogger.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'TravelBMultiSourceLinkBuilder.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'ShortUrlProviderInterface.php';
 
 
 
@@ -481,6 +482,7 @@ final class TourPromptContextService
                     ? $params['travelBMultiSourceLinkBuilder']
                     : new TravelBMultiSourceLinkBuilder($multiSourceConfig);
                 $multiSourceLinks = $linkBuilder->buildFromHybridCondition($condition, $sno);
+                $multiSourceLinks = $this->applyBbctravelMultiSourceShortUrls($multiSourceLinks, $params);
                 if ($multiSourceLinks !== []) {
                     $buildOptions['multi_source_links'] = $multiSourceLinks;
                 }
@@ -641,6 +643,71 @@ final class TourPromptContextService
 
         return new SearchUrlBuilder($shortEnabled);
 
+    }
+
+    /**
+     * BBCTravel multi-source search URLs → bbcshops short URLs before Gemini context (grp/tourcenter unchanged).
+     *
+     * @param list<array{platform: string, search_url: string}> $links
+     * @param array<string, mixed> $params optional multiSourceShortUrlProvider (tests)
+     * @return list<array{platform: string, search_url: string}>
+     */
+    private function applyBbctravelMultiSourceShortUrls(array $links, array $params = []): array
+    {
+        if ($links === []) {
+            return $links;
+        }
+
+        $provider = $params['multiSourceShortUrlProvider'] ?? null;
+        $shortEnabled = false;
+        if ($provider === null && function_exists('app_config_get')) {
+            $shortEnabled = filter_var(app_config_get('short_url.enabled', false), FILTER_VALIDATE_BOOLEAN);
+        }
+        if ($provider === null && !$shortEnabled) {
+            return $links;
+        }
+
+        $shortService = null;
+        if ($provider === null) {
+            $shortPath = __DIR__ . DIRECTORY_SEPARATOR . 'short_url_service.php';
+            if (!is_file($shortPath)) {
+                return $links;
+            }
+            require_once $shortPath;
+            $shortService = new ShortUrlService();
+        }
+
+        $context = [
+            'source_id' => 'bbctravel',
+            'short_url_domain' => 'bbcshops.com',
+            'domain_namespace' => 'bbcshops',
+            'product_category' => 'group_tour',
+        ];
+
+        $out = [];
+        foreach ($links as $link) {
+            if (!is_array($link)) {
+                continue;
+            }
+            $platform = isset($link['platform']) ? trim((string) $link['platform']) : '';
+            if ($platform !== 'bbctravel') {
+                $out[] = $link;
+                continue;
+            }
+            $longUrl = isset($link['search_url']) ? trim((string) $link['search_url']) : '';
+            if ($longUrl === '') {
+                $out[] = $link;
+                continue;
+            }
+            if ($provider instanceof ShortUrlProviderInterface) {
+                $link['search_url'] = $provider->shortenSearchUrl($longUrl, $context);
+            } else {
+                $link['search_url'] = $shortService->toPublicShortUrl($longUrl);
+            }
+            $out[] = $link;
+        }
+
+        return $out;
     }
 
 

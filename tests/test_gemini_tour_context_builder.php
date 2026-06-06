@@ -62,6 +62,7 @@ $normal = [
 // 1. normal context
 $text1 = $builder->build($normal);
 test_assert(strpos($text1, '【旅遊產品搜尋結果】') !== false, '1: title block');
+test_assert(strpos($text1, GeminiTourContextBuilder::SEARCH_DESTINATION_LABEL . '東京') !== false, '1: search destination from keyword');
 test_assert(strpos($text1, '共找到 12 筆') !== false, '1: total');
 test_assert(strpos($text1, '東京迪士尼親子五日') !== false, '1: item1 name');
 test_assert(strpos($text1, '07/10') !== false, '1: date MM/DD item1');

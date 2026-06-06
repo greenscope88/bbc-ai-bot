@@ -129,7 +129,8 @@ test_assert(strpos($fb, '06/01') !== false, 'fallback: date MM/DD');
 test_assert(strpos($fb, '2026') === false, 'fallback: no year in reply');
 test_assert(strpos($fb, 'NT$33,800') !== false || strpos($fb, '33,800') !== false, 'fallback: price');
 test_assert(strpos($fb, 'https://bonusmee.com/view/cloud/cloud_store_tourdate.php') !== false, 'fallback: url');
-test_assert(strpos($fb, GeminiTourContextBuilder::SEARCH_URL_LABEL) !== false, 'fallback: search label');
+test_assert(strpos($fb, '🔎 更多行程 & 出團日：') !== false, 'fallback: search label');
+test_assert(preg_match('/^' . preg_quote(GeminiTourContextBuilder::SEARCH_URL_LABEL, '/') . '$/mu', $fb) !== 1, 'fallback: no legacy search label line without emoji');
 
 $fixtureDatesCap = <<<CTX
 1. 多日行程
@@ -149,7 +150,8 @@ test_assert(strpos($fbCap, '...更多') !== false, 'fallback: cap suffix');
 test_assert(strpos($fb, 'AI錯誤') === false, 'fallback: no AI error label');
 test_assert(strpos($fb, '503') === false, 'fallback: no 503');
 test_assert(strpos($fb, '哈囉，您好～') !== false, 'fallback: greeting line1');
-test_assert(strpos($fb, '我是旅遊 AI 助理，以下為您整理最新的出團資訊：') !== false, 'fallback: greeting line2');
+test_assert(strpos($fb, '我是旅遊 AI 客服，以下為您整理最新的出團資訊：') !== false, 'fallback: greeting line2');
+test_assert(strpos($fb, '我是旅遊 AI 助理') === false, 'fallback: no legacy 助理 greeting');
 test_assert(strpos($fb, '行程參考資訊（系統自動整理') === false, 'fallback: old greeting removed');
 
 $fixtureEmpty = <<<CTX
@@ -162,7 +164,7 @@ https://bbcshops.com/R64DY
 - x
 CTX;
 $fbEmpty = TourFallbackFormatter::formatFromTourContext($fixtureEmpty);
-test_assert(substr_count($fbEmpty, GeminiTourContextBuilder::SEARCH_URL_LABEL) === 1, 'fallback empty: search label once');
+test_assert(substr_count($fbEmpty, '🔎 更多行程 & 出團日：') === 1, 'fallback empty: search label once');
 test_assert(substr_count($fbEmpty, 'https://bbcshops.com/R64DY') === 1, 'fallback empty: search url once');
 test_assert(strpos($fbEmpty, '目前沒有找到符合條件的行程。') !== false, 'fallback empty: no-result message');
 
@@ -220,6 +222,7 @@ test_assert(strpos($fb, '更多商品來源') === false, 'fallback baseline: no 
 
 $fixtureWithMultiSource = <<<CTX
 【旅遊產品搜尋結果】
+搜尋目的地：東京
 1. 東京測試行程A
    最近出團：2026-06-01
    直售價：NT$33,800 起
@@ -237,13 +240,19 @@ bbctravel: https://www.bbctravel.com.tw/search/tour?GetStore=dayitravel
 - x
 CTX;
 $fbMs = TourFallbackFormatter::formatFromTourContext($fixtureWithMultiSource);
-test_assert(strpos($fbMs, '更多商品來源') !== false, 'fallback multi: header present');
-test_assert(strpos($fbMs, "agenttour：\nhttps://rechoice-travel.agenttour.com.tw/Index.aspx?test=1") !== false, 'fallback multi: agenttour url');
-test_assert(strpos($fbMs, "grp：\nhttps://www.grp.com.tw/Tour/Search?GetStore=dayitravel") !== false, 'fallback multi: grp url');
-test_assert(strpos($fbMs, "bbctravel：\nhttps://www.bbctravel.com.tw/search/tour?GetStore=dayitravel") !== false, 'fallback multi: bbctravel url');
-$searchPos = strpos($fbMs, GeminiTourContextBuilder::SEARCH_URL_LABEL);
-$multiPos = strpos($fbMs, '更多商品來源');
-test_assert($searchPos !== false && $multiPos !== false && $searchPos < $multiPos, 'fallback multi: legacy search before multi-source block');
+test_assert(strpos($fbMs, '🌏 更多【東京】行程也可參考：') !== false, 'fallback multi: destination header present');
+test_assert(strpos($fbMs, '更多商品來源') === false, 'fallback multi: no legacy header');
+test_assert(strpos($fbMs, 'https://rechoice-travel.agenttour.com.tw/Index.aspx?test=1') !== false, 'fallback multi: agenttour url');
+test_assert(strpos($fbMs, 'https://www.grp.com.tw/Tour/Search?GetStore=dayitravel') !== false, 'fallback multi: grp url');
+test_assert(strpos($fbMs, 'https://www.bbctravel.com.tw/search/tour?GetStore=dayitravel') !== false, 'fallback multi: bbctravel url');
+test_assert(strpos($fbMs, "agenttour：") === false && strpos($fbMs, "grp：") === false, 'fallback multi: no platform labels');
+test_assert(
+    strpos($fbMs, "🌏 更多【東京】行程也可參考：\n\nhttps://rechoice-travel.agenttour.com.tw/Index.aspx?test=1\n\nhttps://www.grp.com.tw/Tour/Search?GetStore=dayitravel") !== false,
+    'fallback multi: blank line after header and between urls'
+);
+$searchPos = strpos($fbMs, '🔎 更多【東京】行程 & 出團日：');
+$multiPos = strpos($fbMs, '🌏 更多【東京】行程也可參考：');
+test_assert($searchPos !== false && $multiPos !== false && $searchPos < $multiPos, 'fallback multi: search before multi-source block');
 test_assert(strpos($fbMs, 'https://bbcshops.com/TEST01') !== false, 'fallback multi: legacy search url preserved');
 
 // --- callGeminiUrl: immediate success (mock) ---

@@ -86,7 +86,7 @@ t(strpos($fb, '1. 🚩') === false, '11c: fallback no numbered product prefix');
 t(strpos($fb, '💰 售價：') !== false, '11d: fallback 售價 label');
 t(strpos($fb, '💰直售價：') === false, '11e: fallback no 直售價 label');
 t(strpos($fb, '──────────────') !== false, '11f: fallback item separator');
-t(strpos($fb, GeminiTourContextBuilder::SEARCH_URL_LABEL) !== false, '11g: fallback search footer label');
+t(strpos($fb, '🔎 更多') !== false && strpos($fb, '行程 & 出團日：') !== false, '11g: fallback search footer label');
 t(strpos($fb, '4. https://agt.tw/sch-4') !== false, '12: fallback has fourth schedule url');
 t(strpos($fb, '另有') === false, '12: fallback no 另有 N 筆');
 
