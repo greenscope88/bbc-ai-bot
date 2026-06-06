@@ -87,6 +87,11 @@ function build_line_reply(
     return [$context, TourFallbackFormatter::formatFromTourContext($context)];
 }
 
+function is_http_url_line(string $line): bool
+{
+    return strpos($line, 'https://') === 0 || strpos($line, 'http://') === 0;
+}
+
 function assert_multi_source_url_spacing(string $lineReply, string $multiHeader, string $label): void
 {
     $blockStart = strpos($lineReply, $multiHeader);
@@ -101,12 +106,13 @@ function assert_multi_source_url_spacing(string $lineReply, string $multiHeader,
         $afterHeader = substr($afterHeader, 0, $footerPos);
     }
 
-    ux_assert(strpos($afterHeader, "\n\nhttps://") === 0, $label . ': blank line after multi-source header');
+    $blankThenUrl = strpos($afterHeader, "\n\nhttps://") === 0 || strpos($afterHeader, "\n\nhttp://") === 0;
+    ux_assert($blankThenUrl, $label . ': blank line after multi-source header');
 
     $urlLines = [];
     foreach (explode("\n", trim($afterHeader)) as $line) {
         $line = trim($line);
-        if ($line !== '' && strpos($line, 'https://') === 0) {
+        if ($line !== '' && is_http_url_line($line)) {
             $urlLines[] = $line;
         }
     }
@@ -136,6 +142,8 @@ function assert_footer_ux(string $lineReply, string $destination, string $label)
     ux_assert(strpos($lineReply, "bbctravel：") === false, $label . ': no bbctravel platform label');
     ux_assert(strpos($lineReply, "tourcenter：") === false, $label . ': no tourcenter platform label');
     ux_assert(strpos($lineReply, 'dayitravel.grp.com.tw') !== false, $label . ': grp URL present');
+    ux_assert(strpos($lineReply, 'ClassifyProduct.aspx') !== false, $label . ': grp ClassifyProduct.aspx');
+    ux_assert(strpos($lineReply, 'Tour/Search') === false, $label . ': no legacy grp Tour/Search');
     ux_assert(strpos($lineReply, 'https://bbcshops.com/') !== false, $label . ': short URL present');
     ux_assert(strpos($lineReply, 'dayitourcenter.com.tw') !== false, $label . ': tourcenter URL present');
 
@@ -150,18 +158,22 @@ $ref1 = new DateTimeImmutable('2026-06-06', new DateTimeZone('Asia/Taipei'));
 [, $line1] = build_line_reply($service, '大阪近期', $ref1, $mockClient, $hybridConfig, $multiSourceConfig, $mockProvider, $travelBSno);
 assert_footer_ux($line1, '大阪', 'case1 大阪近期');
 
-// Case 2: 東京6月底
-$ref2 = new DateTimeImmutable('2026-06-05', new DateTimeZone('Asia/Taipei'));
-[, $line2] = build_line_reply($service, '東京6月底', $ref2, $mockClient, $hybridConfig, $multiSourceConfig, $mockProvider, $travelBSno);
-ux_assert(strpos($line2, '🔎 更多【東京】行程 & 出團日：') !== false, 'case2 東京6月底: search header');
-ux_assert(strpos($line2, '更多商品來源') === false, 'case2 東京6月底: no legacy multi header');
-assert_multi_source_url_spacing($line2, '🌏 更多【東京】行程也可參考：', 'case2 東京6月底');
+// Case 2: 東京本月
+$ref2 = new DateTimeImmutable('2026-06-06', new DateTimeZone('Asia/Taipei'));
+[, $line2] = build_line_reply($service, '東京本月', $ref2, $mockClient, $hybridConfig, $multiSourceConfig, $mockProvider, $travelBSno);
+assert_footer_ux($line2, '東京', 'case2 東京本月');
 
 // Case 3: 北海道暑假
 $ref3 = new DateTimeImmutable('2026-06-05', new DateTimeZone('Asia/Taipei'));
 [, $line3] = build_line_reply($service, '北海道暑假', $ref3, $mockClient, $hybridConfig, $multiSourceConfig, $mockProvider, $travelBSno);
-ux_assert(strpos($line3, '🔎 更多【北海道】行程 & 出團日：') !== false, 'case3 北海道暑假: search header');
-ux_assert(strpos($line3, '🌏 更多【北海道】行程也可參考：') !== false, 'case3 北海道暑假: multi header');
+assert_footer_ux($line3, '北海道', 'case3 北海道暑假');
+
+// Case 4: 高雄東京近期 — grp ignores departure; bbctravel still short URL
+$ref4 = new DateTimeImmutable('2026-06-06', new DateTimeZone('Asia/Taipei'));
+[, $line4] = build_line_reply($service, '高雄東京近期', $ref4, $mockClient, $hybridConfig, $multiSourceConfig, $mockProvider, $travelBSno);
+assert_footer_ux($line4, '東京', 'case4 高雄東京近期');
+ux_assert(strpos($line4, '/khh/') === false, 'case4 高雄東京近期: grp LINE footer no khh');
+ux_assert(strpos($line4, 'http://dayitravel.grp.com.tw/ClassifyProduct.aspx') !== false, 'case4 高雄東京近期: grp http ClassifyProduct');
 
 if ($failures > 0) {
     fwrite(STDERR, "\n{$failures} test failure(s)\n");
