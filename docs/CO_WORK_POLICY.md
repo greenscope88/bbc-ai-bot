@@ -24,7 +24,7 @@
 | §11 | 例外情況 |
 | §13 | 文件驅動開發（Document-Driven Development） |
 | §14 | Recovery First 原則 |
-| §15 | SSOT First 原則 |
+| §15 | SSOT First 原則（含 SSOT Check 強制流程） |
 | §16 | 結論 |
 
 ---
@@ -502,6 +502,75 @@ L2 — Design Files（如 BATS_HYBRID_DATE_POLICY …）
 | §13 文件驅動開發 | 實作前查閱 SSOT |
 | §8 文件優先順序 | L0–L2 鏈 |
 | §7 Cursor 協作原則 | AI 建議不得凌駕 SSOT |
+| §15.9 SSOT Check | 功能開發前強制五步檢查流程 |
+
+### 15.9 SSOT Check
+
+**所有功能開發前，必須先執行 SSOT Check。**
+
+#### SSOT Check 標準流程
+
+**Step 1 — 確認是否已有對應 SSOT**
+
+- 查閱 §8 文件優先順序與 §15.7 領域 SSOT 對照表
+- 確認本次需求所屬領域（日期、Recovery、Tenant、Short URL 等）
+
+**Step 2 — 若已有 SSOT：閱讀 SSOT**
+
+- 完整閱讀該領域正式 SSOT（Adopted 狀態）
+- 必要時一併查閱上層 L0 / L1 政策
+
+**Step 3 — 判斷本次需求是否需更新文件**
+
+- 若需求超出 SSOT 現有範圍 → **先更新 SSOT**，再設計與開發
+- 若需求在 SSOT 範圍內 → 依 SSOT 執行
+
+**Step 4 — 確認是否與現有 SSOT 衝突**
+
+- 檢查 ChatGPT / Cursor 建議、既有程式是否與 SSOT 一致
+- 若有衝突 → 依 §15.6 裁決（以 SSOT 為準；先更新文件或先修正程式）
+
+**Step 5 — 完成 SSOT Check 後，才能開始**
+
+- **分析**
+- **設計**
+- **開發**
+- **測試**
+
+#### 若沒有 SSOT
+
+流程改為：
+
+```
+需求
+  ↓
+建立文件
+  ↓
+文件審查
+  ↓
+建立 SSOT（Adopted）
+  ↓
+設計
+  ↓
+開發
+  ↓
+測試
+```
+
+#### 禁止事項
+
+- **禁止直接跳過 SSOT Check**
+
+#### 適用場景
+
+以下情境 **皆應先執行 SSOT Check**：
+
+| 場景 | 說明 |
+|------|------|
+| **ChatGPT Prompt** | 分析、設計、實作建議前 |
+| **Cursor Prompt** | 任何程式修改或架構建議前 |
+| **Code Review** | 審查變更是否符合 SSOT |
+| **Architecture Review** | 架構決策與分層邊界審查 |
 
 ---
 
@@ -516,7 +585,7 @@ L2 — Design Files（如 BATS_HYBRID_DATE_POLICY …）
 3. **依 Git Safe** 單獨 Commit；預設不 Push
 4. **依 P1 / P2 / P3** 決定執行優先順序
 5. **依 Recovery First**（§14）確保可恢復、可追蹤、可驗證後再上線
-6. **依 SSOT First**（§15）任何工作先確認並遵循正式 SSOT
+6. **依 SSOT First**（§15）任何工作先確認並遵循正式 SSOT；**功能開發前必須完成 SSOT Check**（§15.9）
 
 ChatGPT、Cursor、開發者皆應以本文件為協作起點；若與其他文件或實作衝突，**以本文件為準**。
 
@@ -529,3 +598,4 @@ ChatGPT、Cursor、開發者皆應以本文件為協作起點；若與其他文�
 | 1.0 | 2026-06-05 | Initial Version |
 | 1.1 | 2026-06-05 | Add Document-Driven Development and Recovery First principles. |
 | 1.2 | 2026-06-05 | Add SSOT first principle and single-source governance rules. |
+| 1.3 | 2026-06-05 | Add mandatory SSOT Check workflow. |
