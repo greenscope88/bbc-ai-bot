@@ -108,7 +108,7 @@ URL Builder（含 `ProductSourceSearchUrlBuilder`、`MultiSourceSearchUrlBuilder
 | **formatter 內 ShortUrl_Add** | 展示層不應碰 DB |
 | **URL Builder 內 ShortUrl_Add** | 職責污染 |
 
-### 生產路徑（規劃／部分已實作）
+### 生產路徑（multi-source 已實作；Phase 3B）
 
 ```
 ShortUrlProviderInterface
@@ -144,7 +144,7 @@ ShortUrlService::toPublicShortUrl() / toPublicShortUrlForItemLink()
 - `short_url_enabled = false` 時，short 欄位 **passthrough** 為 long
 - 批次：`publishMany()` 對多筆 `ProductSourceUrlResult` 處理
 
-**接入點（規劃）：** `TourPromptContextService` 於 multi-source links 進入 Gemini context **之前** 呼叫 Publisher（非 formatter、非 builder）。
+**接入點（已實作）：** `TourPromptContextService::applyBbctravelMultiSourceShortUrls()` 於 multi-source links 進入 Gemini context **之前** 呼叫 `ShortUrlService`（Phase 3B：`93a3b18`；非 formatter、非 URL Builder）。
 
 ---
 
@@ -318,6 +318,58 @@ Pilot gate（如 `TravelBMultiSourceLinkBuilder::isEnabledForSno`）只控制 **
 
 ---
 
+## 分階段實作現況
+
+| 項目 | 現況（Phase 3B） |
+|------|----------------|
+| **BBCTravel multi-source URL** | ✅ 已短網址化（`bbcshops.com/...`）；接入 `TourPromptContextService` + `ShortUrlService` |
+| **grp.com.tw multi-source URL** | ✅ 已短網址化（`bbcshops.com/...`）；long URL 仍由 URL Builder 產 `dayitravel.grp.com.tw/...` |
+| **tourcenter multi-source URL** | ✅ 已短網址化（`bbcshops.com/...`）；long URL 仍由 URL Builder 產 `dayitourcenter.com.tw/...` |
+| **主搜尋鏈（bonusmee）** | 依 `short_url.enabled` / `SearchUrlBuilder` 控制 |
+
+### Phase 3B 完成狀態
+
+| 項目 | 說明 |
+|------|------|
+| **Commit** | `93a3b18` — `feat(line): unify multi-source short urls and CTA` |
+| **功能** | Multi-Source Unified Short URL + LINE CTA UX |
+| **接入層** | `TourPromptContextService`（Publisher / Display 層）→ `ShortUrlService` |
+| **顯示層** | `TourFallbackFormatter`（LINE footer；無 DB、無短碼產生） |
+| **涵蓋平台** | `bbctravel`、`grp`、`tourcenter` 三源統一輸出 `https://bbcshops.com/{code}` |
+| **Fail-open** | `ShortUrlService` 失敗時仍顯示原始 long URL（行為不變） |
+
+### 核心原則（Phase 3B 後仍適用）
+
+- **URL Builder 只產 Long URL** — `TravelBMultiSourceLinkBuilder` / registry template 不產短碼。
+- **Short URL 屬 Publisher / Display Layer** — 短網址化在 `TourPromptContextService` 完成，非 URL Builder、非 formatter DB 寫入。
+- **各平台 URL Builder 不得自行產短網址** — 必須沿用既有 `ShortUrlService`；新增平台僅擴充 allowlist / `MULTI_SOURCE_SHORT_URL_PLATFORMS`。
+- 各平台 long URL 須先正確（見 `GRP_GOLDEN_REFERENCE_PLATFORM_RULE.md` 等 Platform SSOT），再進行短網址化。
+
+### LINE Footer 現行格式（Phase 3B）
+
+多商品源區塊（`TourFallbackFormatter`）對外顯示格式：
+
+```text
+📢 更多【{keyword}】行程如下，歡迎利用以下網頁直接線上報名：
+
+👉 https://bbcshops.com/xxxxx
+
+👉 https://bbcshops.com/yyyyy
+
+👉 https://bbcshops.com/zzzzz
+```
+
+| 規則 | 說明 |
+|------|------|
+| CTA header | `📢 更多【{keyword}】行程如下，歡迎利用以下網頁直接線上報名：` |
+| URL 前綴 | 每個 multi-source 短網址前加 `👉 ` |
+| URL 間距 | 每個 URL 之間保留一個空白行 |
+| 不顯示平台名 | footer 不出現 `grp` / `bbctravel` / `tourcenter` 標籤 |
+| 不顯示 long host | footer 不出現 `dayitravel.grp.com.tw`、`dayitourcenter.com.tw` 等長鏈 |
+| 主搜尋區塊 | `🔎 更多【{keyword}】行程 & 出團日：` 區塊保留不變 |
+
+---
+
 ## 與其他文件關係
 
 ### 上層（L0）
@@ -339,6 +391,7 @@ Pilot gate（如 `TravelBMultiSourceLinkBuilder::isEnabledForSno`）只控制 **
 | 文件 | 關係 |
 |------|------|
 | `BATS_HYBRID_DATE_POLICY.md` | 日期語意；不定義短網址 |
+| `GRP_GOLDEN_REFERENCE_PLATFORM_RULE.md` | grp long URL 規格；短網址經 Publisher / Display 層（Phase 3B 已完成） |
 
 ### L3 參考（非 SSOT，實作細節）
 
@@ -404,3 +457,5 @@ ChatGPT、Cursor、開發者進行多商品源 URL、短網址、LINE 連結顯�
 | 版本 | 日期 | 狀態 | 說明 |
 |------|------|------|------|
 | 1.0 | 2026-06-05 | Adopted | Initial Version |
+| 1.1 | 2026-06-06 | Adopted | Phase 1B：分階段實作現況（BBCTravel 已短網址化；grp/tourcenter 長鏈） |
+| 1.2 | 2026-06-06 | Adopted | Phase 3B unified multi-source short URL completed（`93a3b18`）；bbctravel / grp / tourcenter 統一短網址化 + LINE CTA UX |
