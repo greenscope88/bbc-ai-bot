@@ -54,7 +54,7 @@
 |------|------|
 | **安全第一** | 不暴露憑證、不繞過 tenant 隔離、不引入 open redirect / SQL injection 等高風險變更；高風險修改需可回滾且有驗證計畫 |
 | **所有修改必須可 rollback** | 變更應可透過 git revert、config 關閉、feature flag 或備份還原；禁止不可逆的一次性操作（除非 P1 且事後補文件） |
-| **緊扣主線目標** | 每次工作須對齊當前主線（Pilot、里程碑、驗收項）；拒絕與主線無關的「順手優化」 |
+| **緊扣主線目標** | 每次工作須對齊當前主線（Pilot、里程碑、驗收項）；拒絕與主線無關的「順手優化」（詳 §7.4 Development First） |
 | **避免無意義測試** | 不為覆蓋率而寫測試；測試應驗證真實行為、契約或回歸風險 |
 | **避免範圍失控** | 單次變更保持最小正確 diff；不擴及未請求的模組、tenant、平台 |
 | **避免重工** | 修改前先查既有文件、Registry、Service；不重複造輪子、不平行實作相同規則 |
@@ -170,6 +170,53 @@
 - **禁止** 將含憑證檔（`.env`、secrets）納入 Commit
 - **禁止** 未經授權的 force push 至 main / master
 
+### 5.5 Commit Necessity Principle（Commit 必要性原則）
+
+每次 Commit **必須同時符合** 下列雙軸；任一不符 → **不建議 Commit**（見 §9.1、§9.3）：
+
+| 軸向 | 要求 | 對應既有條款 |
+|------|------|----------------|
+| **Necessity（必要性）** | 有明確目的；形成可還原的 Recovery Point 或階段成果 | §5.1、§14.4 |
+| **Safety（安全性）** | 白名單 stage、無 secrets、可 rollback、已驗證（若適用） | §2「安全第一」、§5.4、§9.1 |
+
+**建議 Commit 的情境：**
+
+- Recovery Point（本機還原點）
+- 功能階段完成（含測試或 LINE OA 實測通過）
+- 里程碑達成
+- 高風險修改前（先建立本機還原點）
+- 已完成驗證之 docs / 程式變更
+
+**不建議 Commit 的情境：**
+
+- 純格式微調、無行為或 SSOT 意義
+- 尚未驗證（測試未跑、實測未完成）
+- 無明確目的、無法一句話說明「why」
+- **僅為了 Push**（違反 §5.1 Commit ≠ Push）
+
+### 5.6 中文 Commit Message 政策
+
+**預設使用中文 Conventional Commits**（補強 §9.1「反映 why」之格式規範）：
+
+```
+<type>(<scope>): <中文簡述>
+```
+
+**範例：**
+
+```
+feat(bats): 完成 grp 商品源短網址整合
+fix(line): 修正多商品源 CTA 顯示
+docs(cwp): 補充 Git 治理規範
+```
+
+| 允許 | 說明 |
+|------|------|
+| 英文技術名詞 | 如 `ShortUrlService`、`ClassifyProduct.aspx` |
+| 專案／產品名 | BATS、BBCTravel、LINE OA、API Gateway |
+
+**禁止** 無意義或過於籠統的訊息，例如單獨使用：`update`、`fix`、`modify`、`temp`。
+
 ---
 
 ## 6. P1 / P2 / P3 原則
@@ -242,6 +289,18 @@ Cursor 若提出延伸建議，必須先評估：
 - 單次任務保持最小 scope；不主動擴及未請求檔案
 - 高風險操作（SQL、Apache、`.env`、force push）需明確授權
 
+### 7.4 Development First Principle（主線優先原則）
+
+**Review、Commit、Push 屬於治理工具**，用於可恢復、可追蹤、可協作；**不得取代主線開發**。
+
+| 原則 | 說明 |
+|------|------|
+| **主線未完成 → 優先主線** | 功能交付、驗收、Pilot 實測優先於文件整理或工作區清理 |
+| **治理可批次處理** | Workspace Cleanup、CWP 補強、docs-only commit 可累積後一次處理（見 §5.2、§6.2 P2） |
+| **避免治理循環** | 勿陷入 Review → Commit → Push → Review → Commit → Push 而停滯開發 |
+
+與 §2「緊扣主線目標」、§6 P1/P2/P3 一致：P1 阻塞主線立即處理；P2/P3 治理項目不與主線搶資源。
+
 ---
 
 ## 8. 文件優先順序
@@ -291,10 +350,11 @@ API_POLICY.md
 
 ### 9.1 Commit 前檢查清單
 
+- [ ] 符合 §5.5 **Necessity + Safety** 雙軸
 - [ ] 僅 stage 預期檔案（禁止 `git add .` 除非明確授權）
 - [ ] `git diff --cached --name-only` 符合預期
 - [ ] 未含 secrets / `.env` / 憑證
-- [ ] Commit message 反映「why」而非流水帳
+- [ ] Commit message 符合 §5.6（中文 Conventional Commits；反映「why」）
 - [ ] 相關文件已更新（若為架構或行為變更）
 
 ### 9.2 Push 前檢查清單
@@ -303,6 +363,26 @@ API_POLICY.md
 - [ ] 本機測試或驗收已通過（若適用）
 - [ ] 團隊或遠端備份需求明確
 - [ ] 使用者已授權 Push（若協作流程要求）
+
+### 9.3 Commit 規劃回報（提出 Commit 建議時）
+
+ChatGPT、Cursor 在**建議建立 Commit** 時（執行前或 Commit Review 階段），**必須同時說明**下列四項（補強 §5.5 Necessity 之溝通格式）：
+
+| 項目 | 說明 |
+|------|------|
+| **本次 Commit 目的** | 一句話說明此 commit 完成什麼 |
+| **是否必要** | 是／否；若否，說明延後理由 |
+| **預估剩餘 Commit 數量** | 本工作階段尚待 commit 的獨立變更數 |
+| **是否接近 Push 時機** | 對照 §5.2、§5.3；預設「暫不 Push」 |
+
+**範例：**
+
+```
+本次 Commit：完成 grp 商品源短網址整合
+必要性：是
+預估剩餘 Commit：1 個
+Push 建議：暫不 Push；累積至 1～3 個有意義 Commit 後再評估
+```
 
 ---
 
@@ -502,6 +582,10 @@ L2 — Design Files（如 BATS_HYBRID_DATE_POLICY …）
 | §13 文件驅動開發 | 實作前查閱 SSOT |
 | §8 文件優先順序 | L0–L2 鏈 |
 | §7 Cursor 協作原則 | AI 建議不得凌駕 SSOT |
+| §7.4 Development First | 主線優先；治理工具不取代交付 |
+| §5.5 Commit Necessity | Commit 須 Necessity + Safety 雙軸 |
+| §5.6 中文 Commit Message | 預設中文 Conventional Commits |
+| §9.3 Commit 規劃回報 | 提出 commit 建議時之四項說明 |
 | §15.9 SSOT Check | 功能開發前強制五步檢查流程 |
 
 ### 15.9 SSOT Check
@@ -582,10 +666,11 @@ L2 — Design Files（如 BATS_HYBRID_DATE_POLICY …）
 
 1. **先更新本文件**，或其下層正式政策文件
 2. **經確認後** 再修改程式（**文件驅動開發**，見 §13）
-3. **依 Git Safe** 單獨 Commit；預設不 Push
-4. **依 P1 / P2 / P3** 決定執行優先順序
-5. **依 Recovery First**（§14）確保可恢復、可追蹤、可驗證後再上線
-6. **依 SSOT First**（§15）任何工作先確認並遵循正式 SSOT；**功能開發前必須完成 SSOT Check**（§15.9）
+3. **依 Git Safe** 單獨 Commit；須符合 §5.5 Necessity + Safety；預設不 Push
+4. **依 §5.6** 使用中文 Conventional Commits；**依 §9.3** 提出 commit 建議時說明目的與 push 時機
+5. **依 P1 / P2 / P3** 決定執行優先順序；**依 §7.4** 主線未完成時優先交付
+6. **依 Recovery First**（§14）確保可恢復、可追蹤、可驗證後再上線
+7. **依 SSOT First**（§15）任何工作先確認並遵循正式 SSOT；**功能開發前必須完成 SSOT Check**（§15.9）
 
 ChatGPT、Cursor、開發者皆應以本文件為協作起點；若與其他文件或實作衝突，**以本文件為準**。
 
@@ -599,3 +684,4 @@ ChatGPT、Cursor、開發者皆應以本文件為協作起點；若與其他文�
 | 1.1 | 2026-06-05 | Add Document-Driven Development and Recovery First principles. |
 | 1.2 | 2026-06-05 | Add SSOT first principle and single-source governance rules. |
 | 1.3 | 2026-06-05 | Add mandatory SSOT Check workflow. |
+| 1.4 | 2026-06-06 | Add Commit Necessity、Commit 規劃回報、中文 Commit Message、Development First 原則（Gap D-3 補強） |
