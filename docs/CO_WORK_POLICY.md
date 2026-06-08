@@ -19,7 +19,7 @@
 | §6 | P1 / P2 / P3 原則 |
 | §7 | Cursor 協作原則 |
 | §8 | 文件優先順序 |
-| §9 | Git / Commit / Push 決策流程 |
+| §9 | Git / Commit / Push 決策流程（含 §9.4 標準開發節奏） |
 | §10 | 技術債管理 |
 | §11 | 例外情況 |
 | §13 | 文件驅動開發（Document-Driven Development） |
@@ -384,6 +384,67 @@ ChatGPT、Cursor 在**建議建立 Commit** 時（執行前或 Commit Review 階
 Push 建議：暫不 Push；累積至 1～3 個有意義 Commit 後再評估
 ```
 
+### 9.4 標準開發節奏（Development Rhythm）
+
+本節定義 **預設開發節奏**；與 §7.4（主線優先、避免治理循環）、§5.2（Push 累積策略）、§5.5（Commit 必要性）、§9.3（Commit 規劃回報）互補，**不重複**各章細則，僅整合為可執行流程。
+
+#### 9.4.1 標準流程
+
+```
+Cursor 完成（實作 / 測試 / 回報）
+  ↓
+ChatGPT 簡短 Review（方向、主線、CWP 符合度）
+  ↓
+Commit（符合 §5.5 Necessity + Safety）
+  ↓
+累積 1～3 個有意義 Commit（§5.2）
+  ↓
+Push Review（是否達里程碑 / 工作階段結束 / §5.3）
+  ↓
+Push（使用者授權或明確必要時）
+```
+
+#### 9.4.2 禁止的節奏
+
+**避免** 下列無限循環而停滯主線開發（詳 §7.4）：
+
+```
+Review → Commit → Push → Review → Commit → Push → …
+```
+
+單一功能階段完成後，應 **前進至下一開發任務**，而非反覆以治理動作取代交付。
+
+#### 9.4.3 Review 目的
+
+ChatGPT 簡短 Review **不是** 為了 Review 而 Review；目的在確認：
+
+| 檢查項 | 說明 |
+|--------|------|
+| **方向正確** | 變更對齊當前 Phase / 驗收項 |
+| **未偏離主線** | 無未授權 scope 擴張（§7.4、§2「緊扣主線目標」） |
+| **符合 CWP** | 白名單、Git Safe、SSOT、Recovery 等治理邊界 |
+
+Review 通過且具 Commit 必要性 → 進入 Commit；否則繼續實作或修正，**不** 為通過 Review 而製造無意義變更。
+
+#### 9.4.4 Commit 與 Push 原則（引用）
+
+| 階段 | 依據 | 要點 |
+|------|------|------|
+| **Commit** | §5.5 Commit Necessity Principle | 不為 Commit 而 Commit；須 Necessity + Safety 雙軸 |
+| **Push** | §5.2、§5.3 | 累積 1～3 個有意義 Commit 後再評估；預設不 Push |
+
+#### 9.4.5 非主動治理回報
+
+**除非使用者主動詢問**，ChatGPT、Cursor **不要** 在每次任務結尾固定附加：
+
+- 是否需要 Commit
+- 還剩幾個 Commit
+- 是否接近 Push
+
+使用者詢問 Commit / Push / 工作區狀態時，依 §9.1、§9.2、§9.3 回覆即可。
+
+**與 §9.3 的關係：** 使用者明確要求 **Commit Review**、**是否該 Commit**、**Push 時機** 時，§9.3 四項說明 **仍須** 提供；§9.4.5 僅限制 **非詢問情境下的例行尾註**，兩者並存。
+
 ---
 
 ## 10. 技術債管理
@@ -586,6 +647,7 @@ L2 — Design Files（如 BATS_HYBRID_DATE_POLICY …）
 | §5.5 Commit Necessity | Commit 須 Necessity + Safety 雙軸 |
 | §5.6 中文 Commit Message | 預設中文 Conventional Commits |
 | §9.3 Commit 規劃回報 | 提出 commit 建議時之四項說明 |
+| §9.4 Development Rhythm | 標準開發節奏；非主動治理回報 |
 | §15.9 SSOT Check | 功能開發前強制五步檢查流程 |
 
 ### 15.9 SSOT Check
@@ -667,7 +729,7 @@ L2 — Design Files（如 BATS_HYBRID_DATE_POLICY …）
 1. **先更新本文件**，或其下層正式政策文件
 2. **經確認後** 再修改程式（**文件驅動開發**，見 §13）
 3. **依 Git Safe** 單獨 Commit；須符合 §5.5 Necessity + Safety；預設不 Push
-4. **依 §5.6** 使用中文 Conventional Commits；**依 §9.3** 提出 commit 建議時說明目的與 push 時機
+4. **依 §5.6** 使用中文 Conventional Commits；**依 §9.3 / §9.4** 於 Commit Review 或使用者詢問時說明目的與 push 時機
 5. **依 P1 / P2 / P3** 決定執行優先順序；**依 §7.4** 主線未完成時優先交付
 6. **依 Recovery First**（§14）確保可恢復、可追蹤、可驗證後再上線
 7. **依 SSOT First**（§15）任何工作先確認並遵循正式 SSOT；**功能開發前必須完成 SSOT Check**（§15.9）
@@ -685,3 +747,4 @@ ChatGPT、Cursor、開發者皆應以本文件為協作起點；若與其他文�
 | 1.2 | 2026-06-05 | Add SSOT first principle and single-source governance rules. |
 | 1.3 | 2026-06-05 | Add mandatory SSOT Check workflow. |
 | 1.4 | 2026-06-06 | Add Commit Necessity、Commit 規劃回報、中文 Commit Message、Development First 原則（Gap D-3 補強） |
+| 1.5 | 2026-06-06 | Add §9.4 標準開發節奏（Development Rhythm）；補強非主動治理回報與 §9.3 並存關係 |
