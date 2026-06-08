@@ -5,6 +5,7 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'MultiSourceSearchUrlBuilder.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'MultiSourceSearchUrlBuilderRegistry.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'SearchConditionContract.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'SearchUrlBuilderRegistry.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'TenantSourceRuntimeBridge.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'SearchCondition.php';
 
 /**
@@ -19,10 +20,16 @@ final class TravelBMultiSourceLinkBuilder
 
     private ?MultiSourceSearchUrlBuilder $multiSourceBuilder;
 
-    public function __construct(?array $config = null, ?MultiSourceSearchUrlBuilder $multiSourceBuilder = null)
-    {
+    private ?TenantSourceRuntimeBridge $runtimeBridge;
+
+    public function __construct(
+        ?array $config = null,
+        ?MultiSourceSearchUrlBuilder $multiSourceBuilder = null,
+        ?TenantSourceRuntimeBridge $runtimeBridge = null
+    ) {
         $this->config = $config ?? self::loadConfig();
         $this->multiSourceBuilder = $multiSourceBuilder;
+        $this->runtimeBridge = $runtimeBridge;
     }
 
     public static function isEnabledForSno(string $tenantSno, ?array $config = null): bool
@@ -46,8 +53,24 @@ final class TravelBMultiSourceLinkBuilder
             return [];
         }
 
+        $runtimeConfig = $this->resolveRuntimeMultiSourceConfig($tenantSno);
+        if (($runtimeConfig['enabled'] ?? false) !== true) {
+            return [];
+        }
+
+        $sourceKeys = $runtimeConfig['source_instance_keys'] ?? [];
+        if (!is_array($sourceKeys) || $sourceKeys === []) {
+            return [];
+        }
+
+        $builderConfig = array_merge($this->config, [
+            'tenant_sno' => trim((string) ($runtimeConfig['tenant_sno'] ?? $tenantSno)),
+            'source_instance_keys' => array_values(array_filter(array_map('strval', $sourceKeys))),
+            'enabled' => true,
+        ]);
+
         $searchDocument = self::hybridConditionToSearchDocument($condition);
-        $builder = $this->multiSourceBuilder ?? self::createDefaultMultiSourceBuilder($this->config);
+        $builder = $this->multiSourceBuilder ?? self::createDefaultMultiSourceBuilder($builderConfig);
 
         try {
             $rows = $builder->build($searchDocument);
@@ -140,6 +163,16 @@ final class TravelBMultiSourceLinkBuilder
         ];
 
         return $map[$city] ?? 'all';
+    }
+
+    /**
+     * @return array{enabled: bool, tenant_sno: string, source_instance_keys: list<string>, resolver_id: string}
+     */
+    private function resolveRuntimeMultiSourceConfig(string $tenantSno): array
+    {
+        $bridge = $this->runtimeBridge ?? new TenantSourceRuntimeBridge();
+
+        return $bridge->resolveMultiSourceConfig($tenantSno);
     }
 
     /**
