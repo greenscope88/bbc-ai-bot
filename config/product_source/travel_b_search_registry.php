@@ -72,17 +72,17 @@ return [
 
             'platform_name' => 'TourCenter',
 
-            'platform_domain' => 'dayitourcenter.com.tw',
+            'platform_domain' => 'tourcenter.com.tw',
 
             'platform_type' => 'external_search',
 
             'supported_categories' => ['group_tour'],
 
-            'identifier_type' => 'custom',
+            'identifier_type' => 'subdomain',
 
             'adapter' => 'StubProductSourceAdapter',
 
-            'url_template_id' => 'tourcenter_dayitourcenter_entry_v1',
+            'url_template_id' => 'tourcenter_dayitravel_search_v1',
 
         ],
 
@@ -156,13 +156,19 @@ return [
 
             'platform_id' => 'tourcenter',
 
-            'identifier_type' => 'custom',
+            'identifier_type' => 'subdomain',
 
-            'url_template_id' => 'tourcenter_dayitourcenter_entry_v1',
+            'url_template_id' => 'tourcenter_dayitravel_search_v1',
 
             'identifier_values' => [
 
+                'tenant_subdomain' => 'dayitravel',
+
                 'product_category' => 'group_tour',
+
+                'arrive_id' => '',
+
+                'keywords_city' => '',
 
             ],
 
@@ -276,9 +282,66 @@ return [
 
         ],
 
+        
+
+        'tourcenter_dayitravel_search_v1' => [
+
+            'template_id' => 'tourcenter_dayitravel_search_v1',
+
+            'identifier_type' => 'subdomain',
+
+            'scheme' => 'https',
+
+            'host_pattern' => '{tenant_subdomain}.{platform_domain}',
+
+            'path' => '/travel/search',
+
+            'query_template' => [
+
+                'DepartureID' => '{departure_id}',
+
+                'ArriveID' => '{arrive_id}',
+
+                'GoDateStart' => '{date_from}',
+
+                'GoDateEnd' => '{date_to}',
+
+                'TravelType' => '0',
+
+                'Keywords' => '{keyword}',
+
+                'KeywordsCity' => '{keywords_city}',
+
+            ],
+
+            'required_identifier_keys' => [
+
+                'tenant_subdomain',
+
+                'keyword',
+
+            ],
+
+            'allow_empty_query_keys' => [
+
+                'DepartureID',
+
+                'ArriveID',
+
+                'Keywords',
+
+                'KeywordsCity',
+
+            ],
+
+        ],
+
+
         'tourcenter_dayitourcenter_entry_v1' => [
 
             'template_id' => 'tourcenter_dayitourcenter_entry_v1',
+
+            'deprecated' => true,
 
             'identifier_type' => 'custom',
 

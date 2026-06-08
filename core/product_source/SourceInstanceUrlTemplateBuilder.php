@@ -336,7 +336,10 @@ final class SourceInstanceUrlTemplateBuilder
                 'platform_domain' => $platformDomain,
             ], $values);
             $trimmed = trim($resolved);
-            if ($trimmed === '' || $this->containsUnresolvedPlaceholder($trimmed)) {
+            if ($this->containsUnresolvedPlaceholder($trimmed)) {
+                continue;
+            }
+            if ($trimmed === '' && !$this->allowsEmptyQueryKey($key, $urlTemplate)) {
                 continue;
             }
             $query[$key] = $trimmed;
@@ -350,6 +353,24 @@ final class SourceInstanceUrlTemplateBuilder
         return preg_match('/\{[a-zA-Z0-9_]+\}/', $value) === 1;
     }
 
+
+    /**
+     * @param array<string, mixed> $urlTemplate
+     */
+    private function allowsEmptyQueryKey(string $key, array $urlTemplate): bool
+    {
+        if (!isset($urlTemplate['allow_empty_query_keys']) || !is_array($urlTemplate['allow_empty_query_keys'])) {
+            return false;
+        }
+
+        foreach ($this->normalizeStringList($urlTemplate['allow_empty_query_keys']) as $allowedKey) {
+            if ($allowedKey === $key) {
+                return true;
+            }
+        }
+
+        return false;
+    }
     private function assertNoUnreplacedPlaceholders(string $url): string
     {
         if (preg_match('/\{[a-zA-Z0-9_]+\}/', $url) === 1) {

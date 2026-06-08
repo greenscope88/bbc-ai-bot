@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'MultiSourceSearchUrlBuilderException.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'MultiSourceSearchUrlBuilderRegistry.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'RegionKeywordMapper.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'TourCenterDepartureMapper.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'SearchUrlBuilder.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'SearchUrlBuilderRegistry.php';
 
@@ -104,21 +105,32 @@ final class MultiSourceSearchUrlBuilder
      */
     private function prepareBuildInput(array $searchCondition, string $platformId, string $keyword): array
     {
-        if ($keyword === '') {
-            return $searchCondition;
-        }
+        $input = $searchCondition;
 
-        try {
-            return $this->keywordMapper->applyToSearchCondition($searchCondition, $platformId, $keyword);
-        } catch (RegionKeywordMapperException $e) {
-            if ($e->getErrorCode() !== RegionKeywordMapperException::KEYWORD_NOT_FOUND) {
-                throw $e;
+        if ($keyword !== '') {
+            try {
+                $input = $this->keywordMapper->applyToSearchCondition($searchCondition, $platformId, $keyword);
+            } catch (RegionKeywordMapperException $e) {
+                if ($e->getErrorCode() !== RegionKeywordMapperException::KEYWORD_NOT_FOUND) {
+                    throw $e;
+                }
+
+                $input = $searchCondition;
+                $input['keyword'] = $keyword;
             }
-
-            $fallback = $searchCondition;
-            $fallback['keyword'] = $keyword;
-
-            return $fallback;
         }
+
+        if ($platformId === 'tourcenter') {
+            $departureCity = null;
+            if (isset($input['departure_city'])) {
+                $rawCity = trim((string) $input['departure_city']);
+                if ($rawCity !== '') {
+                    $departureCity = $rawCity;
+                }
+            }
+            $input['departure_id'] = TourCenterDepartureMapper::mapToDepartureId($departureCity);
+        }
+
+        return $input;
     }
 }

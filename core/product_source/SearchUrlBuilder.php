@@ -9,7 +9,7 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'SourceInstanceUrlTemplateBuilder.p
 /**
  * Resolves search URLs from tenant instance registry + URL template builder (Phase 9-B-11).
  *
- * Does not modify SourceInstanceUrlTemplateBuilder. Keyword → region mapping reserved for future phase.
+ * Does not modify SourceInstanceUrlTemplateBuilder. Keyword ??region mapping reserved for future phase.
  */
 final class ProductSourceSearchUrlBuilder
 {
@@ -119,7 +119,7 @@ final class ProductSourceSearchUrlBuilder
     }
 
     /**
-     * Reserved for Phase 9-B-12+: keyword → region_code mapping (not implemented).
+     * Reserved for Phase 9-B-12+: keyword ??region_code mapping (not implemented).
      *
      * @param array<string, mixed> $input
      * @param array<string, mixed> $platform
@@ -185,6 +185,10 @@ final class ProductSourceSearchUrlBuilder
             $values['departure_path_code'] = $departurePathCode;
         }
 
+        if (array_key_exists('departure_id', $input)) {
+            $values['departure_id'] = trim((string) $input['departure_id']);
+        }
+
         $dateFrom = isset($input['date_from']) ? trim((string) $input['date_from']) : '';
         if ($dateFrom !== '') {
             $values['date_from'] = $dateFrom;
@@ -202,7 +206,7 @@ final class ProductSourceSearchUrlBuilder
 }
 
 /**
- * Future keyword → region mapping (Phase 9-B-12+). Not used in 9-B-11 core.
+ * Future keyword ??region mapping (Phase 9-B-12+). Not used in 9-B-11 core.
  */
 interface SearchKeywordMapperInterface
 {
