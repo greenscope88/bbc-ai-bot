@@ -3,7 +3,7 @@
 **專案：** BBC AI SaaS / BATS / ETT / API Gateway / Travel Data Center  
 **定位：** L1 架構政策層 — BDS（BATS Data Sync）正式 SSOT  
 **上層文件：** `CO_WORK_POLICY.md`、`DOCUMENTATION_GOVERNANCE_POLICY.md`  
-**相關文件：** `TENANT_SOURCE_REGISTRY_POLICY.md`、`TENANT_SOURCE_RUNTIME_BRIDGE_V1.md`、`TRAVEL_DATA_CENTER_PHASE9_MVP_IMPLEMENTATION_PLAN.md`  
+**相關文件：** `BATS_DATA_SOURCE_REGISTRY.md`、`BATS_DATA_CONTRACT.md`、`TENANT_SOURCE_REGISTRY_POLICY.md`、`TENANT_SOURCE_RUNTIME_BRIDGE_V1.md`、`TRAVEL_DATA_CENTER_PHASE9_MVP_IMPLEMENTATION_PLAN.md`  
 **適用範圍：** `travel_a`、`travel_b`、`travel_c` 及未來 **20～200 家旅行社**  
 **適用對象：** ChatGPT、Cursor、開發者、維運人員、資料維護人員  
 **衝突處理：** 若與下層功能文件衝突，**以本文件為準**；若與上層 L0 政策衝突，**以上層為準**。
@@ -111,7 +111,9 @@ BATS 使用最新資料
 | **Intelligence Layer** | — | BATS |
 | **Response Layer** | — | Gemini |
 | **`itinerary_data`** | 行程資料（Category A） | 商品搜尋知識；見 §12 |
-| **`tenant_private_knowledge`** | 旅行社私有知識資料（Category B） | 客服知識；見 §12 |
+| **`tenant_private_knowledge`** | 旅行社私有知識資料（Category B） | 租戶客服知識；見 §12 |
+| **`shared_knowledge`** | 共用知識（Category C） | 跨租戶 fallback；見 §12、§12.7 |
+| **`industry_code`** | 產業代碼 | `travel`、`hotel`、`restaurant` 等；見 `BATS_DATA_SOURCE_REGISTRY.md` |
 
 **書寫規範：**
 
@@ -130,8 +132,9 @@ BDS 負責同步至 GCS、供 BATS 消費的 **營運設定與知識資料**，�
 | 類型 | data_category | 範例 |
 |------|---------------|------|
 | 行程資料 | `itinerary_data`（§12 Category A） | `knowledge/itinerary/` |
-| 客服知識 | `tenant_private_knowledge`（§12 Category B） | `service_qa.json`、`service_items.json` |
-| Tenant 設定 | （`config/`，非 §12 兩類） | `product_sources.json`、tenant profile |
+| 客服知識（租戶） | `tenant_private_knowledge`（§12 Category B） | `tenants/{sno}/knowledge/` 下 5 個 JSON（見 §15、`BATS_DATA_CONTRACT.md`） |
+| 客服知識（共用） | `shared_knowledge`（§12 Category C） | `shared/{industry}/knowledge/`、`shared/global/knowledge/` |
+| Tenant 設定 | （`config/`，非 §12 三類） | `product_sources.json`、tenant profile |
 | 商品源 Registry | （`shared/` / `config/`） | platform catalog、instance 設定 |
 | 觸發政策 | （`shared/` / `config/`） | group trigger policy、feature flags |
 
@@ -473,9 +476,9 @@ gs://{bucket}/
 
 | 目錄 | 定義 |
 |------|------|
-| **`shared/`** | 跨 tenant 共用設定（如 platform catalog、全域 policy） |
+| **`shared/`** | 跨 tenant 共用設定與 **共用知識層**（`shared/{industry}/knowledge/`、`shared/global/knowledge/`；見 §11.3、§12.7） |
 | **`tenants/{sno}/config/`** | **租戶設定資料** — `product_sources.json`、tenant profile、feature config 等 |
-| **`tenants/{sno}/knowledge/`** | **BATS 可讀知識資料** — 依 §12 分為 `itinerary_data` 與 `tenant_private_knowledge` 兩類，路徑不得混用 |
+| **`tenants/{sno}/knowledge/`** | **租戶可讀知識資料** — `itinerary_data` 與 `tenant_private_knowledge`；路徑不得混用 |
 | **`tenants/{sno}/meta/`** | **同步資訊、版本資訊、同步紀錄** — `sync_status.json`、`last_sync_at.json`、`source_revision.json` 等 |
 
 #### 暫不列入正式結構
@@ -504,9 +507,18 @@ gs://{bucket}/
 ```text
 gs://{bucket}/
 ├── shared/
-│   └── config/
-│       ├── product_source_catalog.json
-│       └── group_trigger_policy.json          （可選）
+│   ├── config/
+│   │   ├── product_source_catalog.json
+│   │   ├── group_trigger_policy.json          （可選）
+│   │   └── bds_source_registry.json           （可選）
+│   ├── travel/
+│   │   └── knowledge/                         ← shared_knowledge（旅遊業）
+│   ├── hotel/
+│   │   └── knowledge/                         ← shared_knowledge（飯店民宿）
+│   ├── restaurant/
+│   │   └── knowledge/                         ← shared_knowledge（美食餐廳）
+│   └── global/
+│       └── knowledge/                         ← shared_knowledge（跨產業 fallback）
 │
 └── tenants/
     └── {sno}/
@@ -515,9 +527,12 @@ gs://{bucket}/
         │   └── tenant_line_profile.json       （可選）
         ├── knowledge/
         │   ├── itinerary/                     ← Category A：行程資料（下一階段）
-        │   ├── service_qa.json                ← Category B：客服 QA（MVP 首標）
-        │   ├── service_items.json             ← Category B：服務項目（規劃）
-        │   └── *.md / *.json                  ← 其他知識文件（須標註 data_category）
+        │   ├── company_profile.json           ← Category B：MVP（`BATS_DATA_CONTRACT.md`）
+        │   ├── service_qa.json                ← Category B：MVP
+        │   ├── external_product_links.json    ← Category B：MVP
+        │   ├── service_items.json             ← Category B：MVP
+        │   ├── special_prices.json            ← Category B：MVP
+        │   └── *.md / *.json                  ← 其他知識文件（須標註 data_category；須修訂 SSOT 後新增）
         └── meta/
             ├── last_sync_at.json              ← 同步資訊
             ├── sync_status.json               ← 同步紀錄
@@ -543,7 +558,8 @@ gs://{bucket}/
 | `published_at` | ISO 8601 發布時間 |
 | `schema_version` | JSON schema 版本 |
 | `bds_mode` | 固定 `B` |
-| `data_category` | `itinerary_data` 或 `tenant_private_knowledge`（見 §12） |
+| `data_category` | `itinerary_data`、`tenant_private_knowledge` 或 `shared_knowledge`（見 §12） |
+| `industry_code` | `travel`、`hotel`、`restaurant`、`global`（`shared_knowledge` 時；見 `BATS_DATA_SOURCE_REGISTRY.md`） |
 
 ---
 
@@ -551,7 +567,7 @@ gs://{bucket}/
 
 ### 12.1 目的
 
-正式區分 BDS 同步與 BATS 消費之兩大資料類別，避免 **行程資料** 與 **旅行社私有知識資料** 在未來資料流中混用、共用 schema 或寫入錯誤路徑。
+正式區分 BDS 同步與 BATS 消費之 Knowledge 資料類別，避免 **行程資料**、**租戶私有知識** 與 **共用知識** 在未來資料流中混用、共用 schema 或寫入錯誤路徑。
 
 | 區分目的 | 說明 |
 |----------|------|
@@ -619,8 +635,7 @@ tenants/{sno}/knowledge/itinerary/
 
 | 來源 | 說明 |
 |------|------|
-| QA Excel | 問答對照表（BDS v1 MVP 首標來源） |
-| Google Sheet | 服務項目、規則維護表 |
+| Google Sheet | 租戶私有知識維護表（1 Sheet / 5 Tabs；`BATS_DATA_CONTRACT.md`） |
 | 服務項目維護資料 | 結構化服務清單 |
 
 #### 內容可能包含
@@ -630,29 +645,69 @@ QA、服務項目、護照代辦、台胞證代辦、公司規則、收費標準
 #### 建議 GCS Path
 
 ```text
+tenants/{sno}/knowledge/company_profile.json
 tenants/{sno}/knowledge/service_qa.json
+tenants/{sno}/knowledge/external_product_links.json
 tenants/{sno}/knowledge/service_items.json
+tenants/{sno}/knowledge/special_prices.json
 ```
 
 | 說明 |
 |------|
-| 屬 **客服知識**；與 `itinerary_data` 路徑分離 |
+| 屬 **客服知識**；與 `itinerary_data` 路徑分離；完整 Contract 見 `BATS_DATA_CONTRACT.md` |
 
-### 12.4 兩類資料對照
+### 12.3.1 Category C — `shared_knowledge`（共用知識）
 
-| 對照項 | Category A `itinerary_data` | Category B `tenant_private_knowledge` |
-|--------|----------------------------|--------------------------------------|
-| 性質 | 商品搜尋知識 | 客服知識 |
-| 典型問題 | 「北海道有什麼團？」 | 「護照代辦怎麼收費？」 |
-| 建議路徑 | `knowledge/itinerary/` | `knowledge/service_qa.json`、`service_items.json` |
-| BDS v1 MVP | **不實作**（Rule 6） | **實作**（Rule 5） |
-| Data Contract | `itinerary_data` 專用 schema（L3 待定） | `tenant_private_knowledge` 專用 schema（L3 待定） |
+| 項目 | 說明 |
+|------|------|
+| **類別 ID** | `shared_knowledge` |
+| **中文** | 共用知識 |
+| **資料性質** | **跨租戶／跨產業 fallback 客服知識** |
+
+#### 用途
+
+| 用途 | 說明 |
+|------|------|
+| 產業級共用知識 | 旅遊、飯店、餐廳等產業通用 QA |
+| 跨產業 fallback | `global` 層通用須知 |
+| Gemini 客服 fallback | 租戶無私有答案時使用 |
+
+#### 建議 GCS Path
+
+```text
+shared/{industry_code}/knowledge/     # 例：shared/travel/knowledge/
+shared/global/knowledge/              # 跨產業 fallback
+```
+
+| `industry_code` | 產業 |
+|-----------------|------|
+| `travel` | 旅遊業 |
+| `hotel` | 飯店民宿 |
+| `restaurant` | 美食餐廳 |
+| `global` | 跨產業共用知識 |
+
+#### 角色
+
+- **僅作 fallback**；`tenant_private_knowledge` **優先**（§12.7）
+- **不得** 覆寫租戶已存在之私有答案
+- Source Registry 結構與讀取優先序見 **`BATS_DATA_SOURCE_REGISTRY.md`**
+
+### 12.4 三類 Knowledge 資料對照
+
+| 對照項 | A `itinerary_data` | B `tenant_private_knowledge` | C `shared_knowledge` |
+|--------|-------------------|------------------------------|----------------------|
+| 性質 | 商品搜尋知識 | 租戶客服知識 | 共用客服知識（fallback） |
+| 典型問題 | 「北海道有什麼團？」 | 「護照代辦怎麼收費？」 | 產業通用護照／簽證須知 |
+| 建議路徑 | `tenants/{sno}/knowledge/itinerary/` | `tenants/{sno}/knowledge/` 下 5 JSON | `shared/{industry}/knowledge/`、`shared/global/knowledge/` |
+| 讀取優先序 | 依商品搜尋意圖 | **1（最高）** | **2、3（fallback）** |
+| BDS v1 MVP | **不實作**（Rule 6） | **實作**（Rule 5） | 規劃中 |
+| Data Contract | 專用 schema（L3 待定） | 專用 schema（L3 待定） | 專用 schema（L3 待定） |
 
 ### 12.5 正式規則（Data Category Rules）
 
 #### Rule 1 — 不得混用
 
-**`itinerary_data` 與 `tenant_private_knowledge` 不得混用。**
+**`itinerary_data`、`tenant_private_knowledge` 與 `shared_knowledge` 不得混用。**
 
 | 禁止 | 說明 |
 |------|------|
@@ -670,7 +725,7 @@ tenants/{sno}/knowledge/service_items.json
 | `itinerary_data` | 行程 ID、名稱、日期、價格、庫存等商品欄位 |
 | `tenant_private_knowledge` | 問答對、服務項目 ID、規則文本、收費說明等 |
 
-契約細節由 L3 schema 文件定義；**禁止** 兩類共用同一 schema 檔案。
+契約細節由 **`BATS_DATA_CONTRACT.md`（L3 SSOT）** 定義；**禁止** 各類別共用同一 schema 檔案。
 
 #### Rule 3 — 不同 Validation Rule
 
@@ -690,8 +745,8 @@ BDS Safety Rule（§14.1）之 Validation 步驟 **須依 `data_category` 選用
 | 查詢類型 | 允許讀取 | 禁止讀取 |
 |----------|----------|----------|
 | 行程／商品搜尋 | `itinerary_data`、Host B API、Multi-Source URL | 不必要時載入完整 `service_qa.json` |
-| 一般客服問答 | `tenant_private_knowledge` | 不必要時載入 `itinerary/` 全量 |
-| 混合意圖 | 可分別讀取兩類，但 **不得** 合併為單一未分類 blob | — |
+| 一般客服問答 | `tenant_private_knowledge` → `shared_knowledge`（依 §12.7 優先序） | 不必要時載入 `itinerary/` 全量 |
+| 混合意圖 | 可分別讀取各類，但 **不得** 合併為單一未分類 blob | — |
 
 與 §13.3 搭配：Query Flow **只讀 GCS**，且 **只讀與意圖相符之 data_category**。
 
@@ -699,7 +754,17 @@ BDS Safety Rule（§14.1）之 Validation 步驟 **須依 `data_category` 選用
 
 **BDS v1 MVP 僅實作 `tenant_private_knowledge`。**
 
-即：**travel_b QA Excel Upload Sync** → `knowledge/service_qa.json`（見 §15）。
+採用 **1 Google Sheet / 5 Required Tabs / 5 JSON Outputs**（見 §15、`BATS_DATA_CONTRACT.md`）：
+
+| Required Tabs | JSON Outputs |
+|---------------|--------------|
+| `company_profile` | `company_profile.json` |
+| `qa` | `service_qa.json` |
+| `external_product_links` | `external_product_links.json` |
+| `service_items` | `service_items.json` |
+| `special_prices` | `special_prices.json` |
+
+正式欄位與 JSON 格式以 **`BATS_DATA_CONTRACT.md`** 為 L3 SSOT。
 
 #### Rule 6 — `itinerary_data` 下一階段
 
@@ -707,11 +772,88 @@ BDS Safety Rule（§14.1）之 Validation 步驟 **須依 `data_category` 選用
 
 包含但不限於：商品 Excel、PDF Parser、圖片 Parser、AI Parser、`knowledge/itinerary/` 同步管線。
 
-#### Rule 7 — `customer_registration` 排除
+#### Rule 7 — `shared_knowledge` 讀取優先序
+
+**`tenant_private_knowledge` 優先於 `shared_knowledge`；`shared_knowledge` 僅作 fallback。**
+
+| 規則 | 說明 |
+|------|------|
+| **優先** | 租戶私有知識先讀；命中則使用租戶答案 |
+| **Fallback** | 租戶無匹配時，依 `industry_code` 讀 `shared/{industry}/knowledge/`，再讀 `shared/global/knowledge/` |
+| **禁止反向覆寫** | `shared_knowledge` **不得** 覆寫 `tenant_private_knowledge` |
+| **Registry SSOT** | 路徑、產業分層、完整優先序見 **`BATS_DATA_SOURCE_REGISTRY.md`** |
+
+#### Rule 8 — `customer_registration` 排除
 
 **`customer_registration`（旅客報名資料）不得進入 Knowledge Layer。**
 
 屬 **交易資料**，非知識資料。完整規則見 §21。
+
+### 12.7 Shared Knowledge & Source Registry Cross-Reference
+
+本節與 **`BATS_DATA_SOURCE_REGISTRY.md`** 對齊；衝突時 Source Registry 結構與優先序 **以該文件為準**。
+
+#### 12.7.1 `shared_knowledge` 定位
+
+| 項目 | 說明 |
+|------|------|
+| **定義** | `shared_knowledge` 為 **共用知識層**（Category C） |
+| **正式路徑** | `shared/{industry_code}/knowledge/`、`shared/global/knowledge/` |
+| **非租戶路徑** | 不得寫入 `tenants/{sno}/knowledge/` |
+
+#### 12.7.2 讀取優先序（客服知識）
+
+```text
+1. tenants/{sno}/knowledge/          ← tenant_private_knowledge（優先）
+        ↓（若無匹配）
+2. shared/{industry_code}/knowledge/ ← shared_knowledge（產業 fallback）
+        ↓（若無匹配）
+3. shared/global/knowledge/            ← shared_knowledge（跨產業 fallback）
+```
+
+| 順序 | 層級 | 說明 |
+|------|------|------|
+| **1** | `tenant_private_knowledge` | **優先**；租戶私有答案 |
+| **2** | `shared_knowledge`（產業） | 依 Registry `industry_code`；**僅 fallback** |
+| **3** | `shared_knowledge`（global） | 跨產業最終 fallback |
+
+**`shared_knowledge` 不得覆寫 `tenant_private_knowledge`。**
+
+#### 12.7.3 範例
+
+| 來源 | 護照代辦價格 |
+|------|--------------|
+| `travel_b` `tenant_private_knowledge` | **1600** |
+| `shared/travel/knowledge/` | **1800** |
+| `shared/global/knowledge/` | **2000** |
+
+**AI 必須回答：1600**
+
+#### 12.7.4 Source Registry 管理
+
+下列項目之 **Registry 契約、產業分層、擴展規則** 由 **`BATS_DATA_SOURCE_REGISTRY.md`** 定義：
+
+| 項目 | 管理文件 |
+|------|----------|
+| Google Drive Folder ID | `BATS_DATA_SOURCE_REGISTRY.md` §6、§7 |
+| Google Sheet ID | `BATS_DATA_SOURCE_REGISTRY.md` §7 |
+| GCS Prefix | `BATS_DATA_SOURCE_REGISTRY.md` §7、§9 |
+| `industry_code` | `BATS_DATA_SOURCE_REGISTRY.md` §7、§9 |
+| Knowledge Source 類型 | `BATS_DATA_SOURCE_REGISTRY.md` §3 |
+| 讀取優先序細節 | `BATS_DATA_SOURCE_REGISTRY.md` §4、§5 |
+
+本文件定義 **同步模式與 Data Category**；Source Registry **不** 於本文件重複定義。
+
+#### 12.7.5 產業擴展原則
+
+新增 `hotel`、`restaurant` 或其他產業時：
+
+| 允許 | 禁止 |
+|------|------|
+| 新增 `industry_code` | 修改 BDS 同步核心流程 |
+| 新增 `shared/{industry}/knowledge/` | hardcode 單一產業或 tenant |
+
+見 `BATS_DATA_SOURCE_REGISTRY.md` §10。
 
 ---
 
@@ -868,22 +1010,35 @@ BDS 應回饋營運可理解之錯誤（非 stack trace）：
 
 ### 15.2 第一個實作目標
 
-**QA Excel Upload Sync**（`tenant_private_knowledge` / Category B，見 §12 Rule 5）
+**Tenant Private Knowledge Sheet Sync**（`tenant_private_knowledge` / Category B，見 §12 Rule 5）
 
-將營運維護之服務 QA Excel，經上傳後立即同步為標準 JSON，供 BATS 讀取並注入 Gemini context。
+將營運維護之 **1 份 Google Sheet（5 Required Tabs）**，經核准上傳流程後立即同步為 **5 個標準 JSON**，供 BATS 讀取並注入 Gemini context。
+
+| Required Tabs | JSON Outputs |
+|---------------|--------------|
+| `company_profile` | `company_profile.json` |
+| `qa` | `service_qa.json` |
+| `external_product_links` | `external_product_links.json` |
+| `service_items` | `service_items.json` |
+| `special_prices` | `special_prices.json` |
 
 ### 15.3 MVP 正式流程
 
 ```text
 主機 A 固定網址（Upload 入口）
         ↓
-    上傳 QA Excel
+    上傳 / 核准 Tenant Private Knowledge Google Sheet
         ↓
     立即同步（Mode B / BDS）
         ↓
-    產生標準 JSON
+    產生 5 個標準 JSON（Validation 通過後）
         ↓
-tenants/5f99b8d665e8444d/knowledge/service_qa.json
+tenants/5f99b8d665e8444d/knowledge/
+  ├── company_profile.json
+  ├── service_qa.json
+  ├── external_product_links.json
+  ├── service_items.json
+  └── special_prices.json
         ↓
       GCS
         ↓
@@ -899,11 +1054,12 @@ tenants/5f99b8d665e8444d/knowledge/service_qa.json
 | 項目 | 值 |
 |------|-----|
 | **data_category** | `tenant_private_knowledge`（Category B） |
-| GCS 正式路徑 | `tenants/5f99b8d665e8444d/knowledge/service_qa.json` |
+| GCS 正式路徑 | `tenants/5f99b8d665e8444d/knowledge/` 下 5 個 JSON（見上表） |
 | 目錄歸屬 | `knowledge/`（客服知識，見 §12.3、§11.1） |
 | 同步模式 | Mode B only（上傳成功 → 立即同步） |
-| 安全規則 | BDS Safety Rule（§14.1）；失敗不覆蓋既有 `service_qa.json` |
-| Data Contract | `tenant_private_knowledge` 專用（§12 Rule 2） |
+| 安全規則 | BDS Safety Rule（§14.1）；Validation Fail 不得覆蓋既有 JSON |
+| **Data Contract（L3 SSOT）** | **`BATS_DATA_CONTRACT.md`** — Tab 名稱、欄位、JSON 格式、Validation |
+| Source Registry | `BATS_DATA_SOURCE_REGISTRY.md` — `private_knowledge_sheet_id`、路徑登錄 |
 
 ### 15.5 MVP 明確排除
 
@@ -926,7 +1082,7 @@ tenants/5f99b8d665e8444d/knowledge/service_qa.json
 | 項目 | 說明 |
 |------|------|
 | travel_b 三商品源 | 維持現行 Production；MVP 不改 Multi-Source URL 管線 |
-| QA 知識注入 | 新增 `knowledge/service_qa.json`（Category B）消費路徑；實作細節另開 L3 文件 |
+| 租戶知識注入 | 新增 `knowledge/` 下 5 個 JSON（Category B）消費路徑；格式見 `BATS_DATA_CONTRACT.md` |
 | Query Flow | 客服問答讀 `tenant_private_knowledge`；不觸發 BDS（§13.3、§12 Rule 4） |
 | 行程搜尋 | 仍走 Host B API + Multi-Source URL；**不** 以 MVP 取代 `itinerary_data` |
 
@@ -938,8 +1094,8 @@ tenants/5f99b8d665e8444d/knowledge/service_qa.json
 
 | Phase | 內容 | 狀態 |
 |-------|------|------|
-| **BDS v1 MVP** | travel_b `tenant_private_knowledge`：QA Excel → `service_qa.json`；Mode B | 規劃中 |
-| **BDS Phase 2** | `itinerary_data` 規劃啟動；`config/product_sources.json`；`service_items.json`；Webhook | 規劃中 |
+| **BDS v1 MVP** | travel_b `tenant_private_knowledge`：1 Sheet / 5 Tabs → 5 JSON；Mode B；`BATS_DATA_CONTRACT.md` | 規劃中 |
+| **BDS Phase 2** | `itinerary_data` 規劃啟動；`config/product_sources.json`；`shared_knowledge` Contract；Webhook | 規劃中 |
 | **Tenant Bridge Phase 1D** | 任意 tenant path 解析；travel_c pilot | 規劃中 |
 | **Tenant Bridge Phase 1E** | GCS Provider 真實下載 + cache | 規劃中 |
 
@@ -1089,7 +1245,7 @@ tenants/{sno}/
 | **角色** | Archive Layer |
 | **data_category** | `tenant_private_knowledge`（§12 Category B） |
 | **旅行社權限** | 可檢視、可下載；**不可**編輯、**不可**刪除 |
-| **BDS 同步** | v1 MVP 首標（QA Excel → `knowledge/service_qa.json`） |
+| **BDS 同步** | v1 MVP（1 Sheet / 5 Tabs → `knowledge/` 下 5 JSON；`BATS_DATA_CONTRACT.md`） |
 
 ### 20.4 `03_Customer_Registration`
 
@@ -1251,7 +1407,8 @@ Service Account 僅授權必要之 `tenants/{sno}/` prefix；不得授予跨 ten
 |------|------|
 | **Mode B Only** | 上傳成功 → 立即同步；不引入 Mode A |
 | **分層分離** | Source（上傳頁）/ Archive（Drive）/ Knowledge（GCS）/ Intelligence / Response 邊界清晰 |
-| **Data Category 分離** | `itinerary_data` 與 `tenant_private_knowledge` 不得混用（§12） |
+| **Data Category 分離** | `itinerary_data`、`tenant_private_knowledge`、`shared_knowledge` 不得混用（§12） |
+| **Shared Knowledge Fallback** | `tenant_private_knowledge` 優先；`shared_knowledge` 僅 fallback（§12.7） |
 | **Query / Sync 分離** | BATS Query Flow 不得觸發 BDS（§13.3） |
 | **BDS Safety Rule** | 同步失敗不得覆蓋正式資料（§14.1） |
 | **Tenant Isolation** | `sno` 為不可跨越之邊界 |
@@ -1283,6 +1440,8 @@ Service Account 僅授權必要之 `tenants/{sno}/` prefix；不得授予跨 ten
 
 | 文件 | 關係 |
 |------|------|
+| `BATS_DATA_SOURCE_REGISTRY.md` | Source Registry 結構、`industry_code`、Shared Knowledge 優先序 |
+| `BATS_DATA_CONTRACT.md` | Data Contract L3 SSOT — Sheet Tab、欄位、JSON 格式、Validation |
 | `TENANT_SOURCE_REGISTRY_POLICY.md` | Tenant / Source Instance 治理；BDS 同步目標資料結構 |
 | `TENANT_SOURCE_RUNTIME_BRIDGE_V1.md` | Intelligence Layer 橋接；消費 GCS 同步後之 `product_sources` |
 | `DOCUMENTATION_GOVERNANCE_POLICY.md` | 本文件為 BDS 領域 L1 SSOT |
@@ -1294,6 +1453,8 @@ Service Account 僅授權必要之 `tenants/{sno}/` prefix；不得授予跨 ten
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.5** | 2026-06-08 | MVP 範圍校正：1 Sheet / 5 Tabs / 5 JSON；cross-ref `BATS_DATA_CONTRACT.md`（L3 SSOT） |
+| **v1.4** | 2026-06-08 | 新增 `shared_knowledge`（Category C）、`shared/{industry}/knowledge/` GCS 結構、§12.7 Cross-Reference、`BATS_DATA_SOURCE_REGISTRY.md` 對齊 |
 | **v1.3** | 2026-06-08 | 新增 §18～§23：Google Drive Archive Layer、Update Entry Rule、Drive 三層分類、Customer Registration Rule、Tenant Folder Isolation、Anti Hardcode Rule |
 | **v1.2** | 2026-06-08 | 新增 BDS Data Category（itinerary_data / tenant_private_knowledge）與六條正式規則 |
 | **v1.1** | 2026-06-08 | 補強 GCS 正式結構、Query/Sync 分離、BDS Safety Rule、MVP Use Case |
