@@ -15,6 +15,7 @@
 | 章節 | 標題 |
 |------|------|
 | §1 | Purpose |
+| §1.6 | Knowledge Layer Model（Private + Shared） |
 | §2 | Category A：Itinerary Data |
 | §3 | Category B：Knowledge Data（BDS） |
 | §4 | Category C：Traveler Registration Data |
@@ -45,6 +46,8 @@
 | LINE OA 蒐集的旅客姓名、護照屬於哪一類？ | §4 Category C |
 | Host A / Host B 各能存什麼？ | §5 |
 | 與既有 BDS `data_category` 如何對照？ | §1.3 |
+| Private Layer 與 Shared Layer 如何分工？ | §1.6 |
+| Shared Layer 是否等於公開資料？ | §1.6 |
 
 ### 1.3 與 `BATS_DATA_SYNC_POLICY.md` §12 對照
 
@@ -80,6 +83,66 @@ Tenant Private Data（本文件）
 | 定義 Registration 欄位 schema | 見 §6 `BATS_TRAVELER_REGISTRATION_CONTRACT.md` |
 | 定義 BDS Sheet 欄位 | 見 `BATS_DATA_CONTRACT.md` |
 | 實作 Google API / GCS | 實作 Phase 另開 |
+
+### 1.6 Knowledge Layer Model（Private + Shared）
+
+#### 1.6.1 正式定義
+
+**旅行社 Knowledge 資料（Category B）** 由兩層組成：
+
+```text
+旅行社 Knowledge 資料（Category B）
+├── Private Layer（私有層）   →  tenant_private_knowledge
+└── Shared Layer（共用層）    →  shared_knowledge
+```
+
+| Layer | 中文 | `data_category` | GCS 路徑（概念） | 歸屬 |
+|-------|------|-----------------|------------------|------|
+| **Private Layer** | 私有層 | `tenant_private_knowledge` | `tenants/{sno}/knowledge/` | 單一租戶 |
+| **Shared Layer** | 共用層 | `shared_knowledge` | `shared/{industry_code}/knowledge/`、`shared/global/knowledge/` | BBC 平台／產業維護方 |
+
+> **Itinerary（Category A）** 與 **Registration（Category C）** 不屬於本 Layer Model；本節僅規範 **Knowledge（Category B）** 之 Private + Shared 分工。
+
+#### 1.6.2 Shared Layer ≠ Public Layer
+
+| 項目 | Shared Layer | Public Layer（本架構 **不存在** 此層） |
+|------|--------------|--------------------------------------|
+| **語意** | 跨租戶 **fallback 知識**；由平台／產業維護 | 對外公開、匿名可讀之資料層 |
+| **預設可見性** | **Default Private**（見 §1.6.3） | 預設公開 |
+| **讀取邊界** | BATS 依 Resolution Order 消費 GCS JSON；**非** 公開 URL | 無限制對外讀取 |
+| **PII** | **禁止** | 本架構不採用 |
+
+**正式規則：**
+
+- **Shared Layer 不是 Public Layer**；名稱「Shared」指 **知識解析時的跨租戶 fallback 共用**，**不是** 對網際網路或任意第三方公開。
+- 不得將 Shared Knowledge 等同於「公開 FAQ 網頁」或「無權限 Google 連結」。
+
+#### 1.6.3 Shared Layer 預設：Default Private
+
+| 項目 | 規則 |
+|------|------|
+| **預設存取** | **Default Private** — 未經明確政策啟用共享前，視為非公開 |
+| **GCS** | `shared/` 路徑僅供 BDS / BATS 受控讀寫；**非** 公開 bucket 政策 |
+| **Google Drive** | Shared Layer 相關 Drive 資料夾 **預設不共享**（見 `BATS_DATA_OWNERSHIP_POLICY.md` §2.5） |
+| **啟用共享** | 須透過 **Explicit Share Policy** — Registry 登錄 + Ownership Policy 明確授權（見 `BATS_SHARED_KNOWLEDGE_CONTRACT.md` §3.4） |
+
+#### 1.6.4 Google Drive 與 Shared Layer
+
+| 項目 | 說明 |
+|------|------|
+| **角色** | Google Drive 為 Shared Layer 之 **Archive／協作儲存載體之一**（與 GCS Knowledge Layer 並存） |
+| **非唯一來源** | BATS 執行時 **不** 直接讀 Drive；正式消費層為 **GCS JSON**（見 `BATS_DATA_SYNC_POLICY.md` §18） |
+| **租戶 Private** | 租戶 `02_Private_Knowledge` 屬 **Private Layer** Archive |
+| **產業／全球 Shared** | 產業／全球共用知識之 Drive 資料夾屬 **Shared Layer** Archive；**預設 Default Private** |
+| **禁止混淆** | 不得因資料夾名稱含「shared」即視為對外公開；須依本節與 Ownership Policy 判斷 |
+
+#### 1.6.5 與三分流對照
+
+| 本文件三分流 | Knowledge Layer |
+|--------------|-----------------|
+| **Category B — Tenant Private** | Private Layer（`tenant_private_knowledge`） |
+| **Category B — Shared fallback** | Shared Layer（`shared_knowledge`） |
+| Category A / C | **不適用** Private + Shared Layer Model |
 
 ---
 
@@ -135,10 +198,12 @@ Category A 未來可進入 **itinerary / product data flow**（含 PDF Parser、
 
 **Category B — Knowledge Data（BDS）** 為租戶與平台之 **客服／營運知識資料**，供 BATS 客服問答、Gemini context 注入使用。
 
+**正式組成：** Private Layer + Shared Layer（見 §1.6）。
+
 | 項目 | 說明 |
 |------|------|
-| **主要 `data_category`** | `tenant_private_knowledge` |
-| **共用 `data_category`** | `shared_knowledge` |
+| **Private Layer `data_category`** | `tenant_private_knowledge` |
+| **Shared Layer `data_category`** | `shared_knowledge` |
 | **管理系統** | **BDS**（BATS Data Sync） |
 | **BDS v1 MVP** | 僅 `tenant_private_knowledge`（1 Sheet / 5 Tabs / 5 JSON） |
 
@@ -154,16 +219,22 @@ Category A 未來可進入 **itinerary / product data flow**（含 PDF Parser、
 
 **正式 Contract：** `BATS_DATA_CONTRACT.md`
 
-### 3.3 Shared Knowledge Layer
+### 3.3 Shared Knowledge Layer（Shared Layer）
 
-Category B 亦包含 **跨租戶 fallback 知識層**（非租戶私有，但屬 Knowledge 語意）：
+Category B 之 **Shared Layer（共用層）** 為跨租戶 fallback 知識；完整 Layer 定義見 **§1.6**。
 
 | 層級 | 路徑 | Contract |
 |------|------|----------|
-| **Industry Shared** | `shared/{industry_code}/knowledge/` | `BATS_SHARED_KNOWLEDGE_CONTRACT.md` |
-| **Global Shared** | `shared/global/knowledge/` | 同上 |
+| **Industry Shared Layer** | `shared/{industry_code}/knowledge/` | `BATS_SHARED_KNOWLEDGE_CONTRACT.md` |
+| **Global Shared Layer** | `shared/global/knowledge/` | 同上 |
 
-**讀取優先序：** Tenant > Industry > Global（見 `BATS_DATA_SOURCE_REGISTRY.md` §4.4）
+| 原則 | 說明 |
+|------|------|
+| **Shared ≠ Public** | Shared Layer **不是** Public Layer；見 §1.6.2 |
+| **Default Private** | Drive / 存取預設不對外共享；見 §1.6.3 |
+| **Governance** | Explicit Share Policy 見 `BATS_SHARED_KNOWLEDGE_CONTRACT.md` §3.4 |
+
+**讀取優先序：** Private Layer（Tenant）> Industry Shared > Global Shared（見 `BATS_DATA_SOURCE_REGISTRY.md` §4.4）
 
 ### 3.4 正式 GCS 路徑
 
@@ -411,6 +482,7 @@ L1 SSOT
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.1** | 2026-06-09 | 新增 §1.6 Knowledge Layer Model：Private + Shared、Shared ≠ Public、Default Private、Drive 載體 |
 | **v1.0** | 2026-06-09 | 第一版：Tenant Private Data 三分流 A/B/C、PII Host Boundary、Future Registration Contract |
 
 ---

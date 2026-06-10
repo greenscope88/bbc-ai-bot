@@ -16,6 +16,7 @@
 |------|------|
 | §1 | Purpose |
 | §2 | Ownership Layers |
+| §2.5 | Default Access Policy |
 | §3 | Write Boundary |
 | §4 | Override Rule |
 | §5 | BDS Sync Ownership Rule |
@@ -40,6 +41,7 @@
 | 誰可以同步？ | §5 BDS Sync Ownership Rule |
 | 誰可以覆蓋？ | §4 Override Rule |
 | Tenant / Industry / Global 權責邊界？ | §2～§4 |
+| Google Drive 資料夾預設是否共享？ | §2.5 Default Access Policy |
 
 ### 1.2 核心術語
 
@@ -183,6 +185,65 @@ BDS Knowledge Layer 分為 **三層**；每層有明確 **Owner** 與 **Steward*
 | **Tenant** | `tenants/{sno}/knowledge/` | Tenant + BBC Admin | Tenant | **允許** |
 | **Industry Shared** | `shared/{industry_code}/knowledge/` | BBC Industry Maintainer + BBC Admin | BBC Industry Maintainer | **不允許** |
 | **Global Shared** | `shared/global/knowledge/` | BBC Platform + BBC Admin | BBC Platform / Admin | **不允許** |
+
+---
+
+### 2.5 Default Access Policy
+
+#### 2.5.1 正式原則
+
+**所有 Google Drive 資料夾（含 Shared Layer Archive）預設為 Private（Default Private）。**
+
+| 項目 | 規則 |
+|------|------|
+| **預設** | **Default = Private** — 未經明確政策前，**不得** 視為對外公開或跨租戶可讀 |
+| **適用範圍** | 租戶 `tenants/{sno}/` 三層子資料夾、產業／全球 Shared Layer Drive 資料夾、BDS 協作用 Sheet 來源資料夾 |
+| **≠ Public** | Private 指 **存取控制預設**；與 Knowledge 語意之「Shared Layer」**不同概念**（見 `BATS_TENANT_DATA_CLASSIFICATION.md` §1.6.2） |
+
+#### 2.5.2 Google Drive Folder 預設
+
+```text
+Google Drive Folder
+        ↓
+Default = Private（僅 Owner / 明確授權角色可存取）
+        ↓
+禁止「資料夾在 shared 路徑下即公開」之假設
+```
+
+| 資料夾類型 | Layer | 預設存取 |
+|------------|-------|----------|
+| `tenants/{sno}/02_Private_Knowledge` | Private Layer | **Private** |
+| `tenants/{sno}/01_Itinerary_Data` | Category A（非 Knowledge Layer） | **Private** |
+| `tenants/{sno}/03_Customer_Registration` | Category C | **Private**（含 PII 管控） |
+| 產業／全球 Shared Knowledge Drive 資料夾 | Shared Layer | **Private**（Default Private） |
+
+#### 2.5.3 啟用共享之唯一路徑
+
+**必須透過明確 Registry / Policy 啟用共享**；禁止僅依路徑命名或慣例開放。
+
+| 步驟 | 要件 |
+|------|------|
+| 1 | **Registry 登錄** — 於 `BATS_DATA_SOURCE_REGISTRY.md` 登錄 Drive Folder ID、`data_category`、`industry_code`（若適用） |
+| 2 | **Ownership 對齊** — 確認 Owner / Steward 與 §2.1～§2.3 一致 |
+| 3 | **Explicit Share Policy** — 依 `BATS_SHARED_KNOWLEDGE_CONTRACT.md` §3.4.6 定義受控對象（如 Service Account、指定維護角色） |
+| 4 | **禁止隱式公開** | 不得將 Drive 連結設為「知道連結的任何人」作為 BDS 預設 |
+
+#### 2.5.4 與 GCS / BATS 邊界
+
+| 層級 | Drive（Archive） | GCS（Knowledge） |
+|------|------------------|------------------|
+| **預設可見性** | Default Private | 受控 prefix；非公開 bucket |
+| **BATS 讀取** | **不** 於 runtime 直接讀 Drive | 讀取 `tenants/{sno}/knowledge/`、`shared/` JSON |
+| **BDS 同步** | 可讀取已授權之 Sheet／檔案 | 寫入對應 GCS 路徑 |
+
+#### 2.5.5 禁止行為
+
+| 禁止 | 說明 |
+|------|------|
+| **預設公開 Shared 資料夾** | 違反 Default Private |
+| **未登錄 Registry 即共享** | 違反 Registry Driven |
+| **租戶自行開放他社可讀** | 違反 Tenant Isolation（`BATS_DATA_SYNC_POLICY.md` §10） |
+| **將 Shared Layer 等同 Public Layer** | 違反 `BATS_TENANT_DATA_CLASSIFICATION.md` §1.6.2 |
 
 ---
 
@@ -492,6 +553,8 @@ BATS_DATA_OWNERSHIP_POLICY.md   ← 本文件：歸屬、寫入、覆蓋、同�
 | `BATS_DATA_SYNC_POLICY.md` | 同步模式、GCS 結構、Drive 三層、BDS Safety Rule |
 | `BATS_DATA_SOURCE_REGISTRY.md` | `private_knowledge_sheet_id`、`industry_code`、Knowledge Resolution Order |
 | `BATS_DATA_CONTRACT.md` | Tenant Private Knowledge 5 Tab / 5 JSON Data Contract |
+| `BATS_TENANT_DATA_CLASSIFICATION.md` | Private + Shared Layer；Shared ≠ Public |
+| `BATS_SHARED_KNOWLEDGE_CONTRACT.md` | Shared Layer Governance、Explicit Share Policy |
 | `TENANT_SOURCE_REGISTRY_POLICY.md` | 商品源 Registry；與本文件 **互補** |
 | `DOCUMENTATION_GOVERNANCE_POLICY.md` | 本文件為 BDS Ownership 領域 L1 SSOT |
 
@@ -521,6 +584,7 @@ L2+ 實作文件、程式
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.1** | 2026-06-09 | 新增 §2.5 Default Access Policy：Drive Folder Default Private、Explicit Share 啟用路徑 |
 | **v1.0** | 2026-06-08 | 第一版：三層 Ownership、Write Boundary、Override Rule、BDS v1 Sync 範圍、Industry Expansion |
 
 ---

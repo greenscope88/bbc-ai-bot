@@ -17,6 +17,7 @@
 | §1 | Purpose |
 | §2 | Scope |
 | §3 | Shared Knowledge Layers |
+| §3.4 | Shared Layer Governance |
 | §4 | Industry Code Rule |
 | §5 | Shared Knowledge Categories |
 | §6 | Shared Knowledge JSON Contract |
@@ -56,6 +57,7 @@
 | 問題 | 章節 |
 |------|------|
 | Shared Layer 放哪裡？ | §3 |
+| Shared Layer 治理與存取預設？ | §3.4 |
 | 支援哪些產業？ | §4 |
 | JSON 長什麼樣？ | §6 |
 | 誰擁有、誰可覆蓋？ | §8、§9 |
@@ -166,6 +168,93 @@ shared/
 | **`industry_code`** | `travel`、`hotel`、`medical` 等 | `global` |
 | **Owner** | BBC Industry Maintainer | BBC Platform |
 | **讀取順序** | 2（fallback） | 3（最終 fallback） |
+
+---
+
+### 3.4 Shared Layer Governance
+
+#### 3.4.1 治理範圍
+
+本節定義 **Shared Layer** 之架構治理；與 JSON 欄位契約（§6）、Ownership（§9）互補。
+
+```text
+Knowledge Layer（Category B）
+├── Private Layer     →  tenant_private_knowledge（見 BATS_DATA_CONTRACT.md）
+└── Shared Layer      →  shared_knowledge（本文件）
+        ├── Industry Shared Layer
+        └── Global Shared Layer
+```
+
+#### 3.4.2 Shared Layer
+
+| 項目 | 說明 |
+|------|------|
+| **定義** | 跨租戶 **fallback 知識層**；當 Private Layer 無匹配時，BATS 依 Resolution Order 向下解析 |
+| **data_category** | `shared_knowledge` |
+| **儲存載體** | **GCS** `shared/{industry_code}/knowledge/`、`shared/global/knowledge/`；**Google Drive** 為 Archive／協作載體之一 |
+| **≠ Public Layer** | Shared Layer **不是** 對外公開層；名稱指知識解析共用，**不是** 匿名公開讀取 |
+
+#### 3.4.3 Industry Shared Layer
+
+| 項目 | 說明 |
+|------|------|
+| **路徑** | `shared/{industry_code}/knowledge/` |
+| **`owner_scope`** | `industry` |
+| **Owner** | BBC Industry Maintainer + BBC Admin |
+| **用途** | 同 `industry_code` 租戶之產業級 fallback |
+| **擴展** | 新增產業僅新增 `industry_code` + 路徑；schema 不變（§4） |
+
+#### 3.4.4 Global Shared Layer
+
+| 項目 | 說明 |
+|------|------|
+| **路徑** | `shared/global/knowledge/` |
+| **`owner_scope`** | `global` |
+| **Owner** | BBC Platform + BBC Admin |
+| **用途** | Industry Shared 仍無匹配時之 **最終 fallback** |
+| **注意** | `global` 為 Layer 3 專用 segment，**不是** 可填入 `shared/{industry_code}/` 的產業代碼 |
+
+#### 3.4.5 Default Private
+
+| 項目 | 規則 |
+|------|------|
+| **正式預設** | **Default Private** — Shared Layer 相關資源 **預設不對外共享** |
+| **GCS** | `shared/` 僅供受控 BDS / BATS 管線讀寫；**非** 公開匿名讀取政策 |
+| **Google Drive** | Shared Layer 對應 Drive 資料夾 **預設 Private**；不得假設「在 shared 資料夾即公開」 |
+| **與 Private Layer 對照** | 租戶 `tenants/{sno}/` 與 `shared/` 皆 **非** Public；差異在 **歸屬與 fallback 語意**，非公開程度 |
+
+詳細 Drive 資料夾存取預設見 `BATS_DATA_OWNERSHIP_POLICY.md` §2.5。
+
+#### 3.4.6 Explicit Share Policy
+
+**禁止** 依資料夾命名或路徑慣例 **隱式** 對外共享。任何跨角色、跨租戶、對第三方之可見性，須符合 **Explicit Share Policy**：
+
+| 要件 | 說明 |
+|------|------|
+| **Registry 登錄** | Shared 來源須於 `BATS_DATA_SOURCE_REGISTRY.md` 登錄（路徑、`industry_code`、`data_category`） |
+| **Ownership 授權** | 寫入／發布須符合 `BATS_DATA_OWNERSHIP_POLICY.md` §2、§3 |
+| **禁止隱式公開** | 不得將 Shared Layer 連結貼至公開網站作為預設行為 |
+| **Service Account** | API 讀寫權限採最小權限；**非** 「任何人可讀」 |
+| **BDS v1** | Shared Layer **同步未啟用**；Explicit Share 主要約束 Archive／未來發布流程 |
+
+```text
+Default Private（預設）
+        ↓
+Registry + Ownership Policy 明確授權
+        ↓
+Explicit Share Policy 啟用（受控對象／角色）
+        ↓
+（仍非 Public Layer）
+```
+
+#### 3.4.7 交叉引用
+
+| 議題 | SSOT |
+|------|------|
+| Private + Shared Layer 定義 | `BATS_TENANT_DATA_CLASSIFICATION.md` §1.6 |
+| Drive 資料夾 Default Private | `BATS_DATA_OWNERSHIP_POLICY.md` §2.5 |
+| Resolution Order | `BATS_DATA_SOURCE_REGISTRY.md` §4.4 |
+| Shared JSON 格式 | 本文件 §6 |
 
 ---
 
@@ -664,6 +753,7 @@ L2 規劃 / 維運
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.1** | 2026-06-09 | 新增 §3.4 Shared Layer Governance：Default Private、Explicit Share Policy、Drive 載體 |
 | **v1.0** | 2026-06-08 | 第一版：Industry-Agnostic Shared Knowledge Contract、六 category、Industry / Global JSON、Validation |
 
 ---
