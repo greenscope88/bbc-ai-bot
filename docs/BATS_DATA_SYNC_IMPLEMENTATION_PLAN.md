@@ -357,9 +357,53 @@ tests/bds/output/tenants/{sno}/knowledge/*.json（本機 preview；非 GCS）
 
 ### Phase 5 — GCS Writer Controlled Mode
 
+**狀態：Planned**（文件已就緒；實作待 Phase 5 啟動）
+
 #### 目標
 
-在 **受控條件** 下將驗證通過之 JSON 寫入 GCS。
+在 **受控條件** 下，將 **驗證通過** 之 `tenant_private_knowledge` JSON 寫入 GCS Knowledge Layer。
+
+#### 端到端管線（Phase 5 終態）
+
+```text
+Google Sheet（private_knowledge_sheet_id）
+        ↓
+BdsGoogleSheetReader（Phase 4）
+        ↓
+BdsMockSheetParser
+        ↓
+BdsValidator
+        ↓
+JSON（5 檔）
+        ↓
+GCS Writer Controlled Mode（Phase 5）
+        ↓
+gs://{bucket}/tenants/{sno}/knowledge/
+```
+
+#### Phase 5 範圍（In Scope）
+
+| 項目 | 說明 |
+|------|------|
+| **data_category** | `tenant_private_knowledge` only |
+| **GCS 路徑** | `tenants/{sno}/knowledge/` **only** |
+| **輸出 JSON** | `company_profile.json`、`service_qa.json`、`external_product_links.json`、`service_items.json`、`special_prices.json` |
+| **前置條件** | Phase 4 Reader + Validator **PASS** |
+| **雙重門禁** | `BDS_DRY_RUN` + `BDS_GCS_WRITE_ENABLED` + `BDS_TARGET_SNO` |
+| **Safety Rule** | Validation Fail → **不寫 GCS**；不覆蓋既有正式 JSON |
+
+#### Phase 5 不做（Out of Scope）
+
+| 排除 | 說明 |
+|------|------|
+| **Google Drive** | 非 Phase 5；見 Phase 6 Drive Connector Framework（`BATS_DATA_SOURCE_REGISTRY.md` §10.5） |
+| **Shared Layer** | 禁止寫入 `shared/` |
+| **PDF / Image** | 非結構化；Drive Connector 範疇 |
+| **RAG / Vector DB** | 未納入 |
+| **`private_drive_folder_id`** | **未引入**；延後 Phase 6 前 Registry 規劃 |
+| **Cron / 排程** | v1 手動觸發（Phase 6 Manual Sync） |
+| **LINE OA** | 非 BDS 同步範圍 |
+| **Delete GCS Object** | Phase 5 僅 promote；禁止刪除物件作為同步策略 |
 
 #### 做什麼
 
@@ -644,6 +688,7 @@ L3 實作（未來）
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.2** | 2026-06-09 | Phase 5 GCS Writer Controlled Mode 文件補強；Phase 6 Drive Framework cross-ref |
 | **v1.1** | 2026-06-09 | Phase 4 Close-out：Reader / Live Read / Pipeline Dry-run 標記 Completed + 驗證紀錄 |
 | **v1.0** | 2026-06-08 | 第一版：BDS v1 六 Phase 實作計畫、Safety Rules、Required Outputs、Commit Strategy |
 
@@ -654,6 +699,6 @@ L3 實作（未來）
 | 項目 | 狀態 |
 |------|------|
 | **文件狀態** | Draft — 待審核 |
-| **實作狀態** | Phase 1～4 **Completed**；Phase 5 未開始 |
+| **實作狀態** | Phase 1～4 **Completed**；Phase 5 **Planned**（文件已就緒） |
 | **前置 SSOT** | Sync / Registry / Contract / Ownership 已 commit |
 | **Pilot** | `travel_b`（`5f99b8d665e8444d`） |

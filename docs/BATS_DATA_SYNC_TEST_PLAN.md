@@ -234,6 +234,26 @@ BdsJsonWriter（dry_run=true）
 | Object Versioning | 不啟用、不測 |
 | 全租戶批次 | v1 排除 |
 
+#### Phase 5 Test Matrix
+
+| Test ID | 名稱 | 驗證項 | 預期結果 |
+|---------|------|--------|----------|
+| **T-Phase5-01** | Path Mapping | GCS 寫入路徑僅 `tenants/{sno}/knowledge/` | 5 JSON 路徑正確；無 `shared/` |
+| **T-Phase5-02** | Validation Fail Block | Validator `ok=false` | **零** GCS 寫入；既有 JSON 不變 |
+| **T-Phase5-03** | Controlled Write | `dry_run=false` + flag 啟用 + validation pass | 5 JSON 寫入成功 |
+| **T-Phase5-04** | No Shared Write | 嘗試或 mock 寫入 `shared/` | **拒絕** |
+| **T-Phase5-05** | No Drive Access | GCS Writer 執行期 | **零** Drive API 呼叫 |
+
+```text
+T-Phase5-01 ──→ 路徑對照
+T-Phase5-02 ──→ Fail 不寫（Safety Rule）
+T-Phase5-03 ──→ 受控成功寫入
+T-Phase5-04 ──→ shared/ 邊界
+T-Phase5-05 ──→ Drive 隔離
+```
+
+> Phase 5 測試須在 **controlled test** 環境執行；預設 `BDS_DRY_RUN=true`。
+
 ---
 
 ### Phase 6 — Manual Sync Command
@@ -555,6 +575,7 @@ L2 規劃
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.2** | 2026-06-09 | 新增 Phase 5 Test Matrix（T-Phase5-01～05） |
 | **v1.1** | 2026-06-09 | Phase 4 Close-out：§4.1 Live Read、§4.2 Integration Dry-run PASS |
 | **v1.0** | 2026-06-08 | 第一版：BDS v1 測試範圍、Required Tests T-01～T-10、Minimal Test Principle、Phase Acceptance Criteria |
 
@@ -565,6 +586,6 @@ L2 規劃
 | 項目 | 狀態 |
 |------|------|
 | **文件狀態** | Draft — 待審核 |
-| **測試實作狀態** | Phase 1～4.2 **PASS**；Phase 5 未開始 |
+| **測試實作狀態** | Phase 1～4.2 **PASS**；Phase 5 Test Matrix **已定義**（待實作） |
 | **前置文件** | Implementation Plan 已 commit |
 | **Pilot** | `travel_b`（`5f99b8d665e8444d`） |

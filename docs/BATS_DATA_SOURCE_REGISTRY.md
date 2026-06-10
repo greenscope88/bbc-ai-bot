@@ -27,6 +27,7 @@
 | §8 | Anti Hardcode Rule |
 | §9 | Shared Layer Structure |
 | §10 | Future Roadmap |
+| §10.5 | Phase 6 Planning — Future Drive Source Registry |
 
 ---
 
@@ -826,6 +827,62 @@ Source Registry
 | per-industry BDS 管線 fork | 違反 §4.5、§10.1 |
 | 未修訂 SSOT 前新增 Registry 欄位為正式必填 | 須先修訂本文件 |
 
+### 10.5 Phase 6 Planning — Future Drive Source Registry
+
+> **Status: Planned for Phase 6**  
+> **本節為 Planning；尚未生效。**  
+> **不修改現有 Registry JSON Schema；不新增 `private_drive_folder_id` 為正式必填欄位。**
+
+#### 10.5.1 定位
+
+定義 **Google Drive Connector Framework** 之概念模型，供 Phase 6 實作前對齊；與 Phase 5 **Structured Sheet → GCS** 管線 **分離**。
+
+#### 10.5.2 Drive Source Model — Google Drive（Unstructured Data）
+
+| 項目 | 說明 |
+|------|------|
+| **資料型態** | **Unstructured Data**（Content First） |
+| **允許檔案類型** | PDF、Image、Excel、Word、PowerPoint |
+| **與 Sheet 分工** | Sheet = Structured（`tenant_private_knowledge`）；Drive = Unstructured（Phase 6+） |
+| **BDS v1 MVP** | **不實作** Drive API；本節僅框架 |
+
+```text
+Google Drive（Unstructured）
+        ↓
+Drive Connector（Phase 6 — Planned）
+        ↓
+Archive / 轉換管線（待 Phase 6 細化）
+        ↓
+GCS Knowledge Layer（受控路徑；非 Phase 5 範圍）
+```
+
+#### 10.5.3 Tenant Folder Model
+
+| 原則 | 說明 |
+|------|------|
+| **One Tenant One Folder** | 每個 Tenant 對應 **一個** 專屬 Drive Folder |
+| **Folder Default = Private** | 預設 Private；見 `BATS_DATA_OWNERSHIP_POLICY.md` §2.5、§2.6 |
+| **禁止跨 Tenant 共用 Folder** | 違反 Tenant Isolation |
+| **Shared Layer** | 須透過 **明確 Policy** 啟用；不得隱式公開 |
+
+#### 10.5.4 與現有 Registry 邊界
+
+| 項目 | Phase 6 Planning | 現行 Registry v1 |
+|------|------------------|------------------|
+| **`private_knowledge_sheet_id`** | 不變 | **維持** Structured Sheet SSOT |
+| **`private_drive_folder_id`** | **未引入** | 本節 **不新增** 正式欄位 |
+| **Registry JSON Schema** | **不修改** | 維持現行結構 |
+| **生效時機** | Phase 6 實作前另開 SSOT 修訂 | — |
+
+#### 10.5.5 明確不做（Planning 階段）
+
+| 不做 | 說明 |
+|------|------|
+| Google Drive API 實作 | 僅文件框架 |
+| RAG / Vector 索引 | 未納入 |
+| Cron / LINE OA | 非本框架範圍 |
+| 修改 `private_knowledge_sheet_id` 語意 | Sheet 仍為 Structured SSOT |
+
 ---
 
 ## 相關文件
@@ -844,6 +901,7 @@ Source Registry
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.4** | 2026-06-09 | 新增 §10.5 Phase 6 Planning — Future Drive Source Registry（Framework only；Schema 不變） |
 | **v1.3** | 2026-06-08 | `private_knowledge_sheet_id` cross-ref `BATS_DATA_CONTRACT.md`；Registry / Contract 職責分工 |
 | **v1.2** | 2026-06-08 | 新增 §4 Knowledge Layer Architecture（Tenant / Industry / Global 三層）、§4.2 產業範例、§4.4 Resolution Order、§4.5 產業擴展 |
 | **v1.1** | 2026-06-08 | Industry Shared Knowledge（travel/hotel/restaurant/global）、`industry_code`、三層 Priority / Override、產業擴展規則 |

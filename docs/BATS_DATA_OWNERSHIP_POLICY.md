@@ -17,6 +17,7 @@
 | §1 | Purpose |
 | §2 | Ownership Layers |
 | §2.5 | Default Access Policy |
+| §2.6 | Google Drive Folder Governance |
 | §3 | Write Boundary |
 | §4 | Override Rule |
 | §5 | BDS Sync Ownership Rule |
@@ -244,6 +245,47 @@ Default = Private（僅 Owner / 明確授權角色可存取）
 | **未登錄 Registry 即共享** | 違反 Registry Driven |
 | **租戶自行開放他社可讀** | 違反 Tenant Isolation（`BATS_DATA_SYNC_POLICY.md` §10） |
 | **將 Shared Layer 等同 Public Layer** | 違反 `BATS_TENANT_DATA_CLASSIFICATION.md` §1.6.2 |
+
+---
+
+### 2.6 Google Drive Folder Governance
+
+#### 2.6.1 定位
+
+本節補強 **Google Drive 資料夾治理原則**，供 Phase 6 Drive Connector Framework 對齊；與 §2.5 Default Access Policy **互補**。**Phase 6 前不引入 `private_drive_folder_id`。**
+
+#### 2.6.2 正式原則
+
+| 原則 | 說明 |
+|------|------|
+| **One Tenant One Folder** | 每個 Tenant **僅對應一個** 專屬 Drive Folder；禁止多租戶共用同一 Folder |
+| **Folder Default = Private** | 新建或未明確政策前，Folder **預設 Private** |
+| **禁止跨 Tenant 共用 Folder** | 違反 Tenant Isolation；見 `BATS_DATA_SYNC_POLICY.md` §10 |
+| **Shared Layer 須明確 Policy 啟用** | 產業／全球 Shared 資料夾 **不得** 僅因命名或路徑慣例視為可跨租戶讀取 |
+
+```text
+Tenant A ──→ Drive Folder A（Private）
+Tenant B ──→ Drive Folder B（Private）
+        ✗
+禁止 Tenant A / B 共用同一 Folder
+```
+
+#### 2.6.3 與 Registry / Phase 邊界
+
+| 項目 | 規則 |
+|------|------|
+| **Registry 登錄** | Drive Folder 正式 ID **待 Phase 6**；現行不新增 `private_drive_folder_id` |
+| **Structured Sheet** | `private_knowledge_sheet_id` 語意 **不變** |
+| **BDS Phase 5** | **不** 存取 Google Drive |
+| **Framework SSOT** | `BATS_DATA_SOURCE_REGISTRY.md` §10.5 |
+
+#### 2.6.4 禁止行為
+
+| 禁止 | 說明 |
+|------|------|
+| **跨 Tenant 共用 Drive Folder** | 資料隔離違規 |
+| **未經 Policy 啟用 Shared 可見性** | 違反 Explicit Share 路徑（§2.5.3） |
+| **將 Drive Folder 預設設為公開連結** | 違反 Default Private |
 
 ---
 
@@ -584,6 +626,7 @@ L2+ 實作文件、程式
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.2** | 2026-06-09 | 新增 §2.6 Google Drive Folder Governance（One Tenant One Folder；Phase 6 對齊） |
 | **v1.1** | 2026-06-09 | 新增 §2.5 Default Access Policy：Drive Folder Default Private、Explicit Share 啟用路徑 |
 | **v1.0** | 2026-06-08 | 第一版：三層 Ownership、Write Boundary、Override Rule、BDS v1 Sync 範圍、Industry Expansion |
 

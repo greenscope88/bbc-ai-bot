@@ -24,6 +24,7 @@
 | §8 | Do Not Do List |
 | §9 | Cross References |
 | §10 | Phase 4 Verification Record |
+| §11 | Phase 5 Safety Boundary |
 
 ---
 
@@ -614,10 +615,69 @@ C:/Web/xampp/php/php.exe tests/bds/test_bds_google_sheet_pipeline_dry_run.php
 
 ---
 
+## 11. Phase 5 Safety Boundary
+
+### 11.1 定位
+
+本節定義 **BDS Phase 5 GCS Writer Controlled Mode** 之維運安全邊界；實作前須與 `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` Phase 5、`BATS_DATA_SYNC_POLICY.md` §14 Safety Rule 對齊。
+
+### 11.2 核心規則
+
+```text
+Validation Fail
+        ↓
+不寫 GCS（零 promote）
+        ↓
+保留 GCS 既有正式 JSON
+```
+
+| 規則 | 說明 |
+|------|------|
+| **Validation Fail → 不寫 GCS** | 任一 `BDC_*` 錯誤 → 禁止寫入 `tenants/{sno}/knowledge/` |
+| **雙重門禁** | `BDS_DRY_RUN=true` 或 `BDS_GCS_WRITE_ENABLED=false` → 零 GCS 寫入 |
+| **單一 tenant** | `BDS_TARGET_SNO` 須與 Registry / CLI `--sno` 一致 |
+
+### 11.3 僅允許寫入路徑
+
+| 允許 | 路徑 |
+|------|------|
+| **Tenant Private Knowledge** | `tenants/{sno}/knowledge/` 下 5 JSON |
+
+**正式檔名：** `company_profile.json`、`service_qa.json`、`external_product_links.json`、`service_items.json`、`special_prices.json`
+
+### 11.4 明確禁止（Phase 5）
+
+| 禁止 | 說明 |
+|------|------|
+| **`shared/`** | 禁止寫入任何 Shared Layer 路徑 |
+| **Google Drive** | Phase 5 不呼叫 Drive API；不寫入 Drive |
+| **Delete Object** | 禁止以刪除 GCS 物件作為同步或 rollback 預設手段 |
+| **跨 tenant 路徑** | 禁止寫入 `tenants/{other_sno}/` |
+| **未驗證 promote** | 禁止跳過 Validator 直接寫 GCS |
+
+### 11.5 與 Phase 4 dry-run 差異
+
+| 項目 | Phase 4.2 dry-run | Phase 5 GCS Write |
+|------|-------------------|-------------------|
+| **輸出位置** | `tests/bds/output/tenants/{sno}/` | `gs://{bucket}/tenants/{sno}/knowledge/` |
+| **預設** | 允許（本機） | **拒絕**（須明確啟用 flag） |
+| **Validation Fail** | 不產 knowledge JSON | 不寫 GCS |
+
+### 11.6 相關文件
+
+| 文件 | 章節 |
+|------|------|
+| `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` | Phase 5 |
+| `BATS_DATA_SYNC_TEST_PLAN.md` | Phase 5 Test Matrix |
+| `BATS_DATA_OWNERSHIP_POLICY.md` | §3 Write Boundary |
+
+---
+
 ## 版本紀錄
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.2** | 2026-06-09 | 新增 §11 Phase 5 Safety Boundary |
 | **v1.1** | 2026-06-09 | 新增 §10 Phase 4 Verification Record（Live Read + Pipeline Dry-run PASS） |
 | **v1.0** | 2026-06-08 | 第一版：手動同步流程、Checklist、失敗處理、Rollback、Reports、Do Not Do List |
 
