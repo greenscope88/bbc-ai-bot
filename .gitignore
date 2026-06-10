@@ -55,6 +55,7 @@ db/sync_schema.ps1
 # =========================
 node_modules/
 vendor/
+composer.phar
 
 # =========================
 # 🧰 DEV TOOLS ONLY

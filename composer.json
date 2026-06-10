@@ -1,0 +1,25 @@
+{
+  "name": "bbc-ai-bot/bbc-ai-bot",
+  "description": "BBC AI Bot - BDS Google Sheet Reader dependencies",
+  "require": {
+    "php": "^7.4",
+    "google/apiclient": "2.16.1"
+  },
+  "config": {
+    "platform": {
+      "php": "7.4.33"
+    },
+    "sort-packages": true,
+    "audit": {
+      "ignore": ["PKSA-y2cr-5h3j-g3ys"]
+    }
+  },
+  "scripts": {
+    "pre-autoload-dump": "Google\\Task\\Composer::cleanup"
+  },
+  "extra": {
+    "google/apiclient-services": [
+      "Sheets"
+    ]
+  }
+}
