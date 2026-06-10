@@ -2,6 +2,10 @@
 # =========================
 # 🔐 Secrets
 # =========================
+# Local secrets / Google service account keys
+secrets/
+*.service-account.json
+*-service-account.json
 .env
 .env.*
 *.key
