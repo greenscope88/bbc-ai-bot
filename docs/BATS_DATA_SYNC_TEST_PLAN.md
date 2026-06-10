@@ -254,6 +254,29 @@ T-Phase5-05 ──→ Drive 隔離
 
 > Phase 5 測試須在 **controlled test** 環境執行；預設 `BDS_DRY_RUN=true`。
 
+#### Phase 5D — Read-back Verification
+
+| Test ID | 名稱 | 驗證項 | 預期結果 |
+|---------|------|--------|----------|
+| **T-Phase5D-01** | objects.list | prefix `tenants/{sno}/knowledge/` | HTTP 200；5 物件 |
+| **T-Phase5D-02** | Read-back | 逐一 `objects.get` | 5 JSON 可讀回 |
+| **T-Phase5D-03** | Schema | `tenant_sno` / `data_category` / `schema_version` | 全部通過 |
+| **T-Phase5D-04** | Path Boundary | 無 `shared/` / `shared_knowledge/` | 全部通過 |
+| **T-Phase5D-05** | Safety | 無 delete / Drive / `private_drive_folder_id` | 全部通過 |
+
+**測試指令：** `tests/bds/test_bds_gcs_readback_verification.php`（**唯讀**）
+
+**Close-out 產物：** `tests/bds/output/phase5_closeout_report.json`
+
+#### Phase 6 前提醒（Google Drive Folder Governance）
+
+| 原則 | 說明 |
+|------|------|
+| **一旅行社一專屬 Folder** | 每 Tenant 一個 Google Drive Folder |
+| **營運帳號** | `bbcshops88@gmail.com` Google Drive |
+| **Default Private** | Folder 預設 Private |
+| **禁止提前新增** | **不得** 於 Registry Schema 新增 `private_drive_folder_id` |
+
 ---
 
 ### Phase 6 — Manual Sync Command
@@ -491,13 +514,17 @@ T-Phase5-05 ──→ Drive 隔離
 
 ### Phase 5 — GCS Writer Controlled Mode ✅
 
-| # | 條件 |
-|---|------|
-| 1 | T-05 通過（GCS 真實或 mock 儲存體） |
-| 2 | `dry_run=true` → 零寫入 |
-| 3 | flag 關閉 → 拒絕寫入 |
-| 4 | flag 開啟 + validation pass → 5 JSON 寫入 `tenants/{sno}/knowledge/` |
-| 5 | 不寫入 `shared/` |
+| # | 條件 | 狀態 |
+|---|------|------|
+| 1 | T-Phase5-01～05 通過 | ✅ |
+| 2 | `dry_run=true` → 零寫入（5A） | ✅ |
+| 3 | 雙重門禁關閉 → 拒絕寫入 | ✅ |
+| 4 | 雙重門禁開啟 + validation pass → 5 JSON 寫入 GCS（5C） | ✅ |
+| 5 | 不寫入 `shared/` | ✅ |
+| 6 | GCS Preflight `objects.list` 200（5B） | ✅ |
+| 7 | Read-back Verification 5 物件（5D） | ✅ |
+
+**Phase 5 狀態：** **Completed** ✅
 
 ---
 
@@ -575,6 +602,7 @@ L2 規劃
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.3** | 2026-06-10 | Phase 5 Close-out：5D Read-back Verification + Completed 標記 |
 | **v1.2** | 2026-06-09 | 新增 Phase 5 Test Matrix（T-Phase5-01～05） |
 | **v1.1** | 2026-06-09 | Phase 4 Close-out：§4.1 Live Read、§4.2 Integration Dry-run PASS |
 | **v1.0** | 2026-06-08 | 第一版：BDS v1 測試範圍、Required Tests T-01～T-10、Minimal Test Principle、Phase Acceptance Criteria |
@@ -586,6 +614,6 @@ L2 規劃
 | 項目 | 狀態 |
 |------|------|
 | **文件狀態** | Draft — 待審核 |
-| **測試實作狀態** | Phase 1～4.2 **PASS**；Phase 5 Test Matrix **已定義**（待實作） |
+| **測試實作狀態** | Phase 1～5 **PASS**（含 5A～5D）；Phase 6 未開始 |
 | **前置文件** | Implementation Plan 已 commit |
 | **Pilot** | `travel_b`（`5f99b8d665e8444d`） |

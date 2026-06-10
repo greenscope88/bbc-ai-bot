@@ -25,6 +25,7 @@
 | §9 | Cross References |
 | §10 | Phase 4 Verification Record |
 | §11 | Phase 5 Safety Boundary |
+| §12 | Phase 5 Close-out Verification Record |
 
 ---
 
@@ -673,10 +674,83 @@ Validation Fail
 
 ---
 
+## 12. Phase 5 Close-out Verification Record
+
+### 12.1 定位
+
+本節記錄 **BDS Phase 5 GCS Writer Controlled Mode**（5A～5D）之受控驗證與 **Read-back Verification** 結果；標記 Phase 5 **Completed**。**非** Production 排程同步紀錄。
+
+### 12.2 驗證環境
+
+| 項目 | 值 |
+|------|-----|
+| **主機** | 主機 A `103.1.222.14` |
+| **專案路徑** | `C:/bbc-ai-bot` |
+| **Pilot Tenant** | `travel_b`（`sno`: `5f99b8d665e8444d`） |
+| **GCS Bucket** | `bbc-ai-saas-data` |
+| **GCS Prefix** | `tenants/5f99b8d665e8444d/knowledge/` |
+| **認證** | Service Account `bbc-ai-sync@bbc-ai-saas-platform.iam.gserviceaccount.com` |
+| **IAM** | Bucket 層級 **Storage Object Admin** |
+
+### 12.3 Phase 5 里程碑
+
+| 子階段 | 結果 | 說明 |
+|--------|------|------|
+| **5A Controlled Preview** | **PASS** ✅ | Upload Plan / Payload Preview；零 GCS 寫入 |
+| **5B GCS Preflight** | **PASS** ✅ | SA token；`objects.list` HTTP 200 |
+| **5C Controlled Real Write** | **PASS** ✅ | 5 JSON 首次寫入 GCS |
+| **5D Read-back Verification** | **PASS** ✅ | `objects.list` 5 物件；逐一 read-back + Schema |
+
+**整體結果：** **PASS** ✅ — Phase 5 **Completed**
+
+### 12.4 GCS 物件驗證（Phase 5D）
+
+| 物件 | Read-back | Schema | 路徑 |
+|------|-----------|--------|------|
+| `company_profile.json` | **PASS** | **PASS** | `tenants/5f99b8d665e8444d/knowledge/` |
+| `service_qa.json` | **PASS** | **PASS** | 同上 |
+| `external_product_links.json` | **PASS** | **PASS** | 同上 |
+| `service_items.json` | **PASS** | **PASS** | 同上（`items[]` 目前為空；結構有效） |
+| `special_prices.json` | **PASS** | **PASS** | 同上 |
+
+### 12.5 驗證產物（本機）
+
+| 類型 | 路徑（概念） | 說明 |
+|------|--------------|------|
+| Close-out Report | `tests/bds/output/phase5_closeout_report.json` | Phase 5D 彙總 |
+| Write Report | `tests/bds/output/tenants/{sno}/gcs/write_report.json` | Phase 5C 寫入紀錄 |
+| Rollback Backup | `tests/bds/output/tenants/{sno}/gcs/rollback_backup/` | 寫入前既有物件備份（若有） |
+
+### 12.6 相關測試指令（維運參考）
+
+```bash
+# Phase 5A Controlled Preview
+C:/Web/xampp/php/php.exe tests/bds/test_bds_gcs_writer.php
+
+# Phase 5C Controlled Real Write（須雙重門禁環境變數）
+C:/Web/xampp/php/php.exe tests/bds/test_bds_gcs_real_write.php
+
+# Phase 5D Read-back Verification（唯讀）
+C:/Web/xampp/php/php.exe tests/bds/test_bds_gcs_readback_verification.php
+```
+
+### 12.7 Phase 6 前提醒（Google Drive Folder Governance）
+
+| 原則 | 說明 |
+|------|------|
+| **一旅行社一專屬 Folder** | 每 Tenant 一個 Google Drive Folder |
+| **營運帳號** | 目前使用 `bbcshops88@gmail.com` Google Drive |
+| **Default Private** | Folder 預設 Private |
+| **禁止提前新增 Registry 欄位** | **不得** 新增 `private_drive_folder_id` 至 Registry JSON Schema |
+| **Framework** | 見 `BATS_DATA_SOURCE_REGISTRY.md` §10.5 |
+
+---
+
 ## 版本紀錄
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.3** | 2026-06-10 | 新增 §12 Phase 5 Close-out Verification Record（5A～5D PASS） |
 | **v1.2** | 2026-06-09 | 新增 §11 Phase 5 Safety Boundary |
 | **v1.1** | 2026-06-09 | 新增 §10 Phase 4 Verification Record（Live Read + Pipeline Dry-run PASS） |
 | **v1.0** | 2026-06-08 | 第一版：手動同步流程、Checklist、失敗處理、Rollback、Reports、Do Not Do List |

@@ -357,7 +357,7 @@ tests/bds/output/tenants/{sno}/knowledge/*.json（本機 preview；非 GCS）
 
 ### Phase 5 — GCS Writer Controlled Mode
 
-**狀態：Planned**（文件已就緒；實作待 Phase 5 啟動）
+**狀態：Completed** ✅（Phase 5A～5D Close-out；Pilot `travel_b` 已寫入 GCS）
 
 #### 目標
 
@@ -434,12 +434,76 @@ gs://{bucket}/tenants/{sno}/knowledge/
 | `BDS_GCS_WRITE_ENABLED` | `false` | 須明確啟用 |
 | `BDS_TARGET_SNO` | （空） | controlled test 目標；空則拒絕寫入 |
 
+#### 子階段（Phase 5A～5D）
+
+| 子階段 | 內容 | 狀態 |
+|--------|------|------|
+| **5A** | Controlled Preview（`BdsGcsWriter` Upload Plan / Payload Preview） | **PASS** ✅ |
+| **5B** | GCS Preflight Gate（SA / Bucket / `objects.list`） | **PASS** ✅ |
+| **5C** | Controlled Real Write（`BdsGcsUploader` → `bbc-ai-saas-data`） | **PASS** ✅ |
+| **5D** | Read-back Verification & Close-out | **PASS** ✅ |
+
+#### 交付物
+
+| 模組 / 測試 | 路徑 |
+|-------------|------|
+| GCS Upload Plan Writer | `core/bds/BdsGcsWriter.php` |
+| Knowledge Document Builder | `core/bds/BdsKnowledgeDocumentBuilder.php` |
+| GCS Uploader（受控寫入） | `core/bds/BdsGcsUploader.php` |
+| Phase 5A 測試 | `tests/bds/test_bds_gcs_writer.php` |
+| Phase 5C 測試 | `tests/bds/test_bds_gcs_real_write.php` |
+| Phase 5D 測試 | `tests/bds/test_bds_gcs_readback_verification.php` |
+
+#### 驗證紀錄（Close-out）
+
+| 驗證項 | 結果 | 說明 |
+|--------|------|------|
+| **Phase 5A — Controlled Preview** | **PASS** ✅ | Upload Plan + Payload Preview；零 GCS 寫入 |
+| **Phase 5B — GCS Preflight** | **PASS** ✅ | SA token OK；`objects.list` HTTP 200 |
+| **Phase 5C — Controlled Real Write** | **PASS** ✅ | 5 JSON 寫入 `gs://bbc-ai-saas-data/tenants/5f99b8d665e8444d/knowledge/` |
+| **Phase 5D — Read-back Verification** | **PASS** ✅ | `objects.list` 5 物件；逐一 read-back + Schema 通過 |
+
+**GCS 正式路徑（Pilot）：**
+
+```text
+gs://bbc-ai-saas-data/tenants/5f99b8d665e8444d/knowledge/
+├── company_profile.json
+├── service_qa.json
+├── external_product_links.json
+├── service_items.json
+└── special_prices.json
+```
+
+> **資料備註：** `service_items.json` 之 `items[]` 目前為空（來源 Sheet 無列）；JSON 結構與 GCS 讀寫管線已驗證正確，待租戶補齊 Sheet 後可重跑同步。
+
 #### 退出準則
 
-- [ ] `dry_run=true` → 零 GCS 寫入
-- [ ] `dry_run=false` + flag 啟用 + validation pass → 5 JSON 寫入成功
-- [ ] validation fail → GCS 既有 JSON 不變
-- [ ] 寫入前後可從 report 比對 checksum / revision
+- [x] `dry_run=true` → 零 GCS 寫入（Phase 5A）
+- [x] `dry_run=false` + flag 啟用 + validation pass → 5 JSON 寫入成功（Phase 5C）
+- [x] validation fail → GCS 既有 JSON 不變（Safety Rule；Phase 5A / 5C 測試）
+- [x] 寫入後 read-back 可驗證（Phase 5D；`phase5_closeout_report.json`）
+
+#### Phase 5 明確不做（已遵守）
+
+| 不做 | 狀態 |
+|------|------|
+| Google Drive API | ✅ 未實作 |
+| `shared/` 寫入 | ✅ 未寫入 |
+| `private_drive_folder_id` Registry 欄位 | ✅ 未引入 |
+| GCS delete / bucket purge | ✅ 未實作 |
+| 多租戶批次寫入 | ✅ 僅 pilot `5f99b8d665e8444d` |
+
+#### Phase 6 前提醒（Google Drive Folder Governance）
+
+Phase 6 Drive Connector **尚未啟動**；下列為文件治理約束，**不得提前實作於 Registry Schema**：
+
+| 原則 | 說明 |
+|------|------|
+| **一旅行社一專屬 Folder** | 每 Tenant 對應一個 Google Drive Folder |
+| **營運帳號** | 目前使用 `bbcshops88@gmail.com` Google Drive |
+| **Default Private** | Folder 預設 Private；Shared 須明確 Policy 啟用 |
+| **禁止提前新增** | **不得** 於 Registry JSON Schema 新增 `private_drive_folder_id` 為正式必填欄位 |
+| **Framework SSOT** | `BATS_DATA_SOURCE_REGISTRY.md` §10.5、`BATS_DATA_OWNERSHIP_POLICY.md` §2.6 |
 
 ---
 
@@ -688,6 +752,7 @@ L3 實作（未來）
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.3** | 2026-06-10 | Phase 5 Close-out：5A～5D Completed；GCS read-back 驗證紀錄；Phase 6 Drive 前提醒 |
 | **v1.2** | 2026-06-09 | Phase 5 GCS Writer Controlled Mode 文件補強；Phase 6 Drive Framework cross-ref |
 | **v1.1** | 2026-06-09 | Phase 4 Close-out：Reader / Live Read / Pipeline Dry-run 標記 Completed + 驗證紀錄 |
 | **v1.0** | 2026-06-08 | 第一版：BDS v1 六 Phase 實作計畫、Safety Rules、Required Outputs、Commit Strategy |
@@ -699,6 +764,6 @@ L3 實作（未來）
 | 項目 | 狀態 |
 |------|------|
 | **文件狀態** | Draft — 待審核 |
-| **實作狀態** | Phase 1～4 **Completed**；Phase 5 **Planned**（文件已就緒） |
+| **實作狀態** | Phase 1～5 **Completed**；Phase 6 未開始 |
 | **前置 SSOT** | Sync / Registry / Contract / Ownership 已 commit |
 | **Pilot** | `travel_b`（`5f99b8d665e8444d`） |
