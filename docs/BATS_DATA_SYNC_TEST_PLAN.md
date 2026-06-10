@@ -168,6 +168,52 @@
 
 ---
 
+### Phase 4.1 — Live Read ✅
+
+| 項目 | 說明 |
+|------|------|
+| **目標** | Service Account 實際讀取 Pilot private knowledge Google Sheet |
+| **測試** | `tests/bds/test_bds_google_sheet_reader.php`（live 分支） |
+| **環境** | `BDS_TEST_PRIVATE_KNOWLEDGE_SHEET_ID`、`BDS_GOOGLE_APPLICATION_CREDENTIALS` |
+| **結果** | **PASS** ✅ — 5 Required Tabs 可讀；缺 tab 不 fatal |
+
+---
+
+### Phase 4.2 — Integration Dry-run ✅
+
+| 項目 | 說明 |
+|------|------|
+| **目標** | 真實 Google Sheet 串接完整本機 dry-run 管線 |
+| **管線** | Google Sheet → Reader → Parser → Validator → JSON Writer |
+| **測試** | `tests/bds/test_bds_google_sheet_pipeline_dry_run.php` |
+| **環境** | `BDS_TEST_PRIVATE_KNOWLEDGE_SHEET_ID`、`BDS_TEST_TENANT_SNO`、`BDS_GOOGLE_APPLICATION_CREDENTIALS` |
+| **成功產物** | `tests/bds/output/tenants/{sno}/knowledge/*.json`（5 檔）+ reports |
+| **失敗產物** | `error_report.json`；**不** promote knowledge JSON |
+| **結果** | **PASS** ✅ |
+
+```text
+Google Sheet
+    ↓
+BdsGoogleSheetReader
+    ↓
+BdsMockSheetParser
+    ↓
+BdsValidator
+    ↓
+BdsJsonWriter（dry_run=true）
+```
+
+#### Phase 4.2 不測什麼
+
+| 排除 | 說明 |
+|------|------|
+| GCS 寫入 | Phase 5 |
+| Google Drive API | Phase 6 |
+| Shared Layer | v1 Out of Scope |
+| `private_drive_folder_id` | 延後 Phase 6 |
+
+---
+
 ### Phase 5 — GCS Writer Controlled Mode
 
 #### 測什麼
@@ -411,12 +457,15 @@
 
 ### Phase 4 — Google Sheet Reader ✅
 
-| # | 條件 |
-|---|------|
-| 1 | T-10 通過（Registry 載入） |
-| 2 | T-09 通過（無 hardcode Sheet ID） |
-| 3 | 讀取 5 tabs 後可接 Phase 2 Validator |
-| 4 | 讀取失敗有明確錯誤分類 |
+| # | 條件 | 狀態 |
+|---|------|------|
+| 1 | Reader 模組 + mock 測試通過 | ✅ |
+| 2 | 讀取 5 tabs 後可接 Phase 2 Validator | ✅ |
+| 3 | 讀取失敗有明確錯誤分類 | ✅ |
+| 4 | Phase 4.1 Live Read **PASS** | ✅ |
+| 5 | Phase 4.2 Pipeline Dry-run **PASS** | ✅ |
+
+> Registry 載入 `private_knowledge_sheet_id`（T-10）於 **Phase 6** Manual Sync 一併驗收；Phase 4 以測試環境變數驗證 Sheet 讀取。
 
 ---
 
@@ -506,6 +555,7 @@ L2 規劃
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.1** | 2026-06-09 | Phase 4 Close-out：§4.1 Live Read、§4.2 Integration Dry-run PASS |
 | **v1.0** | 2026-06-08 | 第一版：BDS v1 測試範圍、Required Tests T-01～T-10、Minimal Test Principle、Phase Acceptance Criteria |
 
 ---
@@ -515,6 +565,6 @@ L2 規劃
 | 項目 | 狀態 |
 |------|------|
 | **文件狀態** | Draft — 待審核 |
-| **測試實作狀態** | 未開始 |
+| **測試實作狀態** | Phase 1～4.2 **PASS**；Phase 5 未開始 |
 | **前置文件** | Implementation Plan 已 commit |
 | **Pilot** | `travel_b`（`5f99b8d665e8444d`） |

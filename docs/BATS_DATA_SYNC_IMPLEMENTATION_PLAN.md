@@ -135,14 +135,14 @@ Manual Sync Command + Reports（Phase 6）
 
 ### 3.0 Phase 總覽
 
-| Phase | 名稱 | 連線 | 寫入 GCS |
-|-------|------|------|----------|
-| **1** | Local Mock Parser | 無 | 否 |
-| **2** | Validator | 無 | 否 |
-| **3** | JSON Writer Dry-run | 無 | 否（本機 preview） |
-| **4** | Google Sheet Reader | Google API（唯讀） | 否 |
-| **5** | GCS Writer Controlled Mode | Google API + GCS | 是（受控） |
-| **6** | Manual Sync Command | 完整管線 | 是（手動觸發） |
+| Phase | 名稱 | 連線 | 寫入 GCS | 狀態 |
+|-------|------|------|----------|------|
+| **1** | Local Mock Parser | 無 | 否 | **Completed** ✅ |
+| **2** | Validator | 無 | 否 | **Completed** ✅ |
+| **3** | JSON Writer Dry-run | 無 | 否（本機 preview） | **Completed** ✅ |
+| **4** | Google Sheet Reader | Google API（唯讀） | 否 | **Completed** ✅ |
+| **5** | GCS Writer Controlled Mode | Google API + GCS | 是（受控） | 規劃中 |
+| **6** | Manual Sync Command | 完整管線 | 是（手動觸發） | 規劃中 |
 
 ```text
 Phase 1 ──→ Phase 2 ──→ Phase 3
@@ -288,6 +288,8 @@ preview/
 
 ### Phase 4 — Google Sheet Reader
 
+**狀態：Completed** ✅（2026-06-09 Close-out）
+
 #### 目標
 
 以 **唯讀** 方式連接 Google Sheet，取代 mock 輸入。
@@ -313,15 +315,43 @@ preview/
 
 #### 交付物
 
-- Sheet Reader 模組
-- Registry 整合（讀 `private_knowledge_sheet_id`）
-- 連線與讀取測試（可 mock API 於 CI）
+- Sheet Reader 模組 — `core/bds/BdsGoogleSheetReader.php` ✅
+- 連線與讀取測試 — `tests/bds/test_bds_google_sheet_reader.php` ✅
+- Pipeline Dry-run 整合測試 — `tests/bds/test_bds_google_sheet_pipeline_dry_run.php` ✅
+- Registry 整合（讀 `private_knowledge_sheet_id`）— **Phase 6** 手動同步命令一併交付；Phase 4 以環境變數／測試參數驗證
+
+#### 驗證紀錄（Close-out）
+
+| 驗證項 | 結果 | 說明 |
+|--------|------|------|
+| **Phase 4 — Google Sheet Reader** | **PASS** ✅ | Service Account + Sheets API 唯讀；5 Required Tabs |
+| **Phase 4.1 — Live Read** | **PASS** ✅ | Pilot `travel_b` private knowledge sheet；5 tabs 可讀 |
+| **Phase 4.2 — Pipeline Dry-run** | **PASS** ✅ | Reader → Parser → Validator → JsonWriter；本機 5 JSON preview |
+
+```text
+Google Sheet
+    ↓
+BdsGoogleSheetReader（Phase 4）
+    ↓
+BdsMockSheetParser → BdsValidator → BdsJsonWriter dry-run（Phase 1～3）
+    ↓
+tests/bds/output/tenants/{sno}/knowledge/*.json（本機 preview；非 GCS）
+```
 
 #### 退出準則
 
-- [ ] 從 Registry 指定 Sheet 讀取 5 tabs 成功
-- [ ] 讀取結果經 Validator 可產出 5 JSON preview
-- [ ] 讀取失敗有明確錯誤分類（對齊 §14.2 E1）
+- [x] 從指定 Sheet 讀取 5 tabs 成功（Phase 4.1 Live Read）
+- [x] 讀取結果經 Validator 可產出 5 JSON preview（Phase 4.2 Pipeline Dry-run）
+- [x] 讀取失敗有明確錯誤分類（Validator `BDC_*`；Safety Rule 不 promote JSON）
+
+#### Phase 4 明確不做（已遵守）
+
+| 不做 | 狀態 |
+|------|------|
+| GCS 寫入 | ✅ 未實作 |
+| Google Drive API | ✅ 未實作 |
+| Shared Layer Sheet | ✅ 未處理 |
+| `private_drive_folder_id` | ✅ 未引入（延後 Phase 6） |
 
 ---
 
@@ -614,6 +644,7 @@ L3 實作（未來）
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.1** | 2026-06-09 | Phase 4 Close-out：Reader / Live Read / Pipeline Dry-run 標記 Completed + 驗證紀錄 |
 | **v1.0** | 2026-06-08 | 第一版：BDS v1 六 Phase 實作計畫、Safety Rules、Required Outputs、Commit Strategy |
 
 ---
@@ -623,6 +654,6 @@ L3 實作（未來）
 | 項目 | 狀態 |
 |------|------|
 | **文件狀態** | Draft — 待審核 |
-| **實作狀態** | 未開始（Phase 1） |
+| **實作狀態** | Phase 1～4 **Completed**；Phase 5 未開始 |
 | **前置 SSOT** | Sync / Registry / Contract / Ownership 已 commit |
 | **Pilot** | `travel_b`（`5f99b8d665e8444d`） |

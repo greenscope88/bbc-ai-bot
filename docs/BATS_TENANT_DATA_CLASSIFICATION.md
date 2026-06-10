@@ -16,6 +16,7 @@
 |------|------|
 | §1 | Purpose |
 | §1.6 | Knowledge Layer Model（Private + Shared） |
+| §1.7 | BDS Data Input Strategy |
 | §2 | Category A：Itinerary Data |
 | §3 | Category B：Knowledge Data（BDS） |
 | §4 | Category C：Traveler Registration Data |
@@ -48,6 +49,7 @@
 | 與既有 BDS `data_category` 如何對照？ | §1.3 |
 | Private Layer 與 Shared Layer 如何分工？ | §1.6 |
 | Shared Layer 是否等於公開資料？ | §1.6 |
+| Google Sheet 與 Google Drive 輸入策略？ | §1.7 |
 
 ### 1.3 與 `BATS_DATA_SYNC_POLICY.md` §12 對照
 
@@ -71,7 +73,7 @@ Tenant Private Data（本文件）
 | 原則 | 說明 |
 |------|------|
 | **分流不混流** | A / B / C 不得寫入同一 GCS 路徑或同一 JSON schema |
-| **BDS v1 僅 B** | BDS Phase 1～3 僅處理 Category B 之 `tenant_private_knowledge` |
+| **BDS v1 僅 B** | BDS Phase 1～4 僅處理 Category B 之 `tenant_private_knowledge`（Sheet Reader）；GCS 寫入 Phase 5+ |
 | **C 禁止進 BDS** | 旅客報名 PII 不得進入 BDS Knowledge 管線 |
 | **A 下一階段** | Itinerary 保留給 product / search 管線，非 BDS v1 |
 
@@ -143,6 +145,57 @@ Tenant Private Data（本文件）
 | **Category B — Tenant Private** | Private Layer（`tenant_private_knowledge`） |
 | **Category B — Shared fallback** | Shared Layer（`shared_knowledge`） |
 | Category A / C | **不適用** Private + Shared Layer Model |
+
+### 1.7 BDS Data Input Strategy
+
+本節定義 **Category B（Knowledge）** 與 **Category A（Itinerary）** 之 **輸入載體策略**；與 Private / Shared Layer（§1.6）正交。
+
+#### 1.7.1 總覽
+
+```text
+BDS Data Input Strategy
+├── Google Sheet     →  Structured Data（結構化）
+└── Google Drive     →  Unstructured Data（非結構化）
+```
+
+| 載體 | 資料型態 | BDS v1 狀態 | 處理 Phase |
+|------|----------|-------------|------------|
+| **Google Sheet** | **Structured Data** | **Phase 4 已完成**（Reader + Live Read + Pipeline Dry-run） | Phase 4 |
+| **Google Drive** | **Unstructured Data** | **未實作** | **Phase 6** Google Drive Source Connector |
+
+#### 1.7.2 Google Sheet — Structured Data（Contract First）
+
+| 項目 | 規則 |
+|------|------|
+| **定位** | `tenant_private_knowledge` 之 **結構化** 維護入口 |
+| **原則** | **Contract First** — Tab 名稱、Header 名稱須符合 `BATS_DATA_CONTRACT.md` |
+| **Tab Name** | **固定** — 5 Required Tabs（§3.2） |
+| **Header Name** | **固定** — 英文 snake_case only（`BATS_DATA_CONTRACT.md` §1.4 決策 A） |
+| **Data Content** | **可自由填寫** — 在 Contract 約束下由租戶維護內容 |
+| **BDS 管線** | Sheet → Reader → Parser → Validator → JSON（dry-run / 未來 GCS） |
+| **Registry** | `private_knowledge_sheet_id`（見 `BATS_DATA_SOURCE_REGISTRY.md` §7） |
+
+> **Phase 4 Close-out（2026-06）：** Google Sheet Reader、Live Read、Pipeline Dry-run 均已 **PASS**（見 `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §3 Phase 4）。
+
+#### 1.7.3 Google Drive — Unstructured Data（Content First）
+
+| 項目 | 規則 |
+|------|------|
+| **定位** | Archive／協作層；存放 **非結構化** 原始檔 |
+| **原則** | **Content First** — 以檔案內容為主；**不受** `BATS_DATA_CONTRACT.md` Tab／欄位約束 |
+| **允許類型** | PDF、Image（JPG 等）、Excel、Word、PowerPoint 等 |
+| **典型歸類** | Category A Itinerary、Drive Archive；**非** BDS v1 Knowledge JSON 來源 |
+| **BDS v1** | **不處理** Drive 檔案解析與同步 |
+| **未來** | **Phase 6 — Google Drive Source Connector**（Registry 擴充於 Phase 6 前規劃；**不含** `private_drive_folder_id` 直至該階段） |
+
+#### 1.7.4 禁止混淆
+
+| 禁止 | 說明 |
+|------|------|
+| 將 Drive PDF 當 Knowledge Sheet 同步 | Drive 非 Structured Contract 輸入 |
+| 將 Sheet 當 Unstructured 跳過 Validation | Sheet 必須走 Contract |
+| Phase 4 實作 Drive API | Phase 4 僅 Sheets API 唯讀 |
+| 提前引入 `private_drive_folder_id` | 延後至 Phase 6 前 Registry 規劃 |
 
 ---
 
@@ -262,9 +315,12 @@ shared/global/knowledge/             ← shared_knowledge（最終 fallback）
 
 | Phase | 狀態 | 範圍 |
 |-------|------|------|
-| Phase 1～3 | **已完成** | Mock Parser、Validator、JSON Writer Dry-run |
-| Phase 4 | 規劃中 | Google Sheet Reader |
-| Phase 5～6 | 規劃中 | GCS Writer、Manual Sync |
+| Phase 1 | **已完成** ✅ | Mock Parser |
+| Phase 2 | **已完成** ✅ | Validator |
+| Phase 3 | **已完成** ✅ | JSON Writer Dry-run |
+| Phase 4 | **已完成** ✅ | Google Sheet Reader（含 4.1 Live Read、4.2 Pipeline Dry-run） |
+| Phase 5 | 規劃中 | GCS Writer Controlled Mode |
+| Phase 6 | 規劃中 | Manual Sync、Google Drive Source Connector |
 
 ---
 
@@ -482,6 +538,7 @@ L1 SSOT
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.2** | 2026-06-09 | 新增 §1.7 BDS Data Input Strategy（Sheet Structured / Drive Unstructured）；Phase 4 Close-out |
 | **v1.1** | 2026-06-09 | 新增 §1.6 Knowledge Layer Model：Private + Shared、Shared ≠ Public、Default Private、Drive 載體 |
 | **v1.0** | 2026-06-09 | 第一版：Tenant Private Data 三分流 A/B/C、PII Host Boundary、Future Registration Contract |
 
@@ -492,5 +549,5 @@ L1 SSOT
 | 項目 | 狀態 |
 |------|------|
 | **文件狀態** | Draft — 待審核 |
-| **實作狀態** | 分類治理文件；BDS Phase 4 前置 |
+| **實作狀態** | 分類治理文件；BDS Phase 4 Close-out 已納入 §1.7 |
 | **P2 文件** | `BATS_TRAVELER_REGISTRATION_CONTRACT.md` 待 Phase 5 後規劃 |

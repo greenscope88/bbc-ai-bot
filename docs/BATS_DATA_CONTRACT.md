@@ -124,6 +124,33 @@ tenants/{sno}/knowledge/*.json
 BATS 讀取（tenant_private_knowledge）
 ```
 
+### 2.3 BDS Data Input Cross Reference
+
+本 Contract **僅** 約束 **Google Sheet 結構化輸入**；與 `BATS_TENANT_DATA_CLASSIFICATION.md` §1.7 **BDS Data Input Strategy** 對齊。
+
+| 輸入載體 | 資料型態 | 本文件約束 | 處理 Phase |
+|----------|----------|------------|------------|
+| **Google Sheet** | **Structured Data** | **是** — Tab、Header、JSON、Validation 均以本文件為 SSOT | Phase 4 ✅（Reader）；Phase 5+ GCS |
+| **Google Drive** | **Unstructured Data** | **否** — PDF、Image、Excel、Word、PowerPoint 等 **不受** 本 Contract 約束 | **Phase 6** Google Drive Source Connector |
+
+#### Google Sheet = Structured Data Input
+
+| 項目 | 說明 |
+|------|------|
+| **Contract First** | Tab Name、Header Name **固定**；Data Content 可自由填寫 |
+| **適用** | `tenant_private_knowledge` 五 Tab / 五 JSON（§4～§9） |
+| **BDS 管線** | Sheet → `BdsGoogleSheetReader` → Parser → Validator → JSON |
+
+#### Google Drive = Unstructured Data Input
+
+| 項目 | 說明 |
+|------|------|
+| **Content First** | 以檔案內容為主；無本文件 Tab／欄位契約 |
+| **Archive 角色** | 見 `BATS_DATA_SYNC_POLICY.md` §18、§20 |
+| **未來** | Phase 6 Drive Source Connector；**不** 於 Phase 4～5 實作 |
+
+> **Cross Reference：** `BATS_TENANT_DATA_CLASSIFICATION.md` §1.7、`BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` Phase 4 Close-out、`BATS_DATA_SYNC_TEST_PLAN.md` Phase 4.2。
+
 ---
 
 ## 3. Data Category
@@ -728,6 +755,7 @@ tenants/{sno}/knowledge/
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.2** | 2026-06-09 | 新增 §2.3 BDS Data Input Cross Reference（Sheet Structured / Drive Unstructured） |
 | **v1.1** | 2026-06-08 | MVP 決策：英文欄位 only、整檔 Fail、文件邊界；cross-ref Sync / Registry |
 | **v1.0** | 2026-06-08 | 第一版：`tenant_private_knowledge` 五 Tab 五 JSON Contract、Validation、Tenant Isolation |
 

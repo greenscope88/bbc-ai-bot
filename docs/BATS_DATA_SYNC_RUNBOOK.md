@@ -23,6 +23,7 @@
 | §7 | Required Reports |
 | §8 | Do Not Do List |
 | §9 | Cross References |
+| §10 | Phase 4 Verification Record |
 
 ---
 
@@ -556,10 +557,68 @@ L2 規劃 / 維運
 
 ---
 
+## 10. Phase 4 Verification Record
+
+### 10.1 定位
+
+本節記錄 **BDS Phase 4 Google Sheet Reader** 與 **Phase 4.1 Live Read** 之受控驗證結果；供 Phase 5 啟動前稽核。**非** Production 排程同步紀錄。
+
+### 10.2 驗證環境
+
+| 項目 | 值 |
+|------|-----|
+| **主機** | 主機 A `103.1.222.14` |
+| **專案路徑** | `C:/bbc-ai-bot` |
+| **Pilot Tenant** | `travel_b`（`sno`: `5f99b8d665e8444d`） |
+| **Spreadsheet** | travel_b private knowledge sheet（`private_knowledge_sheet_id`） |
+| **認證** | Service Account `bbc-ai-sync@bbc-ai-saas-platform.iam.gserviceaccount.com` |
+| **API 範圍** | Google Sheets API **唯讀** |
+
+### 10.3 Required Tabs 驗證
+
+| Tab | Phase 4.1 Live Read | Phase 4.2 Pipeline Dry-run |
+|-----|---------------------|----------------------------|
+| `company_profile` | **PASS** | **PASS** |
+| `qa` | **PASS** | **PASS** |
+| `external_product_links` | **PASS** | **PASS** |
+| `service_items` | **PASS** | **PASS** |
+| `special_prices` | **PASS** | **PASS** |
+
+**整體結果：** **PASS** ✅
+
+### 10.4 驗證產物（本機）
+
+| 類型 | 路徑（概念） | 說明 |
+|------|--------------|------|
+| Knowledge JSON preview | `tests/bds/output/tenants/{sno}/knowledge/*.json` | Phase 4.2；**非 GCS** |
+| Reports | `tests/bds/output/tenants/{sno}/reports/` | `sync_report.json`、`validation_report.json` |
+
+### 10.5 本階段未執行
+
+| 項目 | 原因 |
+|------|------|
+| GCS 寫入 | Phase 5 |
+| Google Drive API | Phase 6 Drive Source Connector |
+| Shared Layer 讀取 | v1 Out of Scope |
+| `private_drive_folder_id` Registry | 延後 Phase 6 前規劃 |
+
+### 10.6 相關測試指令（維運參考）
+
+```bash
+# Phase 4 Reader（含 mock + 可選 live）
+C:/Web/xampp/php/php.exe tests/bds/test_bds_google_sheet_reader.php
+
+# Phase 4.2 Pipeline Dry-run（需設定 Sheet ID / sno / credentials 環境變數）
+C:/Web/xampp/php/php.exe tests/bds/test_bds_google_sheet_pipeline_dry_run.php
+```
+
+---
+
 ## 版本紀錄
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.1** | 2026-06-09 | 新增 §10 Phase 4 Verification Record（Live Read + Pipeline Dry-run PASS） |
 | **v1.0** | 2026-06-08 | 第一版：手動同步流程、Checklist、失敗處理、Rollback、Reports、Do Not Do List |
 
 ---
