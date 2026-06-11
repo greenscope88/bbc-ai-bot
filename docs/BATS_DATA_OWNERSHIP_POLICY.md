@@ -326,6 +326,8 @@ bbcshops88@gmail.com（Google Drive）
 | 5 | Shared Layer Default Private |
 | 6 | Tenant **不會自動** 使用 Shared；須 Registry + Policy 啟用 |
 | 7 | `travel` 為首個產業；`hotel`、`restaurant`、`beauty`、`education`、`medical` 等適用同架構 |
+| 8 | **Shared 預設不進入 Runtime** | 未 Policy 啟用前 **不** 進 GCS Metadata / Knowledge / Future RAG |
+| 9 | **不得自動同步至所有 Tenant** | Shared 須逐 tenant Policy 啟用 |
 
 #### 2.7.4 與 GCS 邊界（不變）
 
@@ -344,6 +346,8 @@ bbcshops88@gmail.com（Google Drive）
 | **不新增** `private_drive_folder_id` | Registry JSON Schema 不變 |
 | **不修改** `BATS_DATA_CONTRACT.md` | Sheet / JSON Contract 不變 |
 | **不實作** Drive API | 本節僅文件治理 |
+| **GCS Object Versioning** | MVP **OFF**；Phase 6 **不得依賴**（見 `BATS_DRIVE_GCS_MAPPING.md` §12） |
+| **Runtime Source** | Drive = Archive SoT；GCS = Runtime Knowledge Source（`BATS_DRIVE_CONNECTOR_SCOPE.md` §2） |
 
 ---
 
@@ -685,6 +689,7 @@ L2+ 實作文件、程式
 | 版本 | 日期 | 說明 |
 |------|------|------|
 | **v1.3** | 2026-06-10 | 新增 §2.7 Google Drive Platform Layer Architecture；Shared 移出租戶資料夾 |
+| **v1.3** | 2026-06-10 | §2.7 Shared Runtime Boundary、Object Versioning、Runtime Source cross-ref |
 | **v1.2** | 2026-06-09 | 新增 §2.6 Google Drive Folder Governance（One Tenant One Folder；Phase 6 對齊） |
 | **v1.1** | 2026-06-09 | 新增 §2.5 Default Access Policy：Drive Folder Default Private、Explicit Share 啟用路徑 |
 | **v1.0** | 2026-06-08 | 第一版：三層 Ownership、Write Boundary、Override Rule、BDS v1 Sync 範圍、Industry Expansion |

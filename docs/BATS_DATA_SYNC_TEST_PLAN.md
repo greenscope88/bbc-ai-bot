@@ -80,7 +80,21 @@
 | **3** | JSON Writer Dry-run | 整合 | 本機檔案系統 |
 | **4** | Google Sheet Reader | 整合 | Google API（可 mock） |
 | **5** | GCS Writer Controlled Mode | 整合 / 受控 | GCS（受控環境） |
-| **6** | Manual Sync Command | 端對端 | 完整管線（受控） |
+| **6A** | Manual Sync Command | 端對端 | Sheet 完整管線（受控） |
+| **6B** | Drive Connector Read-only | 整合 | Drive API 唯讀 |
+| **6C** | Metadata Contract & File Classification | 整合 | Metadata envelope |
+| **6D** | Drive → GCS Controlled Promote | 受控 | GCS Archive |
+| **6E** | Verification & Close-out | 驗證 | Shared + read-back |
+
+### 2.1 Phase 6A～6E 測試對照
+
+| 子階段 | 測什麼 | SSOT |
+|--------|--------|------|
+| **6A** | T-01～T-10 端對端；CLI；reports | 本文件 §Phase 6A |
+| **6B** | Drive list 唯讀；零 GCS 寫入 | `BATS_DRIVE_CONNECTOR_SCOPE.md` |
+| **6C** | P1 Metadata 必填欄位；Metadata ≠ Knowledge | `BATS_DRIVE_METADATA_CONTRACT.md` |
+| **6D** | 受控 promote；不覆蓋 `knowledge/*.json` | `BATS_DRIVE_GCS_MAPPING.md` |
+| **6E** | Shared 未 Policy 時零 promote；close-out | `BATS_DRIVE_CONNECTOR_SCOPE.md` §9 |
 
 ---
 
@@ -279,7 +293,7 @@ T-Phase5-05 ──→ Drive 隔離
 
 ---
 
-### Phase 6 — Manual Sync Command
+### Phase 6A — Manual Sync Command
 
 #### 測什麼
 
@@ -297,6 +311,45 @@ T-Phase5-05 ──→ Drive 隔離
 |------|------|
 | 上傳頁 UI 自動觸發 | v1 以手動為主 |
 | 多租戶單次命令 | 單 `sno` only |
+
+---
+
+### Phase 6B — Drive Connector Read-only
+
+| 項目 | 說明 |
+|------|------|
+| Drive list | `01_Private_Layer/` 唯讀 PASS |
+| 零寫入 | 無 GCS promote；無 Knowledge 覆蓋 |
+| BATS Runtime | **不** 直讀 Drive |
+
+---
+
+### Phase 6C — Metadata Contract & File Classification
+
+| 項目 | 說明 |
+|------|------|
+| P1 必填欄位 | `tenant_sno`、`file_id`、`checksum`、`data_category` 等 |
+| Metadata ≠ Knowledge | envelope **不** 取代 `knowledge/*.json` |
+
+---
+
+### Phase 6D — Drive → GCS Controlled Promote
+
+| 項目 | 說明 |
+|------|------|
+| 雙重門禁 | `BDS_DRY_RUN` + `BDS_GCS_WRITE_ENABLED` |
+| Archive only | promote 至 `archive/`；**不** 覆蓋五 JSON |
+| Validation Fail | 不 promote |
+
+---
+
+### Phase 6E — Verification & Close-out
+
+| 項目 | 說明 |
+|------|------|
+| Shared Policy | 未啟用時零 Shared promote |
+| Read-back | GCS Archive 物件可驗證 |
+| Close-out | Phase 6 report 產出 |
 
 ---
 
@@ -528,7 +581,7 @@ T-Phase5-05 ──→ Drive 隔離
 
 ---
 
-### Phase 6 — Manual Sync Command ✅
+### Phase 6A — Manual Sync Command ✅
 
 | # | 條件 |
 |---|------|
@@ -544,7 +597,7 @@ T-Phase5-05 ──→ Drive 隔離
 
 | # | 條件 |
 |---|------|
-| 1 | Phase 1～6 Acceptance Criteria 全數通過 |
+| 1 | Phase 1～5 + Phase 6A～6E Acceptance Criteria 全數通過 |
 | 2 | Required Tests T-01～T-10 全數通過 |
 | 3 | Minimal Test Principle §4.2 未引入 Out of Scope 測試 |
 | 4 | 文件齊備：Sync / Registry / Contract / Ownership / Implementation / **Test Plan** |
@@ -576,7 +629,11 @@ L2 規劃
 | `BATS_DATA_SOURCE_REGISTRY.md` | §7 Registry Contract、`private_knowledge_sheet_id` |
 | `BATS_DATA_CONTRACT.md` | 5 Tab / 5 JSON、§1.4 決策、§8 Validation、`BDC_*` 錯誤碼 |
 | `BATS_DATA_OWNERSHIP_POLICY.md` | Tenant Layer only 寫入、v1 不測 shared |
-| `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` | Phase 1～6 範圍、Required Outputs、Safety Rules |
+| `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` | Phase 1～5 + 6A～6E、Required Outputs、Safety Rules |
+| `BATS_DRIVE_CONNECTOR_SCOPE.md` | Runtime Source、Phase 6B～6E |
+| `BATS_DRIVE_METADATA_CONTRACT.md` | Phase 6C Metadata |
+| `BATS_DRIVE_GCS_MAPPING.md` | Phase 6D Mapping |
+| `BATS_TENANT_DRIVE_ONBOARDING_POLICY.md` | Onboarding 驗證 |
 
 ### 6.3 測試與實作對照
 
@@ -585,7 +642,8 @@ L2 規劃
 | Phase 1～3 | 與 Commit A 一併提交單元 / 整合測試 |
 | Phase 4 | Commit B 提交 Reader 測試（含 mock） |
 | Phase 5 | Commit C 提交 GCS 受控測試 |
-| Phase 6 | Commit D 提交 E2E + 本 Test Plan 驗收勾選 |
+| Phase 6A | Commit D 提交 Sheet E2E + 本 Test Plan 驗收勾選 |
+| Phase 6B～6E | 後續 Commit；Drive Connector 測試矩陣 |
 
 ### 6.4 衝突處理
 
@@ -602,6 +660,7 @@ L2 規劃
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.4** | 2026-06-10 | Phase 6A～6E 正名；6B～6E 測試對照；P1 Drive SSOT cross-ref |
 | **v1.3** | 2026-06-10 | Phase 5 Close-out：5D Read-back Verification + Completed 標記 |
 | **v1.2** | 2026-06-09 | 新增 Phase 5 Test Matrix（T-Phase5-01～05） |
 | **v1.1** | 2026-06-09 | Phase 4 Close-out：§4.1 Live Read、§4.2 Integration Dry-run PASS |

@@ -744,6 +744,28 @@ C:/Web/xampp/php/php.exe tests/bds/test_bds_gcs_readback_verification.php
 | **Default Private** | 所有 Drive 資料夾預設 Private |
 | **禁止提前新增 Registry 欄位** | **不得** 新增 `private_drive_folder_id` 至 Registry JSON Schema |
 | **SSOT** | `BATS_DATA_SOURCE_REGISTRY.md` §6.5、`BATS_DATA_OWNERSHIP_POLICY.md` §2.7 |
+| **Runtime Source** | Drive = Archive SoT；GCS = Runtime Knowledge Source；見 `BATS_DRIVE_CONNECTOR_SCOPE.md` §2 |
+
+### 12.8 Phase 6A～6E Roadmap & P1 SSOT
+
+| 子階段 | 正式名稱 | Runbook 對照 |
+|--------|----------|--------------|
+| **6A** | Manual Sync Command | §2 Manual Sync Flow |
+| **6B** | Drive Connector Read-only | Drive preflight（未來 §） |
+| **6C** | Metadata Contract & File Classification | `BATS_DRIVE_METADATA_CONTRACT.md` |
+| **6D** | Drive → GCS Controlled Promote | `BATS_DRIVE_GCS_MAPPING.md` |
+| **6E** | Verification & Close-out | close-out report |
+
+**P1 SSOT 文件：**
+
+| 文件 | 職責 |
+|------|------|
+| `BATS_DRIVE_CONNECTOR_SCOPE.md` | Runtime Source、Connector 範圍、6A～6E |
+| `BATS_DRIVE_METADATA_CONTRACT.md` | Metadata Contract |
+| `BATS_DRIVE_GCS_MAPPING.md` | Archive / Metadata / Knowledge 三層 |
+| `BATS_TENANT_DRIVE_ONBOARDING_POLICY.md` | 6 步驟 Onboarding |
+
+**Tenant Onboarding 正式流程（§4）：** 建立 Folder → 建立 Sheet → SA 授權 → 驗證 Folder → 驗證 Sheet → 啟用 BDS
 
 ---
 
@@ -751,6 +773,7 @@ C:/Web/xampp/php/php.exe tests/bds/test_bds_gcs_readback_verification.php
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.5** | 2026-06-10 | §12.8 Phase 6A～6E 正名、P1 Drive SSOT cross-ref、Onboarding 流程 |
 | **v1.4** | 2026-06-10 | §12.7 Phase 6 Pre-Governance：Google Drive Platform Layer Architecture |
 | **v1.3** | 2026-06-10 | 新增 §12 Phase 5 Close-out Verification Record（5A～5D PASS） |
 | **v1.2** | 2026-06-09 | 新增 §11 Phase 5 Safety Boundary |

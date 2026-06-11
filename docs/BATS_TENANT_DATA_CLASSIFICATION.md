@@ -163,9 +163,14 @@ Tenant Private Data（本文件）
 | **Shared 不屬於單一旅行社** | 禁止 `tenants/{tenant_key}/02_Shared_Layer/` |
 | **Default Private** | 所有 Drive 資料夾預設 Private |
 | **Tenant 不自動使用 Shared** | 須 Registry + Policy 明確啟用 |
-| **GCS 不變** | Drive 為 Archive；GCS 路徑見 §1.6.1 |
+| **GCS 不變** | Drive 為 Archive Source of Truth；GCS 為 Runtime Knowledge Source |
+| **Shared 預設不進 Runtime** | 須 Registry + Policy 才能進 GCS Metadata / Knowledge / Future RAG |
 
-詳見 `BATS_DATA_SOURCE_REGISTRY.md` §6.5、`BATS_DATA_OWNERSHIP_POLICY.md` §2.7。
+**Runtime Source：** BATS Runtime **不得** 依賴即時 Google Drive 搜尋。見 `BATS_DRIVE_CONNECTOR_SCOPE.md` §2、`BATS_DATA_SYNC_POLICY.md` §18.5。
+
+**Phase 6 正名：** 6A Manual Sync → 6B～6E Drive Connector。見 `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §3.1。
+
+詳見 `BATS_DATA_SOURCE_REGISTRY.md` §6.5、`BATS_DATA_OWNERSHIP_POLICY.md` §2.7、`BATS_DRIVE_METADATA_CONTRACT.md`。
 
 ### 1.7 BDS Data Input Strategy
 
@@ -182,7 +187,7 @@ BDS Data Input Strategy
 | 載體 | 資料型態 | BDS v1 狀態 | 處理 Phase |
 |------|----------|-------------|------------|
 | **Google Sheet** | **Structured Data** | **Phase 4 已完成**（Reader + Live Read + Pipeline Dry-run） | Phase 4 |
-| **Google Drive** | **Unstructured Data** | **未實作** | **Phase 6** Google Drive Source Connector |
+| **Google Drive** | **Unstructured Data** | **未實作** | **Phase 6B～6E** Drive Connector（6A = Sheet Manual Sync） |
 
 #### 1.7.2 Google Sheet — Structured Data（Contract First）
 
@@ -207,7 +212,7 @@ BDS Data Input Strategy
 | **允許類型** | PDF、Image（JPG 等）、Excel、Word、PowerPoint 等 |
 | **典型歸類** | Category A Itinerary、Drive Archive；**非** BDS v1 Knowledge JSON 來源 |
 | **BDS v1** | **不處理** Drive 檔案解析與同步 |
-| **未來** | **Phase 6 — Google Drive Source Connector**（Registry 擴充於 Phase 6 前規劃；**不含** `private_drive_folder_id` 直至該階段） |
+| **未來** | **Phase 6B～6E** Drive Connector（6A = Manual Sync）；P1 SSOT 見 `BATS_DRIVE_*` 四文件 |
 
 #### 1.7.4 禁止混淆
 
@@ -559,6 +564,7 @@ L1 SSOT
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.4** | 2026-06-10 | P1 Final：Runtime Source、Phase 6A～6E 正名、Shared Runtime Boundary cross-ref |
 | **v1.3** | 2026-06-10 | §1.6.6 Google Drive Platform Layer Architecture；Shared 移出租戶資料夾 |
 | **v1.2** | 2026-06-09 | 新增 §1.7 BDS Data Input Strategy（Sheet Structured / Drive Unstructured）；Phase 4 Close-out |
 | **v1.1** | 2026-06-09 | 新增 §1.6 Knowledge Layer Model：Private + Shared、Shared ≠ Public、Default Private、Drive 載體 |

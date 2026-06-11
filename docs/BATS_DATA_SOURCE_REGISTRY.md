@@ -909,6 +909,17 @@ Source Registry
 
 定義 **Google Drive Connector Framework** 之概念模型，供 Phase 6 實作前對齊；與 Phase 5 **Structured Sheet → GCS** 管線 **分離**。
 
+**Runtime Source Architecture（P1 SSOT）：**
+
+| 載體 | 角色 |
+|------|------|
+| **Google Drive** | Source of Truth（Archive Source） |
+| **GCS** | Runtime Knowledge Source |
+
+**BATS Runtime 不得依賴即時 Google Drive 搜尋。** 詳見 `BATS_DRIVE_CONNECTOR_SCOPE.md` §2、`BATS_DATA_SYNC_POLICY.md` §18.5。
+
+**Phase 6A～6E 正名：** 見 `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §3.1。
+
 #### 10.5.2 Drive Source Model — Google Drive（Unstructured Data）
 
 | 項目 | 說明 |
@@ -957,6 +968,16 @@ GCS Knowledge Layer（受控路徑；非 Phase 5 範圍）
 | RAG / Vector 索引 | 未納入 |
 | Cron / LINE OA | 非本框架範圍 |
 | 修改 `private_knowledge_sheet_id` 語意 | Sheet 仍為 Structured SSOT |
+| BATS runtime 直讀 Drive | 違反 Runtime Source Architecture |
+
+#### 10.5.6 P1 Drive SSOT Cross References
+
+| 文件 | 職責 |
+|------|------|
+| `BATS_DRIVE_CONNECTOR_SCOPE.md` | Runtime Source、Connector 範圍、6A～6E |
+| `BATS_DRIVE_METADATA_CONTRACT.md` | Metadata Contract |
+| `BATS_DRIVE_GCS_MAPPING.md` | Drive → GCS、三層分離 |
+| `BATS_TENANT_DRIVE_ONBOARDING_POLICY.md` | 6 步驟 Onboarding |
 
 ---
 
@@ -976,6 +997,7 @@ GCS Knowledge Layer（受控路徑；非 Phase 5 範圍）
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.6** | 2026-06-10 | §10.5 Runtime Source Architecture、Phase 6A～6E 正名、P1 Drive SSOT cross-ref |
 | **v1.5** | 2026-06-10 | Phase 6 Pre-Governance：§6.5 Google Drive Platform Layer Architecture；Shared 移出租戶資料夾 |
 | **v1.4** | 2026-06-09 | 新增 §10.5 Phase 6 Planning — Future Drive Source Registry（Framework only；Schema 不變） |
 | **v1.3** | 2026-06-08 | `private_knowledge_sheet_id` cross-ref `BATS_DATA_CONTRACT.md`；Registry / Contract 職責分工 |

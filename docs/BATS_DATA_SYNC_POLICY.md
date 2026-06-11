@@ -1171,6 +1171,28 @@ GCS（Knowledge Layer）→ BATS
 | **Archive Layer** | Google Drive — 機器保存原始檔，供回溯與分享權限管理 |
 | **Knowledge Layer** | GCS — BATS 執行環境讀取之權威知識儲存 |
 
+### 18.5 Runtime Source Architecture（P1 SSOT）
+
+> **Phase 6 P1 最高優先治理決策。** 詳見 `BATS_DRIVE_CONNECTOR_SCOPE.md` §2。
+
+| 載體 | 正式角色 |
+|------|----------|
+| **Google Drive** | **Source of Truth（Archive Source）** — 保存原始非結構化檔案 |
+| **GCS** | **Runtime Knowledge Source** — BATS Search、Gemini Context、Metadata Layer、Knowledge Layer、Future RAG |
+
+**BATS Runtime 不得依賴即時 Google Drive 搜尋。**
+
+Google Drive **不是** Runtime Source、Search Source、RAG Source。
+
+| 正確流程 | 禁止流程 |
+|----------|----------|
+| Drive → BDS Sync → GCS Archive → Metadata → Knowledge → Runtime → LINE OA | LINE OA → Drive API → PDF → Gemini |
+| Future RAG **僅** 從 GCS 取得資料 | Drive → RAG → Gemini |
+
+**治理原因：** 效能、API Quota、多租戶隔離、權限管理、可回滾、可驗證、可快取、可觀測性。
+
+**交叉引用：** `BATS_DRIVE_GCS_MAPPING.md` §2、§4；`BATS_DRIVE_METADATA_CONTRACT.md` §5
+
 ---
 
 ## 19. Update Entry Rule
@@ -1471,6 +1493,7 @@ Service Account 僅授權必要之 `tenants/{sno}/` prefix；不得授予跨 ten
 |------|------|------|
 | **v1.5** | 2026-06-08 | MVP 範圍校正：1 Sheet / 5 Tabs / 5 JSON；cross-ref `BATS_DATA_CONTRACT.md`（L3 SSOT） |
 | **v1.4** | 2026-06-08 | 新增 `shared_knowledge`（Category C）、`shared/{industry}/knowledge/` GCS 結構、§12.7 Cross-Reference、`BATS_DATA_SOURCE_REGISTRY.md` 對齊 |
+| **v1.5** | 2026-06-10 | §18.5 Runtime Source Architecture（P1 SSOT）：Drive = Archive SoT、GCS = Runtime Knowledge Source |
 | **v1.4** | 2026-06-10 | §20／§22 Drive 平台層架構修正：Shared 移出租戶資料夾；GCS 不變 |
 | **v1.3** | 2026-06-08 | 新增 §18～§23：Google Drive Archive Layer、Update Entry Rule、Drive 三層分類、Customer Registration Rule、Tenant Folder Isolation、Anti Hardcode Rule |
 | **v1.2** | 2026-06-08 | 新增 BDS Data Category（itinerary_data / tenant_private_knowledge）與六條正式規則 |

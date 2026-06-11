@@ -142,7 +142,13 @@ Manual Sync Command + Reports（Phase 6）
 | **3** | JSON Writer Dry-run | 無 | 否（本機 preview） | **Completed** ✅ |
 | **4** | Google Sheet Reader | Google API（唯讀） | 否 | **Completed** ✅ |
 | **5** | GCS Writer Controlled Mode | Google API + GCS | 是（受控） | 規劃中 |
-| **6** | Manual Sync Command | 完整管線 | 是（手動觸發） | 規劃中 |
+| **6A** | Manual Sync Command | Sheet 完整管線 | 是（手動觸發） | 規劃中 |
+| **6B** | Drive Connector Read-only | Drive API 唯讀 | 否 | 規劃中 |
+| **6C** | Metadata Contract & File Classification | Drive + Metadata | 否 | 規劃中 |
+| **6D** | Drive → GCS Controlled Promote | Drive + GCS Archive | 是（受控） | 規劃中 |
+| **6E** | Verification & Close-out | Shared + read-back | 否（驗證） | 規劃中 |
+
+> **Phase 6 正名：** 不再混用「Manual Sync」與「Drive Connector」雙重語意。詳見 §3.1。
 
 ```text
 Phase 1 ──→ Phase 2 ──→ Phase 3
@@ -154,8 +160,30 @@ Phase 1 ──→ Phase 2 ──→ Phase 3
                          Phase 5
                               │
                               ↓
-                         Phase 6
+                    Phase 6A（Sheet E2E）
+                              │
+                              ↓
+              Phase 6B → 6C → 6D → 6E（Drive Connector）
 ```
+
+### 3.1 Phase 6A～6E Roadmap（正式正名）
+
+| 子階段 | 正式名稱 | SSOT |
+|--------|----------|------|
+| **6A** | Manual Sync Command | 本文件 §Phase 6A |
+| **6B** | Drive Connector Read-only | `BATS_DRIVE_CONNECTOR_SCOPE.md` §7 |
+| **6C** | Metadata Contract & File Classification | `BATS_DRIVE_METADATA_CONTRACT.md` |
+| **6D** | Drive → GCS Controlled Promote | `BATS_DRIVE_GCS_MAPPING.md` |
+| **6E** | Verification & Close-out | `BATS_DATA_SYNC_TEST_PLAN.md` §2.1 |
+
+**P1 Drive SSOT 文件：**
+
+| 文件 | 職責 |
+|------|------|
+| `BATS_DRIVE_CONNECTOR_SCOPE.md` | Runtime Source Architecture、Connector 範圍 |
+| `BATS_DRIVE_METADATA_CONTRACT.md` | Metadata Contract |
+| `BATS_DRIVE_GCS_MAPPING.md` | Drive → GCS、三層分離 |
+| `BATS_TENANT_DRIVE_ONBOARDING_POLICY.md` | Tenant Onboarding |
 
 ---
 
@@ -517,14 +545,15 @@ bbcshops88@gmail.com（Google Drive）
 | **產業可擴展** | `travel` 首個；`hotel`、`restaurant`、`beauty`、`education`、`medical` 等同架構 |
 | **禁止提前新增** | **不得** 新增 `private_drive_folder_id` 至 Registry JSON Schema |
 | **GCS / Contract 不變** | 不修改 `BATS_DATA_CONTRACT.md`、GCS 路徑 |
+| **Runtime Source** | Google Drive = Archive Source of Truth；GCS = Runtime Knowledge Source；見 `BATS_DRIVE_CONNECTOR_SCOPE.md` §2 |
 
 ---
 
-### Phase 6 — Manual Sync Command
+### Phase 6A — Manual Sync Command
 
 #### 目標
 
-提供 **手動執行** 之完整同步命令，串接 Phase 4～5，產出完整報告。
+提供 **手動執行** 之完整同步命令，串接 Phase 4～5，產出完整報告。**不含** Drive Connector。
 
 #### 做什麼
 
@@ -568,6 +597,58 @@ php bin/bds-sync.php --sno=5f99b8d665e8444d --dry-run=false --write-gcs
 - [ ] 成功 / 失敗皆有完整 report
 - [ ] 失敗不覆蓋 production JSON
 - [ ] 文件化操作手冊（維運可重現）
+
+---
+
+### Phase 6B — Drive Connector Read-only
+
+#### 目標
+
+Drive API **唯讀** preflight；驗證 SA 可 list `tenants/{tenant_key}/01_Private_Layer/`。
+
+#### 退出準則
+
+- [ ] Drive list / metadata 唯讀 PASS（pilot tenant）
+- [ ] 零 GCS 寫入；零 Knowledge 覆蓋
+
+---
+
+### Phase 6C — Metadata Contract & File Classification
+
+#### 目標
+
+產出符合 `BATS_DRIVE_METADATA_CONTRACT.md` 之 Metadata envelope；`data_category` 分類。
+
+#### 退出準則
+
+- [ ] P1 必填欄位語意齊全（`tenant_sno`、`file_id`、`checksum` 等）
+- [ ] Metadata ≠ Knowledge 邊界驗證通過
+
+---
+
+### Phase 6D — Drive → GCS Controlled Promote
+
+#### 目標
+
+受控 promote Tenant Private Drive 檔案 → GCS Archive（見 `BATS_DRIVE_GCS_MAPPING.md`）。
+
+#### 退出準則
+
+- [ ] 雙重門禁 + Validation Gate
+- [ ] 僅 `tenants/{sno}/archive/`（概念）；**不** 覆蓋 `knowledge/*.json`
+
+---
+
+### Phase 6E — Verification & Close-out
+
+#### 目標
+
+Shared 路徑讀取框架（須 Registry + Policy）；read-back；close-out report。
+
+#### 退出準則
+
+- [ ] Shared **未** Policy 啟用時零 promote
+- [ ] Phase 6 close-out report 產出
 
 ---
 
@@ -741,6 +822,10 @@ L3 實作（未來）
 | `BATS_DATA_SOURCE_REGISTRY.md` | `private_knowledge_sheet_id`、Registry driven、§7 Tenant Contract |
 | `BATS_DATA_CONTRACT.md` | 5 Tab / 5 JSON、§1.4 MVP 決策、§8 Validation |
 | `BATS_DATA_OWNERSHIP_POLICY.md` | §3 Write Boundary、§5 Sync Ownership、v1 不寫 shared |
+| `BATS_DRIVE_CONNECTOR_SCOPE.md` | Phase 6B～6E、Runtime Source Architecture |
+| `BATS_DRIVE_METADATA_CONTRACT.md` | Phase 6C Metadata Contract |
+| `BATS_DRIVE_GCS_MAPPING.md` | Phase 6D Drive → GCS Mapping |
+| `BATS_TENANT_DRIVE_ONBOARDING_POLICY.md` | Tenant Onboarding |
 
 ### 7.3 相關文件
 
@@ -765,6 +850,7 @@ L3 實作（未來）
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.5** | 2026-06-10 | Phase 6A～6E 正名；P1 Drive SSOT cross-ref；6B～6E 子階段定義 |
 | **v1.4** | 2026-06-10 | Phase 6 Pre-Governance：Google Drive Platform Layer Architecture SSOT 修正 |
 | **v1.3** | 2026-06-10 | Phase 5 Close-out：5A～5D Completed；GCS read-back 驗證紀錄；Phase 6 Drive 前提醒 |
 | **v1.2** | 2026-06-09 | Phase 5 GCS Writer Controlled Mode 文件補強；Phase 6 Drive Framework cross-ref |
