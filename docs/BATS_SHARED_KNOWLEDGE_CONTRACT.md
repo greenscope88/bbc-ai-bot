@@ -3,7 +3,7 @@
 **專案：** BBC AI SaaS / BATS / BDS / Travel Data Center  
 **定位：** L1 架構政策層 — Shared Knowledge Layer Data Contract 正式 SSOT  
 **上層文件：** `CO_WORK_POLICY.md`、`DOCUMENTATION_GOVERNANCE_POLICY.md`  
-**相關文件：** `BATS_DATA_SYNC_POLICY.md`、`BATS_DATA_SOURCE_REGISTRY.md`、`BATS_DATA_CONTRACT.md`、`BATS_DATA_OWNERSHIP_POLICY.md`、`BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md`  
+**相關文件：** `BATS_DATA_SYNC_POLICY.md`、`BATS_DATA_SOURCE_REGISTRY.md`、`BATS_DATA_CONTRACT.md`、`BATS_SHARED_KNOWLEDGE_SHEET_CONTRACT.md`、`BATS_DATA_OWNERSHIP_POLICY.md`、`BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md`  
 **適用範圍：** `shared/{industry_code}/knowledge/`、`shared/global/knowledge/`；支援 **travel、hotel、restaurant、beauty、auto、retail、education、medical** 及未來新增產業  
 **適用對象：** ChatGPT、Cursor、開發者、維運人員、BBC Industry Maintainer、BBC Platform Admin  
 **衝突處理：** 同步原則以 `BATS_DATA_SYNC_POLICY.md` 為準；Registry 與 Knowledge Resolution Order 以 `BATS_DATA_SOURCE_REGISTRY.md` 為準；Tenant Private Knowledge 格式以 `BATS_DATA_CONTRACT.md` 為準；歸屬與覆蓋以 `BATS_DATA_OWNERSHIP_POLICY.md` 為準；**Shared Knowledge 資料格式以本文件為準**。
@@ -19,11 +19,14 @@
 | §3 | Shared Knowledge Layers |
 | §3.4 | Shared Layer Governance |
 | §3.5 | Google Drive Platform Layer（Shared Archive） |
+| §3.6 | Structured Knowledge Input Source（Google Sheet） |
 | §4 | Industry Code Rule |
 | §5 | Shared Knowledge Categories |
 | §6 | Shared Knowledge JSON Contract |
 | §7 | Industry Examples |
-| §8 | Resolution Rule |
+| §8 | Resolution Rule & Knowledge Priority |
+| §8.5 | Industry Shared First Principle |
+| §8.6 | Shared Knowledge Sheet Contract |
 | §9 | Ownership Rule |
 | §10 | Validation Rule |
 | §11 | Future Roadmap |
@@ -99,8 +102,8 @@
 
 | 層級 | Contract | BDS 同步 |
 |------|----------|----------|
-| Tenant Private | `BATS_DATA_CONTRACT.md` | **v1 實作中** |
-| Industry / Global Shared | **本文件** | **未實作**（格式先定案） |
+| Tenant Private | `BATS_DATA_CONTRACT.md` | Phase 6A（Sheet → GCS） |
+| Industry / Global Shared | **本文件** | **未實作**（Sheet Input SSOT 已定；§3.6） |
 
 ---
 
@@ -192,7 +195,9 @@ Knowledge Layer（Category B）
 |------|------|
 | **定義** | 跨租戶 **fallback 知識層**；當 Private Layer 無匹配時，BATS 依 Resolution Order 向下解析 |
 | **data_category** | `shared_knowledge` |
-| **儲存載體** | **GCS** `shared/{industry_code}/knowledge/`、`shared/global/knowledge/`；**Google Drive** 為 Archive／協作載體之一 |
+| **Structured 輸入** | **Google Sheet** — Industry / Global Shared Knowledge 之 **Input Source**（§3.6） |
+| **Runtime 輸出** | **GCS** `shared/{industry_code}/knowledge/`、`shared/global/knowledge/` |
+| **Drive 角色** | **Archive only** — PDF／DM 原件；**不是** Structured Knowledge 輸入 |
 | **≠ Public Layer** | Shared Layer **不是** 對外公開層；名稱指知識解析共用，**不是** 匿名公開讀取 |
 
 #### 3.4.3 Industry Shared Layer
@@ -284,6 +289,59 @@ Explicit Share Policy 啟用（受控對象／角色）
 | Drive 資料夾 Default Private | `BATS_DATA_OWNERSHIP_POLICY.md` §2.5 |
 | Resolution Order | `BATS_DATA_SOURCE_REGISTRY.md` §4.4 |
 | Shared JSON 格式 | 本文件 §6 |
+| Structured Knowledge = Google Sheet | 本文件 §3.6 |
+
+#### 3.6 Structured Knowledge Input Source（Google Sheet）
+
+> **正式原則：** **Industry Shared Knowledge = Google Sheet**；**Global Shared Knowledge = Google Sheet**。Drive 僅 Archive。
+
+##### 3.6.1 正式定義
+
+| 層級 | Input Source（Structured） | Runtime Output（GCS） |
+|------|---------------------------|------------------------|
+| **Industry Shared Knowledge** | Google Sheet（`shared/{industry}/` 治理） | `shared/{industry_code}/knowledge/` |
+| **Global Shared Knowledge** | Google Sheet（平台治理） | `shared/global/knowledge/` |
+
+```text
+Google Sheet（Industry / Global Shared）
+        ↓ BDS Sync（未來；須 Registry + Policy）
+shared/{industry_code}/knowledge/*.json
+shared/global/knowledge/*.json
+        ↓
+Gemini / BATS Search（Runtime）
+```
+
+##### 3.6.2 典型 Sheet 知識主題（travel 範例）
+
+| 主題 | 說明 |
+|------|------|
+| 護照新辦基本規定 | FAQ／條列型 |
+| 護照效期規定 | FAQ／條列型 |
+| 台胞證申請規定 | FAQ／條列型 |
+| 日本／泰國入境規定 | FAQ／條列型 |
+| 航空行李規定 | 條列型 |
+| 國際旅遊常識 | FAQ 型 |
+
+> 上述 **應以 Google Sheet 維護**，經 BDS 同步至 GCS，供 Gemini 回答；**不必等待** PDF 解析或 RAG。
+
+##### 3.6.3 與 Google Drive 分工
+
+| 載體 | Shared Layer 角色 |
+|------|-------------------|
+| **Google Sheet** | Structured Knowledge **Input** |
+| **Google Drive** `02_Shared_Layer/` | Archive 原件（PDF、DM 等）；**不是** Structured 輸入 |
+| **GCS** | Runtime Knowledge Source |
+
+##### 3.6.4 治理邊界（不變）
+
+| 原則 | 說明 |
+|------|------|
+| **Shared ≠ Public** | 受控 fallback |
+| **Default Private** | Sheet／Drive 預設不公開 |
+| **預設不進 Runtime** | 未 Registry + Policy 啟用前 **不同步** 至 GCS |
+| **BDS v1** | Shared Sheet 同步 **未實作**；本節為 SSOT 定案 |
+| **Registry Schema** | **不變**；**不新增** `private_drive_folder_id` |
+| **Sheet Tabs** | `BATS_SHARED_KNOWLEDGE_SHEET_CONTRACT.md`（P2-1） |
 
 ---
 
@@ -581,28 +639,34 @@ Shared Knowledge 以 **category** 組織；**跨產業通用**，不綁定單一
 
 ---
 
-## 8. Resolution Rule
+## 8. Resolution Rule & Knowledge Priority
 
-### 8.1 正式優先序（引用）
+### 8.1 正式優先序（P1-7）
 
-BATS 解析客服知識時，**讀取順序** 以 `BATS_DATA_SOURCE_REGISTRY.md` §4.4 為準：
+BATS 解析客服知識時，**Knowledge Retrieval Priority** 以 `BATS_DATA_SOURCE_REGISTRY.md` §4.4、`BATS_DATA_SYNC_POLICY.md` §18.8 為準：
 
 ```text
-Tenant Layer（tenants/{sno}/knowledge/）
-        ↓（若無匹配）
-Industry Shared Layer（shared/{industry_code}/knowledge/）
-        ↓（若無匹配）
-Global Shared Layer（shared/global/knowledge/）
+Level 1  Tenant Private Knowledge     tenants/{sno}/knowledge/
+        ↓（若無資料）
+Level 2  Industry Shared Knowledge    shared/{industry_code}/knowledge/
+        ↓（若無資料）
+Level 3  Global Shared Knowledge      shared/global/knowledge/
+        ↓（若無資料）
+Level 4  Human Service                轉人工
 ```
+
+**正式原則：** Tenant Private **>** Industry Shared **>** Global Shared **>** Human Service
 
 ### 8.2 規則摘要
 
 | 規則 | 說明 |
 |------|------|
-| **Tenant 優先** | 租戶私有知識命中則採用；**結束** |
-| **Shared 僅 fallback** | Industry / Global **僅在** 上層無匹配時使用 |
+| **Tenant 優先** | Level 1 命中則採用；**結束** |
+| **Shared 僅 fallback** | Level 2 / 3 **僅在** 上層無匹配時使用 |
+| **Human Service** | Level 3 仍無資料 → Level 4；**禁止** AI 幻覺 |
 | **禁止反向覆寫** | Shared **不得** 覆寫 Tenant 已存在答案 |
-| **本 Contract 不變更順序** | 欄位設計不得破壞三層解析模型 |
+| **禁止 AI 編造** | 與 `BATS_GEMINI_RENDERER_CONTRACT.md` §9 一致 |
+| **本 Contract 不變更順序** | 欄位設計不得破壞四層解析模型 |
 
 ### 8.3 比對單位（概念）
 
@@ -618,6 +682,24 @@ Global Shared Layer（shared/global/knowledge/）
 | Tenant | 護照代辦 | 1600 | **1600** |
 | Industry (`travel`) | 護照代辦 | 1800 | （不採用） |
 | Global | 護照代辦 | 2000 | （不採用） |
+
+### 8.5 Industry Shared First Principle
+
+| 原則 | 說明 |
+|------|------|
+| **產業優先** | 明確屬於特定產業的知識 → `shared/{industry_code}/` |
+| **Global 最小化** | `shared/global/` 僅跨產業共通與暫存知識 |
+| **`travel` 範例** | 護照、台胞證、入境、行李、旅遊常識 → `shared/travel/` |
+
+**Status:** Reserved For Future Multi-Industry Expansion
+
+### 8.6 Shared Knowledge Sheet Contract
+
+| 項目 | SSOT |
+|------|------|
+| **Sheet Input** | `BATS_SHARED_KNOWLEDGE_SHEET_CONTRACT.md` |
+| **Travel 建議 Tabs** | `Travel_FAQ`、`Country_Entry_Rules`、`Travel_Notices`、`Baggage_Rules` |
+| **JSON Output** | 本文件 §6 |
 
 ---
 
@@ -782,6 +864,8 @@ L2 規劃 / 維運
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.4** | 2026-06-10 | §8 P1-7 四層 Priority + Human Service；§8.5 Industry Shared First；§8.6 Sheet Contract cross-ref |
+| **v1.3** | 2026-06-10 | §3.6 Structured Knowledge Input Source（Industry/Global Shared = Google Sheet） |
 | **v1.2** | 2026-06-10 | 新增 §3.5 Google Drive Platform Layer；Shared 移出租戶資料夾 |
 | **v1.1** | 2026-06-09 | 新增 §3.4 Shared Layer Governance：Default Private、Explicit Share Policy、Drive 載體 |
 | **v1.0** | 2026-06-08 | 第一版：Industry-Agnostic Shared Knowledge Contract、六 category、Industry / Global JSON、Validation |

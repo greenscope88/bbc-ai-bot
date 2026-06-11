@@ -809,6 +809,8 @@ BDS Safety Rule（§14.1）之 Validation 步驟 **須依 `data_category` 選用
 2. shared/{industry_code}/knowledge/ ← shared_knowledge（產業 fallback）
         ↓（若無匹配）
 3. shared/global/knowledge/            ← shared_knowledge（跨產業 fallback）
+        ↓（若無匹配）
+4. Human Service                       ← 轉人工；禁止 AI 幻覺（§18.8）
 ```
 
 | 順序 | 層級 | 說明 |
@@ -816,8 +818,11 @@ BDS Safety Rule（§14.1）之 Validation 步驟 **須依 `data_category` 選用
 | **1** | `tenant_private_knowledge` | **優先**；租戶私有答案 |
 | **2** | `shared_knowledge`（產業） | 依 Registry `industry_code`；**僅 fallback** |
 | **3** | `shared_knowledge`（global） | 跨產業最終 fallback |
+| **4** | Human Service | 三層皆無 → 轉人工；**禁止** AI 編造 |
 
 **`shared_knowledge` 不得覆寫 `tenant_private_knowledge`。**
+
+完整 P1-7 定義見 **§18.8**、`BATS_DATA_SOURCE_REGISTRY.md` §4.4。
 
 #### 12.7.3 範例
 
@@ -1205,6 +1210,71 @@ Google Drive **不是** Runtime Source、Search Source、RAG Source。
 
 **SSOT：** `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §Phase 6A；Runbook §13；Test Plan §3.3
 
+### 18.7 Structured Knowledge Source SSOT
+
+> **核心目的：** 護照、簽證、台胞證、入境規定、行李規定、國際旅遊常識等 **FAQ／條列型共同知識**，可經 **Google Sheet → GCS Knowledge → Gemini** 回答，**不必等待** PDF／RAG。
+
+#### 18.7.1 正式原則
+
+| # | 原則 |
+|---|------|
+| 1 | **Google Sheet** = Structured Knowledge **Input Source** |
+| 2 | **Google Drive** = Archive Source / Original File Repository |
+| 3 | **GCS** = Runtime Knowledge Source |
+| 4 | FAQ 型、表格型、條列型、服務型知識 → **優先 Google Sheet** |
+| 5 | PDF / Image / Word / PPT / DM → **Google Drive Archive** |
+
+#### 18.7.2 三層 Knowledge 輸入／輸出
+
+| 層級 | Input（Sheet） | Output（GCS） | BDS 狀態 |
+|------|----------------|---------------|----------|
+| **Tenant Private** | `private_knowledge_sheet_id` | `tenants/{sno}/knowledge/` | Phase 6A |
+| **Industry Shared** | `shared/{industry}/` Google Sheet | `shared/{industry_code}/knowledge/` | 未實作 |
+| **Global Shared** | 平台 Google Sheet | `shared/global/knowledge/` | 未實作 |
+
+#### 18.7.3 Shared Layer 治理（不變）
+
+Shared Layer ≠ Public；Default Private；預設不進 Runtime；須 **Registry + Policy** 明確啟用。
+
+**交叉引用：** `BATS_TENANT_DATA_CLASSIFICATION.md` §1.8、`BATS_DATA_CONTRACT.md` §1.5、`BATS_SHARED_KNOWLEDGE_CONTRACT.md` §3.6
+
+### 18.8 Knowledge Priority Rule（P1-7 SSOT）
+
+> **SSOT 主文件：** `BATS_DATA_SOURCE_REGISTRY.md` §4.4
+
+#### 18.8.1 Knowledge Retrieval Priority
+
+| Level | 名稱 | GCS 路徑 |
+|-------|------|----------|
+| **1** | Tenant Private Knowledge | `tenants/{sno}/knowledge/` |
+| **2** | Industry Shared Knowledge | `shared/{industry_code}/knowledge/` |
+| **3** | Global Shared Knowledge | `shared/global/knowledge/` |
+| **4** | Human Service | 非 GCS；轉人工 |
+
+**正式原則：** Tenant Private **>** Industry Shared **>** Global Shared **>** Human Service
+
+#### 18.8.2 Fallback Rule
+
+```text
+Level 1 無資料 → Level 2
+Level 2 無資料 → Level 3
+Level 3 無資料 → Level 4 Human Service
+```
+
+| 禁止 | 說明 |
+|------|------|
+| AI 自行推測 | 無 grounding 資料不得回答 |
+| AI 幻覺補充 | 與 `BATS_GEMINI_RENDERER_CONTRACT.md` §9 一致 |
+| AI 編造旅遊規定 | 護照、簽證、入境等須有 GCS 依據 |
+
+#### 18.8.3 Industry Shared First Principle
+
+產業專屬知識（護照、入境、行李等）→ **`shared/{industry}/`**，**非** `shared/global/`。Global 僅跨產業共通與暫存。
+
+**Status:** Reserved For Future Multi-Industry Expansion
+
+**Sheet Contract：** `BATS_SHARED_KNOWLEDGE_SHEET_CONTRACT.md`
+
 ---
 
 ## 19. Update Entry Rule
@@ -1505,6 +1575,8 @@ Service Account 僅授權必要之 `tenants/{sno}/` prefix；不得授予跨 ten
 |------|------|------|
 | **v1.5** | 2026-06-08 | MVP 範圍校正：1 Sheet / 5 Tabs / 5 JSON；cross-ref `BATS_DATA_CONTRACT.md`（L3 SSOT） |
 | **v1.4** | 2026-06-08 | 新增 `shared_knowledge`（Category C）、`shared/{industry}/knowledge/` GCS 結構、§12.7 Cross-Reference、`BATS_DATA_SOURCE_REGISTRY.md` 對齊 |
+| **v1.8** | 2026-06-10 | §18.8 P1-7 Knowledge Priority Rule；Industry Shared First；Human Service Level 4 |
+| **v1.7** | 2026-06-10 | §18.7 Structured Knowledge Source SSOT（Sheet = Structured Knowledge） |
 | **v1.6** | 2026-06-10 | §18.6 Phase 6A Manual Sync Command cross-ref |
 | **v1.5** | 2026-06-10 | §18.5 Runtime Source Architecture（P1 SSOT）：Drive = Archive SoT、GCS = Runtime Knowledge Source |
 | **v1.4** | 2026-06-10 | §20／§22 Drive 平台層架構修正：Shared 移出租戶資料夾；GCS 不變 |

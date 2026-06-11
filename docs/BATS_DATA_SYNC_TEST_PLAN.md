@@ -313,7 +313,7 @@ T-Phase5-05 ──→ Drive 隔離
 
 | 排除 | 說明 |
 |------|------|
-| Google Drive / Shared / RAG | Phase 6B+ |
+| Google Drive / Shared Sheet 同步 / RAG | Phase 6B+ / 未來 A2/A3 |
 | 上傳頁 UI 自動觸發 | v1 以手動為主 |
 | 多租戶單次命令 | 單 `sno` only |
 | Metadata Promote | Phase 6C～6D |
@@ -681,6 +681,8 @@ L2 規劃
 | `BATS_DRIVE_METADATA_CONTRACT.md` | Phase 6C Metadata |
 | `BATS_DRIVE_GCS_MAPPING.md` | Phase 6D Mapping |
 | `BATS_TENANT_DRIVE_ONBOARDING_POLICY.md` | Onboarding 驗證 |
+| `BATS_DATA_SOURCE_REGISTRY.md` §4.4 | P1-7 Knowledge Priority Rule |
+| `BATS_SHARED_KNOWLEDGE_SHEET_CONTRACT.md` | P2-1 Shared Sheet Tabs（未來測試） |
 
 ### 6.3 測試與實作對照
 
@@ -707,6 +709,8 @@ L2 規劃
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.7** | 2026-06-10 | P1-7 Priority、P2-1 Shared Sheet Contract cross-ref |
+| **v1.6** | 2026-06-10 | Phase 6A Out of Scope 補充 Shared Sheet 為未來 A2/A3 |
 | **v1.5** | 2026-06-10 | §3.3 Phase 6A Test Matrix（6A-01～6A-08）；Acceptance Criteria 補強 |
 | **v1.4** | 2026-06-10 | Phase 6A～6E 正名；6B～6E 測試對照；P1 Drive SSOT cross-ref |
 | **v1.3** | 2026-06-10 | Phase 5 Close-out：5D Read-back Verification + Completed 標記 |

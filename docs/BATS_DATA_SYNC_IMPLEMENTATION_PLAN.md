@@ -561,8 +561,9 @@ bbcshops88@gmail.com（Google Drive）
 | **正式名稱** | Phase 6A — Manual Sync Command |
 | **目的** | 將 Phase 1～5 已完成元件整合為 **單一 CLI 手動同步流程** |
 | **觸發** | 維運手動執行；**無** Cron、**無** Auto Sync |
-| **輸入** | Google Sheet（Structured）；Registry 驅動 |
+| **輸入** | Google Sheet（Structured Knowledge Input）；Registry 驅動 |
 | **輸出** | GCS `tenants/{sno}/knowledge/` 五 JSON + 三種 report |
+| **SSOT 對齊** | Structured Knowledge = Google Sheet（§18.7）；**6A 僅 Tenant Private** |
 
 **整合元件（已存在，Phase 6A 串接）：**
 
@@ -582,7 +583,7 @@ bbcshops88@gmail.com（Google Drive）
 | Google Drive Connector | Phase 6B～6E |
 | PDF / Image / OCR | Unstructured；Drive 範疇 |
 | Metadata Promote | Phase 6C～6D |
-| Shared Layer / Industry Shared / Global Shared | Phase 6E；v1 不寫 `shared/` |
+| Shared Layer / Industry Shared / Global Shared **同步** | 未來 Sheet Pipeline A2/A3；**非** 6A 範圍 |
 | RAG / Vector / Embedding / AI Ranking / Recommendation | 未來；僅從 GCS |
 | Cron / Auto Sync | v1 手動 only |
 | Registry Schema 修訂 | **不新增** `private_drive_folder_id` |
@@ -1003,6 +1004,8 @@ L3 實作（未來）
 | `BATS_DRIVE_METADATA_CONTRACT.md` | Phase 6C Metadata Contract |
 | `BATS_DRIVE_GCS_MAPPING.md` | Phase 6D Drive → GCS Mapping |
 | `BATS_TENANT_DRIVE_ONBOARDING_POLICY.md` | Tenant Onboarding |
+| `BATS_SHARED_KNOWLEDGE_SHEET_CONTRACT.md` | Shared Sheet Contract（P2-1） |
+| `BATS_DATA_SOURCE_REGISTRY.md` §4.4 | P1-7 Knowledge Priority Rule |
 
 ### 7.3 相關文件
 
@@ -1027,6 +1030,8 @@ L3 實作（未來）
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.8** | 2026-06-10 | P1-7 Knowledge Priority、P2-1 Shared Sheet Contract cross-ref |
+| **v1.7** | 2026-06-10 | Phase 6A cross-ref §18.7 Structured Knowledge = Google Sheet |
 | **v1.6** | 2026-06-10 | Phase 6A SSOT：管線、CLI、Registry、Safety、Acceptance Criteria |
 | **v1.5** | 2026-06-10 | Phase 6A～6E 正名；P1 Drive SSOT cross-ref；6B～6E 子階段定義 |
 | **v1.4** | 2026-06-10 | Phase 6 Pre-Governance：Google Drive Platform Layer Architecture SSOT 修正 |

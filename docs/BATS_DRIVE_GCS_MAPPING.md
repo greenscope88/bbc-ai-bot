@@ -80,17 +80,23 @@ Google Drive → BDS Sync → GCS Archive → Metadata Layer → Knowledge Layer
 ## 3. Two Pipelines
 
 ```text
-Pipeline A — Structured（Phase 4～5 已完成／進行中）
-Google Sheet → Reader → Validator → tenants/{sno}/knowledge/*.json
+Pipeline A — Structured Knowledge（Google Sheet = Input Source）
+├── A1 Tenant Private   → tenants/{sno}/knowledge/*.json    （Phase 6A）
+├── A2 Industry Shared  → shared/{industry}/knowledge/*.json （未來；須 Policy）
+└── A3 Global Shared    → shared/global/knowledge/*.json       （未來；須 Policy）
 
-Pipeline B — Unstructured（Phase 6 Planned）
-Google Drive → Drive Connector → Metadata →（可選）GCS Archive Object
+Pipeline B — Unstructured Archive（Google Drive）
+Google Drive → Drive Connector → Metadata → GCS Archive Object
 ```
 
-| Pipeline | 輸入 | Contract / Mapping |
-|----------|------|-------------------|
-| **A** | Google Sheet | `BATS_DATA_CONTRACT.md` |
-| **B** | Google Drive | `BATS_DRIVE_METADATA_CONTRACT.md` + **本文件** |
+| Pipeline | 輸入 | Contract / Mapping | 狀態 |
+|----------|------|-------------------|------|
+| **A1** | Tenant Private Google Sheet | `BATS_DATA_CONTRACT.md` | Phase 6A |
+| **A2** | Industry Shared Google Sheet | `BATS_SHARED_KNOWLEDGE_CONTRACT.md` | 未實作 |
+| **A3** | Global Shared Google Sheet | `BATS_SHARED_KNOWLEDGE_CONTRACT.md` | 未實作 |
+| **B** | Google Drive（PDF 等） | `BATS_DRIVE_METADATA_CONTRACT.md` + **本文件** | Phase 6B+ |
+
+> **Structured Knowledge = Google Sheet**（三層皆然）。FAQ 型知識 **不走** Pipeline B。見 `BATS_DATA_SYNC_POLICY.md` §18.7。
 
 ---
 
@@ -102,7 +108,7 @@ Google Drive → Drive Connector → Metadata →（可選）GCS Archive Object
 |------|------|------|--------|
 | **Archive Layer** | Google Drive + GCS Archive Object | 原始檔（PDF、Image 等） | 稽核、回溯、BDS promote 來源 |
 | **Metadata Layer** | GCS object metadata / sync report | 檔案描述、同步狀態（見 `BATS_DRIVE_METADATA_CONTRACT.md`） | BDS 管線、維運報告 |
-| **Knowledge Layer** | GCS `tenants/{sno}/knowledge/*.json` | Structured Runtime 內容 | BATS Search、Gemini、Future RAG |
+| **Knowledge Layer** | GCS `tenants/{sno}/knowledge/*.json`、`shared/.../knowledge/*.json` | Structured Runtime 內容（**來源均為 Sheet**） | BATS Search、Gemini、Future RAG |
 
 | 禁止混用 | 說明 |
 |----------|------|
@@ -302,6 +308,7 @@ Archive Layer（原件）     Metadata Layer（描述）     Knowledge Layer（�
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.2** | 2026-06-10 | Pipeline A1/A2/A3 Structured Sheet 三層；Structured Knowledge = Google Sheet |
 | **v1.1** | 2026-06-10 | P1 Final：三層分離、Drive→GCS Mapping、Runtime Source、One Tenant One Folder、Shared Boundary、Object Versioning |
 | **v1.0** | 2026-06-10 | Phase 6 P1：Drive → GCS Mapping 治理方向（Planned） |
 

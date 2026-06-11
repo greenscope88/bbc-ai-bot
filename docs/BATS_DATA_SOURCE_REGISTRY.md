@@ -127,6 +127,22 @@ Source Registry
 
 Knowledge Source 分 **三類**（供 BATS 讀取 GCS Knowledge Layer）；另有一類 **非 Knowledge** 之 Archive 類型（`customer_registration`）僅登錄於 Drive Registry，不進 GCS Knowledge。
 
+### 3.1.1 Structured Knowledge Input Source（SSOT）
+
+> **正式原則：** 三類 Knowledge 之 **Structured 輸入均為 Google Sheet**；Google Drive 僅 Archive。
+
+| Knowledge 類型 | Structured Input | GCS Runtime Output | Registry 現行欄位（v1） |
+|----------------|------------------|--------------------|-------------------------|
+| **Tenant Private** | Google Sheet | `tenants/{sno}/knowledge/` | `private_knowledge_sheet_id` ✅ |
+| **Industry Shared** | Google Sheet（`shared/{industry}/` 治理） | `shared/{industry_code}/knowledge/` | 規劃中（**不修改 Schema**） |
+| **Global Shared** | Google Sheet（平台治理） | `shared/global/knowledge/` | 規劃中（**不修改 Schema**） |
+
+| 非 Structured | 載體 |
+|---------------|------|
+| PDF / Image / Word / PPT / DM | Google Drive Archive（Phase 6B+） |
+
+**交叉引用：** `BATS_DATA_CONTRACT.md` §1.5、`BATS_SHARED_KNOWLEDGE_CONTRACT.md` §3.6、`BATS_DATA_SYNC_POLICY.md` §18.7
+
 ### 3.2 Type A — `shared_knowledge`（共用知識）
 
 | 項目 | 說明 |
@@ -136,14 +152,17 @@ Knowledge Source 分 **三類**（供 BATS 讀取 GCS Knowledge Layer）；另�
 | **Registry 層級** | `shared/` |
 | **GCS 路徑** | `shared/{industry_code}/knowledge/`、`shared/global/knowledge/`（見 §9.1） |
 
-#### 典型內容
+#### 典型內容（應以 Google Sheet 治理）
 
 | 範例 | 說明 |
 |------|------|
-| 護照辦理 | 通用代辦說明、流程 |
-| 簽證資訊 | 各國簽證通用資訊 |
-| 入境規定 | 通用入境須知 |
-| 旅遊須知 | 跨租戶通用提醒 |
+| 護照新辦／效期規定 | FAQ／條列型；Sheet → `shared/{industry}/knowledge/` |
+| 台胞證申請規定 | 同上 |
+| 簽證／入境規定 | 日本、泰國等通用須知 |
+| 航空行李規定 | 條列型 |
+| 國際旅遊常識 | FAQ 型 |
+
+> **Input Source：** Google Sheet（Structured）；**不是** Drive PDF。見 §3.1.1、`BATS_SHARED_KNOWLEDGE_CONTRACT.md` §3.6。
 
 #### 角色
 
@@ -390,16 +409,56 @@ Global Shared Layer
 | **1** | Tenant Layer | `tenants/{sno}/knowledge/` |
 | **2** | Industry Shared Layer | `shared/{industry_code}/knowledge/` |
 | **3** | Global Shared Layer | `shared/global/knowledge/` |
+| **4** | Human Service | 人工客服／轉接；**非** GCS Knowledge |
+
+#### P1-7 Knowledge Retrieval Priority（正式）
+
+```text
+Level 1  Tenant Private Knowledge     tenants/{sno}/knowledge/
+    ↓（若無資料）
+Level 2  Industry Shared Knowledge    shared/{industry_code}/knowledge/
+    ↓（若無資料）
+Level 3  Global Shared Knowledge      shared/global/knowledge/
+    ↓（若無資料）
+Level 4  Human Service                轉人工；禁止 AI 自行推測
+```
+
+**正式原則：** Tenant Private **>** Industry Shared **>** Global Shared **>** Human Service
+
+#### Fallback Rule
+
+| 情境 | 行為 |
+|------|------|
+| Level 1 無匹配 | 降至 Level 2 |
+| Level 2 無匹配 | 降至 Level 3 |
+| Level 3 無匹配 | 降至 **Level 4 Human Service** |
+| **禁止** | AI 自行推測、幻覺補充、編造旅遊規定 |
+
+與 `BATS_GEMINI_RENDERER_CONTRACT.md` §9（禁止幻覺）、`BATS_DATA_SYNC_POLICY.md` §18.8 一致。
+
+#### Industry Shared First Principle
+
+若知識明確屬於特定產業 → **優先** `shared/{industry_code}/`，**非** `shared/global/`。
+
+| `shared/travel/` 範例 | `shared/global/` 僅保留 |
+|-----------------------|-------------------------|
+| 護照規定、效期、台胞證 | 跨 **所有** 產業共通知識 |
+| 日本／泰國入境規定 | 尚未建立產業分類之 **暫存** 知識 |
+| 航空行李、國際旅遊常識 | — |
+
+**Status:** Reserved For Future Multi-Industry Expansion
+
+**Sheet Contract：** `BATS_SHARED_KNOWLEDGE_SHEET_CONTRACT.md` §7
 
 #### 比對步驟（概念）
 
 | 步驟 | 說明 |
 |------|------|
-| 1 | 依請求 `sno` 載入 Tenant Layer |
+| 1 | 依請求 `sno` 載入 Tenant Layer（Level 1） |
 | 2 | 命中則採用租戶答案；**結束** |
-| 3 | 未命中則依 Registry `industry_code` 載入 Industry Shared Layer |
-| 4 | 仍未命中則載入 Global Shared Layer |
-| 5 | 皆未命中則依 BATS 既定無答案處理（不捏造） |
+| 3 | 未命中則依 Registry `industry_code` 載入 Industry Shared（Level 2） |
+| 4 | 仍未命中則載入 Global Shared（Level 3） |
+| 5 | 皆未命中 → **Human Service**（Level 4）；**禁止** AI 捏造 |
 
 #### 價格覆寫範例
 
@@ -1007,6 +1066,8 @@ GCS Knowledge Layer（受控路徑；非 Phase 5 範圍）
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.9** | 2026-06-10 | §4.4 P1-7 四層 Priority、Fallback Rule、Industry Shared First |
+| **v1.8** | 2026-06-10 | §3.1.1 Structured Knowledge Input Source（Sheet = 三層 Knowledge Input） |
 | **v1.7** | 2026-06-10 | §7.9 Phase 6A Registry 讀取範圍 |
 | **v1.6** | 2026-06-10 | §10.5 Runtime Source Architecture、Phase 6A～6E 正名、P1 Drive SSOT cross-ref |
 | **v1.5** | 2026-06-10 | Phase 6 Pre-Governance：§6.5 Google Drive Platform Layer Architecture；Shared 移出租戶資料夾 |

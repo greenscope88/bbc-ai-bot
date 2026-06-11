@@ -15,6 +15,7 @@
 | 章節 | 標題 |
 |------|------|
 | §1 | Purpose |
+| §1.5 | Structured Knowledge Input Source |
 | §2 | Relationship |
 | §3 | Data Category |
 | §4 | Google Sheet Multi Tab Rule |
@@ -74,6 +75,37 @@ Google Sheet（Source Registry 登錄之 private_knowledge_sheet）
 | **v1 規則** | Sheet 欄位名稱 **僅** 接受英文 snake_case（如 `question`、`answer`、`company_name`） |
 | **禁止 v1** | 中文欄位別名映射（如「問題」「答案」「公司名稱」） |
 | **Future** | 中文別名列入 §12 Future Roadmap |
+
+### 1.5 Structured Knowledge Input Source
+
+> **正式原則：** **Structured Knowledge = Google Sheet**。本 Contract 定義 **Tenant Private** Sheet → JSON；Shared 層格式見 `BATS_SHARED_KNOWLEDGE_CONTRACT.md`。
+
+#### 1.5.1 三層 Knowledge 輸入
+
+| 層級 | 輸入來源 | Contract SSOT | GCS 輸出 |
+|------|----------|-------------|----------|
+| **Tenant Private Knowledge** | Google Sheet | **本文件**（5 Tab） | `tenants/{sno}/knowledge/*.json` |
+| **Industry Shared Knowledge** | Google Sheet | `BATS_SHARED_KNOWLEDGE_CONTRACT.md` | `shared/{industry_code}/knowledge/` |
+| **Global Shared Knowledge** | Google Sheet | `BATS_SHARED_KNOWLEDGE_CONTRACT.md` | `shared/global/knowledge/` |
+
+#### 1.5.2 與 Google Drive 分工
+
+| 載體 | 角色 |
+|------|------|
+| **Google Sheet** | Structured Knowledge **Input Source** — FAQ、條列、表格、服務型知識 |
+| **Google Drive** | Archive Source — PDF、Image、Word、PPT、DM **原件** |
+| **GCS** | Runtime Knowledge Source — BATS／Gemini 消費層 |
+
+FAQ 型、表格型、條列型知識（含護照、簽證、入境規定、行李規定等）**應優先** 以 Google Sheet 維護，經 BDS 同步至 GCS，**不必等待** PDF 解析或 RAG 階段。
+
+#### 1.5.3 Phase 6A 邊界
+
+| 項目 | 說明 |
+|------|------|
+| **Phase 6A** | 僅 **Tenant Private** Sheet → `tenants/{sno}/knowledge/` |
+| **Shared Sheet 同步** | **未實作**；本節為架構 SSOT，不變更 6A 範圍 |
+
+---
 
 #### 決策 B — 整檔 Fail 策略
 
@@ -671,10 +703,12 @@ tenants/{sno}/knowledge/
 
 | 原則 | 說明 |
 |------|------|
+| **輸入來源** | Industry / Global Shared Knowledge **亦以 Google Sheet 治理**（§1.5）；**不是** Drive PDF |
 | **獨立 Contract** | Shared 與 Tenant **不得** 共用同一 JSON schema 檔案 |
 | **檔案級 `data_category`** | 固定 `shared_knowledge` |
 | **讀取優先序** | Tenant > Industry > Global（不由 Contract 變更） |
-| **未來修訂** | 欄位定義將於本文件 v2.x 或獨立 `shared_knowledge` 附錄補齊 |
+| **Shared 治理** | Shared ≠ Public；須 Registry + Policy 啟用後才進 Runtime |
+| **完整定義** | `BATS_SHARED_KNOWLEDGE_CONTRACT.md` §3.6 |
 
 ---
 
@@ -755,6 +789,7 @@ tenants/{sno}/knowledge/
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.3** | 2026-06-10 | §1.5 Structured Knowledge Input Source；§10.3 Shared 亦以 Sheet 治理 |
 | **v1.2** | 2026-06-09 | 新增 §2.3 BDS Data Input Cross Reference（Sheet Structured / Drive Unstructured） |
 | **v1.1** | 2026-06-08 | MVP 決策：英文欄位 only、整檔 Fail、文件邊界；cross-ref Sync / Registry |
 | **v1.0** | 2026-06-08 | 第一版：`tenant_private_knowledge` 五 Tab 五 JSON Contract、Validation、Tenant Isolation |

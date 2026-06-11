@@ -792,7 +792,8 @@ C:/Web/xampp/php/php.exe tests/bds/test_bds_gcs_readback_verification.php
 |------|------|
 | **名稱** | Phase 6A — Manual Sync Command |
 | **入口** | `bin/bds-sync.php`（規劃中） |
-| **範圍** | Sheet → 5 Knowledge JSON → GCS；**不含** Drive / Shared / RAG |
+| **範圍** | Tenant Private **Sheet** → 5 Knowledge JSON → GCS；**不含** Drive / Shared 同步 / RAG |
+| **SSOT** | Structured Knowledge = Google Sheet（`BATS_DATA_SYNC_POLICY.md` §18.7）；Shared Sheet 為未來管線 |
 | **驗收** | Pilot `travel_b`（`5f99b8d665e8444d`） |
 
 ### 13.2 Out of Scope
@@ -831,6 +832,8 @@ travel_b → Google Sheet → 5 JSON → GCS tenants/5f99b8d665e8444d/knowledge/
 | `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §Phase 6A | 實作 SSOT |
 | `BATS_DATA_SYNC_TEST_PLAN.md` §3.3 | Test Matrix 6A-01～6A-08 |
 | `BATS_DRIVE_CONNECTOR_SCOPE.md` | 6A **不** 使用；6B+ 對照 |
+| `BATS_DATA_SOURCE_REGISTRY.md` §4.4 | P1-7 Knowledge Priority（Tenant > Industry > Global > Human Service） |
+| `BATS_SHARED_KNOWLEDGE_SHEET_CONTRACT.md` | Shared Sheet Contract（P2-1；未實作） |
 
 ---
 
@@ -838,6 +841,8 @@ travel_b → Google Sheet → 5 JSON → GCS tenants/5f99b8d665e8444d/knowledge/
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.8** | 2026-06-10 | P1-7 Knowledge Priority、P2-1 Shared Sheet Contract cross-ref |
+| **v1.7** | 2026-06-10 | §13 Structured Knowledge = Google Sheet cross-ref |
 | **v1.6** | 2026-06-10 | §13 Phase 6A Manual Sync SSOT；管線含 Read-back；`--tenant` 參數 |
 | **v1.5** | 2026-06-10 | §12.8 Phase 6A～6E 正名、P1 Drive SSOT cross-ref、Onboarding 流程 |
 | **v1.4** | 2026-06-10 | §12.7 Phase 6 Pre-Governance：Google Drive Platform Layer Architecture |

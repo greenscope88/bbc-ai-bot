@@ -223,6 +223,84 @@ BDS Data Input Strategy
 | Phase 4 實作 Drive API | Phase 4 僅 Sheets API 唯讀 |
 | 提前引入 `private_drive_folder_id` | 延後至 Phase 6 前 Registry 規劃 |
 
+### 1.8 Structured Knowledge Source SSOT
+
+> **正式原則：** 所有 **Structured Knowledge**（FAQ、表格、條列、服務型知識）之 **輸入來源均為 Google Sheet**；**不是** Google Drive PDF／RAG。
+
+#### 1.8.1 三層 Knowledge 輸入對照
+
+| Knowledge 層級 | 輸入來源（Structured） | GCS Runtime 輸出 | BDS 同步狀態 |
+|----------------|------------------------|------------------|--------------|
+| **Tenant Private Knowledge** | Google Sheet（`private_knowledge_sheet_id`） | `tenants/{sno}/knowledge/` | Phase 6A（規劃中） |
+| **Industry Shared Knowledge** | Google Sheet（`shared/{industry}/` 治理） | `shared/{industry_code}/knowledge/` | **未實作**（Contract 已定） |
+| **Global Shared Knowledge** | Google Sheet（平台治理） | `shared/global/knowledge/` | **未實作**（Contract 已定） |
+
+**統一公式：**
+
+```text
+Structured Knowledge = Google Sheet（Input Source）
+        ↓ BDS Sync
+GCS Knowledge Layer（Runtime Source）→ Gemini / BATS Search
+```
+
+#### 1.8.2 與 Google Drive 分工
+
+| 載體 | 角色 | 典型內容 |
+|------|------|----------|
+| **Google Sheet** | Structured Knowledge **Input** | FAQ、QA 條列、服務項目、入境規定、行李規定 |
+| **Google Drive** | Archive Source **only** | PDF、Image、Word、PPT、DM 原件 |
+
+| 知識型態 | 應放置載體 | 說明 |
+|----------|------------|------|
+| FAQ 型、表格型、條列型、服務型 | **Google Sheet** | 可經 BDS → GCS → Gemini **不必等待** PDF／RAG |
+| PDF / Image / Word / PPT / DM | **Google Drive** | Archive；Phase 6B+ promote 至 GCS Archive |
+
+#### 1.8.3 Industry Shared 典型範例（應以 Sheet 治理）
+
+| 範例主題 | `industry_code` 方向 | 未來 GCS |
+|----------|----------------------|----------|
+| 護照新辦／效期規定 | `travel`（等） | `shared/travel/knowledge/` |
+| 台胞證申請規定 | `travel` | 同上 |
+| 日本／泰國入境規定 | `travel` | 同上 |
+| 航空行李規定 | `travel` | 同上 |
+| 國際旅遊常識 | `travel` / `global` | `shared/{industry}/` 或 `shared/global/knowledge/` |
+
+#### 1.8.4 Shared Layer 治理（不變）
+
+| 原則 | 說明 |
+|------|------|
+| **Shared Layer ≠ Public Layer** | 受控 fallback |
+| **Default Private** | 預設不對外 |
+| **預設不進 Runtime** | 未 Policy 啟用前不進 GCS 消費路徑 |
+| **Registry + Policy 啟用** | 才能同步至 GCS 並進入 Runtime |
+
+**SSOT 交叉引用：** `BATS_DATA_CONTRACT.md` §1.5、`BATS_SHARED_KNOWLEDGE_CONTRACT.md` §3.6、`BATS_DATA_SYNC_POLICY.md` §18.7
+
+### 1.9 Knowledge Priority Rule（P1-7）
+
+> **SSOT：** `BATS_DATA_SOURCE_REGISTRY.md` §4.4、`BATS_DATA_SYNC_POLICY.md` §18.8
+
+#### 1.9.1 Knowledge Retrieval Priority
+
+| Level | 名稱 | 路徑 |
+|-------|------|------|
+| **1** | Tenant Private Knowledge | `tenants/{sno}/knowledge/` |
+| **2** | Industry Shared Knowledge | `shared/{industry_code}/knowledge/` |
+| **3** | Global Shared Knowledge | `shared/global/knowledge/` |
+| **4** | Human Service | 轉人工 |
+
+**Tenant Private > Industry Shared > Global Shared > Human Service**
+
+#### 1.9.2 Fallback Rule
+
+Level 1 無資料 → 2 → 3 → **4 Human Service**。禁止 AI 自行推測、幻覺補充、編造旅遊規定（`BATS_GEMINI_RENDERER_CONTRACT.md` §9）。
+
+#### 1.9.3 Industry Shared First
+
+產業專屬知識優先 `shared/{industry}/`；`shared/global/` 僅跨產業共通與暫存。**Status:** Reserved For Future Multi-Industry Expansion。
+
+**Sheet Contract：** `BATS_SHARED_KNOWLEDGE_SHEET_CONTRACT.md`
+
 ---
 
 ## 2. Category A：Itinerary Data
@@ -564,6 +642,8 @@ L1 SSOT
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.6** | 2026-06-10 | §1.9 P1-7 Knowledge Priority Rule；Industry Shared First |
+| **v1.5** | 2026-06-10 | §1.8 Structured Knowledge Source SSOT（三層 Knowledge = Google Sheet） |
 | **v1.4** | 2026-06-10 | P1 Final：Runtime Source、Phase 6A～6E 正名、Shared Runtime Boundary cross-ref |
 | **v1.3** | 2026-06-10 | §1.6.6 Google Drive Platform Layer Architecture；Shared 移出租戶資料夾 |
 | **v1.2** | 2026-06-09 | 新增 §1.7 BDS Data Input Strategy（Sheet Structured / Drive Unstructured）；Phase 4 Close-out |

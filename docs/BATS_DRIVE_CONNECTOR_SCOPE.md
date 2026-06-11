@@ -50,8 +50,10 @@
 
 | 載體 | 型態 | Connector |
 |------|------|-----------|
-| **Google Sheet** | Structured | `BdsGoogleSheetReader`（Phase 4 ✅） |
-| **Google Drive** | Unstructured | **Drive Source Connector**（Phase 6 Planned） |
+| **Google Sheet** | Structured Knowledge **Input**（全層） | `BdsGoogleSheetReader`（Phase 4 ✅） |
+| **Google Drive** | Unstructured Archive **only** | **Drive Source Connector**（Phase 6B+） |
+
+> **Structured Knowledge = Google Sheet**（Tenant Private、Industry Shared、Global Shared）。FAQ／條列型知識 **不走** Drive Connector。見 `BATS_DATA_SYNC_POLICY.md` §18.7。
 
 ---
 
@@ -103,6 +105,15 @@ GCS 負責 **Runtime 存取**（現行與未來）：
 | **Future AI Ranking** | 未來 |
 
 > **未來 RAG 只能從 GCS 取得資料；不得直接從 Google Drive 建立 Runtime 流程。**
+
+### 2.3.1 Structured Knowledge 與 Drive 分工
+
+| 知識型態 | Input Source | Connector |
+|----------|--------------|-----------|
+| FAQ、條列、表格、服務型（含護照、簽證、入境、行李規定） | **Google Sheet** | Sheet Pipeline（Phase 4～6A） |
+| PDF、Image、Word、PPT、DM 原件 | **Google Drive** | Drive Connector（Phase 6B+） |
+
+**Industry / Global Shared 之 Structured Knowledge 亦以 Google Sheet 治理**；同步至 `shared/{industry}/knowledge/`、`shared/global/knowledge/` 為 **未來 BDS 管線**（非 Drive Connector）。
 
 ### 2.4 正確資料流
 
@@ -346,6 +357,7 @@ Phase 6A（Sheet E2E）──→ Phase 6B（Drive Read）──→ Phase 6C（Me
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.2** | 2026-06-10 | §2.3.1 Structured Knowledge vs Drive；Sheet = 全層 Structured Input |
 | **v1.1** | 2026-06-10 | P1 Final：Runtime Source Architecture、6A～6E 正名、One Tenant One Folder、Shared Runtime Boundary、Object Versioning |
 | **v1.0** | 2026-06-10 | Phase 6 P1：Drive Connector Scope 治理（Planned） |
 
