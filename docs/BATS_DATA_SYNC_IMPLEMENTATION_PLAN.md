@@ -141,8 +141,8 @@ Manual Sync Command + Reports（Phase 6）
 | **2** | Validator | 無 | 否 | **Completed** ✅ |
 | **3** | JSON Writer Dry-run | 無 | 否（本機 preview） | **Completed** ✅ |
 | **4** | Google Sheet Reader | Google API（唯讀） | 否 | **Completed** ✅ |
-| **5** | GCS Writer Controlled Mode | Google API + GCS | 是（受控） | 規劃中 |
-| **6A** | Manual Sync Command | Sheet 完整管線 | 是（手動觸發） | 規劃中 |
+| **5** | GCS Writer Controlled Mode | Google API + GCS | 是（受控） | **Completed** ✅ |
+| **6A** | Manual Sync Command | Sheet 完整管線 | 是（手動觸發） | 規劃中（SSOT 已定義） |
 | **6B** | Drive Connector Read-only | Drive API 唯讀 | 否 | 規劃中 |
 | **6C** | Metadata Contract & File Classification | Drive + Metadata | 否 | 規劃中 |
 | **6D** | Drive → GCS Controlled Promote | Drive + GCS Archive | 是（受控） | 規劃中 |
@@ -170,7 +170,7 @@ Phase 1 ──→ Phase 2 ──→ Phase 3
 
 | 子階段 | 正式名稱 | SSOT |
 |--------|----------|------|
-| **6A** | Manual Sync Command | 本文件 §Phase 6A |
+| **6A** | Manual Sync Command | 本文件 **§Phase 6A SSOT** |
 | **6B** | Drive Connector Read-only | `BATS_DRIVE_CONNECTOR_SCOPE.md` §7 |
 | **6C** | Metadata Contract & File Classification | `BATS_DRIVE_METADATA_CONTRACT.md` |
 | **6D** | Drive → GCS Controlled Promote | `BATS_DRIVE_GCS_MAPPING.md` |
@@ -549,54 +549,231 @@ bbcshops88@gmail.com（Google Drive）
 
 ---
 
-### Phase 6A — Manual Sync Command
+### Phase 6A — Manual Sync Command（SSOT）
 
-#### 目標
+> **本節為 Phase 6A 正式 SSOT 與實作規劃。** 實作 `bin/bds-sync.php` 前須與本節對齊。  
+> **不含** Google Drive Connector；Drive 相關見 Phase 6B～6E 與 `BATS_DRIVE_*` 文件。
 
-提供 **手動執行** 之完整同步命令，串接 Phase 4～5，產出完整報告。**不含** Drive Connector。
-
-#### 做什麼
+#### 6A.1 定位
 
 | 項目 | 說明 |
 |------|------|
-| **觸發方式** | CLI 命令（如 `php bin/bds-sync.php --sno=...`）；**不做 cron** |
-| **管線** | Registry → Sheet Reader → Validator → GCS Writer |
-| **報告** | `sync_report.json`、`validation_report.json`、`error_report.json` |
-| **rollback** | 保留上一版 JSON 參照；失敗自動不覆蓋；可选手動還原程序 |
-| **日誌** | 可觀測；對齊 `BATS_DATA_SYNC_POLICY.md` §14.3 |
+| **正式名稱** | Phase 6A — Manual Sync Command |
+| **目的** | 將 Phase 1～5 已完成元件整合為 **單一 CLI 手動同步流程** |
+| **觸發** | 維運手動執行；**無** Cron、**無** Auto Sync |
+| **輸入** | Google Sheet（Structured）；Registry 驅動 |
+| **輸出** | GCS `tenants/{sno}/knowledge/` 五 JSON + 三種 report |
 
-#### 不做什麼
+**整合元件（已存在，Phase 6A 串接）：**
 
-| 禁止 | 說明 |
+| 元件 | 來源 Phase | 類別（概念） |
+|------|------------|--------------|
+| Google Sheet Reader | Phase 4 | `BdsGoogleSheetReader` |
+| Parser | Phase 1 | `BdsMockSheetParser`（或等效 Parser） |
+| Validator | Phase 2 | `BdsValidator` |
+| Knowledge Builder | Phase 5C | `BdsKnowledgeDocumentBuilder` |
+| GCS Uploader | Phase 5C | `BdsGcsUploader` |
+| Read-back Verification | Phase 5D | read-back 驗證步驟 |
+
+#### 6A.2 Out of Scope（Phase 6A 不處理）
+
+| 排除 | 說明 |
 |------|------|
-| Cron / 排程 | v1 不實作 |
-| 上傳頁自動觸發 | 可列 Phase 6+ 整合；v1 以手動為主 |
-| 全租戶 sync | 單次命令僅處理一個 `sno` |
+| Google Drive Connector | Phase 6B～6E |
+| PDF / Image / OCR | Unstructured；Drive 範疇 |
+| Metadata Promote | Phase 6C～6D |
+| Shared Layer / Industry Shared / Global Shared | Phase 6E；v1 不寫 `shared/` |
+| RAG / Vector / Embedding / AI Ranking / Recommendation | 未來；僅從 GCS |
+| Cron / Auto Sync | v1 手動 only |
+| Registry Schema 修訂 | **不新增** `private_drive_folder_id` |
 
-#### 建議命令介面（概念）
+**Cross Reference（6A 不讀取、不修改）：** `BATS_DRIVE_CONNECTOR_SCOPE.md`、`BATS_DRIVE_METADATA_CONTRACT.md`、`BATS_DRIVE_GCS_MAPPING.md`
+
+#### 6A.3 正式管線
+
+```text
+Tenant Registry
+        ↓
+private_knowledge_sheet_id（Registry 載入）
+        ↓
+Google Sheet Reader
+        ↓
+Parser
+        ↓
+Validator
+        ↓
+Knowledge Builder
+        ↓
+GCS Uploader（受控；雙重門禁）
+        ↓
+Read-back Verification
+        ↓
+sync_report.json
+validation_report.json
+error_report.json（如有錯誤）
+```
+
+| 步驟 | Fail 行為 |
+|------|-----------|
+| Registry 載入失敗 | 拒絕執行；產出 `error_report.json` |
+| Sheet Read 失敗 | 中止；不進 Validation |
+| Validation Fail | **不寫入 GCS**；保留舊 JSON |
+| GCS Upload 失敗 | 同步失敗；不更新 success meta |
+| Read-back Fail | **同步失敗**（即使 upload 回傳成功） |
+
+#### 6A.4 CLI Command 規劃
+
+**入口：** `bin/bds-sync.php`（**規劃中**；本階段僅文件，不建立檔案）
+
+**支援參數：**
+
+| 參數 | 說明 | 範例 |
+|------|------|------|
+| `--sno={tenant_sno}` | 租戶權威邊界 | `--sno=5f99b8d665e8444d` |
+| `--tenant={tenant_key}` | 人類可讀代碼；由 Registry 解析 `sno` | `--tenant=travel_b` |
+| `--dry-run` | 預設 `true`；不寫 GCS | `--dry-run=false` |
+| `--write-gcs` | 明確請求 GCS 寫入（須配合門禁） | `--write-gcs` |
+
+**參數優先順序與衝突處理：**
+
+| 情境 | 行為 |
+|------|------|
+| **僅 `--sno`** | 以 `sno` 載入 Registry entry |
+| **僅 `--tenant`** | 以 `tenant_key`（Registry `tenant_name`）查詢對應 `sno` |
+| **同時 `--sno` 與 `--tenant`** | 兩者須對應 **同一** Registry entry；不一致 → **拒絕執行** |
+| **皆未提供** | **拒絕執行**；exit 非 0；`error_report` 標記 `BDS_MISSING_TENANT_PARAM`（概念） |
+| **`--write-gcs` 但 dry-run** | 須 `dry-run=false` **且** 環境變數雙重門禁 |
+
+**缺參數行為：** 無 `--sno` 且無 `--tenant` → 不啟動管線；輸出用法說明至 stderr。
+
+**Validation Fail 行為：** 不呼叫 GCS Uploader；`validation_report.json` → `passed=false`；`sync_report.json` → `status=failed`；GCS 既有 JSON **不變**。
+
+**建議命令（Pilot）：**
 
 ```bash
 # dry-run（預設）
+php bin/bds-sync.php --tenant=travel_b
 php bin/bds-sync.php --sno=5f99b8d665e8444d
 
-# 受控寫入 GCS
+# 受控寫入 GCS（須 dry-run 已 PASS）
 php bin/bds-sync.php --sno=5f99b8d665e8444d --dry-run=false --write-gcs
 ```
 
-#### Rollback 概念
+#### 6A.5 Registry Integration
+
+| 欄位 | Phase 6A 是否讀取 | 說明 |
+|------|-------------------|------|
+| **`sno`** | ✅ | 權威邊界；GCS prefix |
+| **`tenant_name` / `tenant_key`** | ✅（若 `--tenant`） | 對照 `sno` |
+| **`private_knowledge_sheet_id`** | ✅ **必填** | Sheet Reader 輸入 |
+| **`gcs_prefix`** | ✅ | 正式值 `tenants/{sno}/` |
+| **`enabled`** | ✅ 建議 | `false` → 拒絕同步 |
+| **`industry_code`** | 載入但不寫 Shared | v1 不同步 `shared/` |
+| **Drive 相關 ID** | ❌ **不讀取** | Phase 6B+ |
+| **Shared Layer** | ❌ **不讀取** | Phase 6E |
+| **Industry / Global Shared** | ❌ **不讀取** | Phase 6E |
+
+> **Registry JSON Schema 不變**；**不新增** `private_drive_folder_id`。
+
+#### 6A.6 Input / Output Contract
+
+**Input：**
+
+| 項目 | SSOT |
+|------|------|
+| **載體** | Google Sheet |
+| **Sheet ID** | Registry `private_knowledge_sheet_id` |
+| **結構** | 五個標準 Required Tabs | `BATS_DATA_CONTRACT.md` |
+
+| Required Tab | 說明 |
+|--------------|------|
+| `company_profile` | 公司簡介 |
+| `qa` | 服務問答 |
+| `external_product_links` | 外部商品連結 |
+| `service_items` | 服務項目 |
+| `special_prices` | 特價 |
+
+**Output：**
+
+| 項目 | 路徑／檔名 |
+|------|------------|
+| **GCS 目錄** | `tenants/{sno}/knowledge/` |
+| `company_profile.json` | Knowledge JSON |
+| `service_qa.json` | Knowledge JSON |
+| `external_product_links.json` | Knowledge JSON |
+| `service_items.json` | Knowledge JSON |
+| `special_prices.json` | Knowledge JSON |
+| **Reports** | `sync_report.json`、`validation_report.json`、`error_report.json`（可選） |
+
+> **路徑不變** — 與 Phase 5 已完成 GCS Knowledge 路徑一致。
+
+#### 6A.7 Phase 6A Safety Boundary
+
+| 規則 | 說明 |
+|------|------|
+| **Validation Fail** | **不寫入 GCS** |
+| **Read-back Fail** | **同步失敗**；須人工排查 |
+| **雙重門禁** | `BDS_DRY_RUN=false` + `BDS_GCS_WRITE_ENABLED=true` 才可寫 GCS |
+| **單 tenant** | 單次命令僅處理一個 `sno` |
+| **Anti Hardcode** | 禁止寫死 `travel_b`；Pilot 僅驗收用例 |
+
+**禁止：**
+
+| 禁止 | 說明 |
+|------|------|
+| 寫入 `shared/` | Shared Layer 非 6A 範圍 |
+| Global Shared | Phase 6E |
+| Google Drive API | Phase 6B+ |
+| Delete GCS Object | 同步策略不得刪除 |
+| Delete Drive Folder | 同步策略不得刪除 |
+| 覆蓋 Structured JSON 於 Validation Fail | Safety Rule |
+| 修改 Runtime Source Rule | Drive = Archive；GCS = Runtime（不變） |
+
+#### 6A.8 Pilot Scope
+
+| 項目 | 值 |
+|------|-----|
+| **Pilot Tenant** | `travel_b` |
+| **tenant_sno** | `5f99b8d665e8444d` |
+| **驗收基準** | Phase 6A **正式驗收以 `travel_b` 為準** |
+| **架構** | Pilot ≠ 特例；程式須 Registry 驅動 |
+
+#### 6A.9 Acceptance Criteria（退出準則）
+
+Phase 6A **PASS** 須同時滿足：
+
+```text
+travel_b
+    ↓
+Google Sheet（private_knowledge_sheet_id）
+    ↓
+5 個 Knowledge JSON（Validation Pass）
+    ↓
+GCS tenants/{sno}/knowledge/
+    ↓
+Read-back PASS（5 物件）
+    ↓
+sync_report PASS（status=success）
+```
+
+| # | 條件 |
+|---|------|
+| 1 | `bin/bds-sync.php` 可手動觸發完整管線 |
+| 2 | Registry 載入 `private_knowledge_sheet_id` |
+| 3 | 5 JSON 寫入 `tenants/{sno}/knowledge/` |
+| 4 | Read-back Verification PASS |
+| 5 | `sync_report.json`、`validation_report.json` 產出正確 |
+| 6 | Validation Fail 不覆蓋 GCS |
+| 7 | Test Matrix 6A-01～6A-08 全 PASS（見 Test Plan） |
+| 8 | Runbook §13 操作可重現 |
+
+#### 6A.10 Rollback 概念
 
 | 情境 | 行為 |
 |------|------|
 | Validation Fail | 自動保留 GCS 舊版（Safety Rule） |
-| GCS 寫入後發現問題 | 手動從備份 / 上一版 `source_revision` 還原；v1 不依賴 Object Versioning |
-| 需要還原 | 維運依 `meta/source_revision.json` 與報告執行手動 rollback |
-
-#### 退出準則
-
-- [ ] 手動命令可完成 end-to-end sync（controlled tenant）
-- [ ] 成功 / 失敗皆有完整 report
-- [ ] 失敗不覆蓋 production JSON
-- [ ] 文件化操作手冊（維運可重現）
+| Read-back Fail | 視為失敗；維運檢查 GCS 與 report |
+| GCS 寫入後發現問題 | 手動從備份 / `source_revision` 還原；v1 不依賴 Object Versioning |
 
 ---
 
@@ -850,6 +1027,7 @@ L3 實作（未來）
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.6** | 2026-06-10 | Phase 6A SSOT：管線、CLI、Registry、Safety、Acceptance Criteria |
 | **v1.5** | 2026-06-10 | Phase 6A～6E 正名；P1 Drive SSOT cross-ref；6B～6E 子階段定義 |
 | **v1.4** | 2026-06-10 | Phase 6 Pre-Governance：Google Drive Platform Layer Architecture SSOT 修正 |
 | **v1.3** | 2026-06-10 | Phase 5 Close-out：5A～5D Completed；GCS read-back 驗證紀錄；Phase 6 Drive 前提醒 |

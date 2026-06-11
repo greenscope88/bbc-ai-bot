@@ -26,6 +26,7 @@
 | §10 | Phase 4 Verification Record |
 | §11 | Phase 5 Safety Boundary |
 | §12 | Phase 5 Close-out Verification Record |
+| §13 | Phase 6A Manual Sync SSOT |
 
 ---
 
@@ -60,7 +61,7 @@
 | 項目 | 狀態 |
 |------|------|
 | BDS SSOT 文件齊備 | Sync / Registry / Contract / Ownership |
-| Implementation Plan Phase 6 已實作 | Manual Sync Command 可用 |
+| Implementation Plan Phase 6A 已實作 | `bin/bds-sync.php` 可用 |
 | Registry 已登錄目標租戶 | 含 `sno`、`private_knowledge_sheet_id`、`gcs_prefix` |
 | Google Sheet 符合 5 Tab Contract | 見 `BATS_DATA_CONTRACT.md` |
 
@@ -76,24 +77,34 @@
 
 ## 2. Manual Sync Flow
 
-### 2.1 正式管線
+### 2.1 正式管線（Phase 6A SSOT）
+
+> **SSOT：** `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §Phase 6A
 
 ```text
 [維運] 確認 Pre-Sync Checklist（§3）
         ↓
-[CLI]  載入 Registry（sno → sheet_id、gcs_prefix）
+Tenant Registry
         ↓
-[CLI]  讀取 Google Sheet（5 Required Tabs）
+private_knowledge_sheet_id
         ↓
-[CLI]  tmp JSON → Validation（整檔 Fail）
+Google Sheet Reader
         ↓
-   ┌────┴────┐
-   │ Fail    │ Pass
-   ↓         ↓
- 報告      dry-run 或 GCS 寫入
- 保留舊版      ↓
-           5 JSON + meta + reports
+Parser → Validator
+        ↓
+Knowledge Builder
+        ↓
+GCS Uploader（受控）
+        ↓
+Read-back Verification
+        ↓
+sync_report.json / validation_report.json / error_report.json
 ```
+
+| 步驟失敗 | 維運處置 |
+|----------|----------|
+| Validation Fail | **不寫 GCS**；見 §4 |
+| Read-back Fail | **同步失敗**；見 §5、§13.4 |
 
 ### 2.2 建議命令（概念）
 
@@ -103,6 +114,8 @@
 
 ```bash
 php bin/bds-sync.php --sno=<TENANT_SNO>
+# 或
+php bin/bds-sync.php --tenant=<TENANT_KEY>
 ```
 
 | 項目 | 說明 |
@@ -110,6 +123,7 @@ php bin/bds-sync.php --sno=<TENANT_SNO>
 | **預設行為** | `dry_run=true`；**不寫 GCS** |
 | **產出** | 本機 preview 5 JSON + reports |
 | **用途** | 同步前驗證 Sheet 與 Contract 一致性 |
+| **`--tenant` vs `--sno`** | 擇一必填；同時提供須 Registry 一致；見 §13.3 |
 
 #### Step 2 — 受控寫入 GCS（需明確授權）
 
@@ -161,6 +175,7 @@ php bin/bds-sync.php --sno=5f99b8d665e8444d --dry-run=false --write-gcs
 | GCS 存在 5 JSON | 路徑正確、可讀 |
 | `meta/sync_status.json` → `success` | meta 已更新（若實作） |
 | **舊版未被錯誤覆蓋** | Safety Rule 成立 |
+| **Read-back Verification** | 5 GCS 物件可讀且符合預期（Phase 6A） |
 
 ---
 
@@ -769,10 +784,61 @@ C:/Web/xampp/php/php.exe tests/bds/test_bds_gcs_readback_verification.php
 
 ---
 
+## 13. Phase 6A Manual Sync SSOT
+
+### 13.1 定位
+
+| 項目 | 說明 |
+|------|------|
+| **名稱** | Phase 6A — Manual Sync Command |
+| **入口** | `bin/bds-sync.php`（規劃中） |
+| **範圍** | Sheet → 5 Knowledge JSON → GCS；**不含** Drive / Shared / RAG |
+| **驗收** | Pilot `travel_b`（`5f99b8d665e8444d`） |
+
+### 13.2 Out of Scope
+
+Google Drive Connector、PDF、Image、OCR、Metadata Promote、Shared / Industry / Global Shared、RAG、Vector、Cron、Auto Sync — 均 **非** Phase 6A。
+
+### 13.3 CLI 參數（維運對照）
+
+| 參數 | 說明 |
+|------|------|
+| `--sno={tenant_sno}` | 權威邊界；優先與 Registry 對照 |
+| `--tenant={tenant_key}` | 由 Registry 解析 `sno` |
+| **同時提供** | 須指向同一 Registry entry；否則拒絕 |
+| **皆缺** | 拒絕執行 |
+| `--dry-run=false --write-gcs` | 受控 GCS 寫入（須 Step 1 PASS） |
+
+### 13.4 Phase 6A Safety Boundary
+
+| 規則 | 維運預期 |
+|------|----------|
+| **Validation Fail** | GCS **零寫入** |
+| **Read-back Fail** | 視為 **同步失敗**；檢查 report 與 GCS |
+| **禁止** | `shared/`、Google Drive、Delete Object、Delete Folder |
+
+### 13.5 成功驗收路徑（travel_b）
+
+```text
+travel_b → Google Sheet → 5 JSON → GCS tenants/5f99b8d665e8444d/knowledge/
+         → Read-back PASS → sync_report status=success
+```
+
+### 13.6 Cross References
+
+| 文件 | 關係 |
+|------|------|
+| `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §Phase 6A | 實作 SSOT |
+| `BATS_DATA_SYNC_TEST_PLAN.md` §3.3 | Test Matrix 6A-01～6A-08 |
+| `BATS_DRIVE_CONNECTOR_SCOPE.md` | 6A **不** 使用；6B+ 對照 |
+
+---
+
 ## 版本紀錄
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.6** | 2026-06-10 | §13 Phase 6A Manual Sync SSOT；管線含 Read-back；`--tenant` 參數 |
 | **v1.5** | 2026-06-10 | §12.8 Phase 6A～6E 正名、P1 Drive SSOT cross-ref、Onboarding 流程 |
 | **v1.4** | 2026-06-10 | §12.7 Phase 6 Pre-Governance：Google Drive Platform Layer Architecture |
 | **v1.3** | 2026-06-10 | 新增 §12 Phase 5 Close-out Verification Record（5A～5D PASS） |

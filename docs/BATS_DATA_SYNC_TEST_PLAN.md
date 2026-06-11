@@ -295,22 +295,28 @@ T-Phase5-05 ──→ Drive 隔離
 
 ### Phase 6A — Manual Sync Command
 
+> **SSOT：** `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §Phase 6A  
+> **Pilot 驗收：** `travel_b`（`5f99b8d665e8444d`）
+
 #### 測什麼
 
 | 項目 | 說明 |
 |------|------|
-| CLI 手動觸發 | end-to-end 管線 |
-| 成功路徑 | 5 JSON + 三種 report（無 error 時可無 error_report） |
-| 失敗路徑 | 保留舊 JSON + `error_report.json` |
-| rollback 概念 | 失敗自動不覆蓋；手動還原程序可文件化驗證 |
+| CLI 手動觸發 | `bin/bds-sync.php` end-to-end 管線 |
+| Registry 驅動 | `private_knowledge_sheet_id` 從 Registry 載入 |
+| 成功路徑 | 5 JSON + Read-back + `sync_report` success |
+| 失敗路徑 | Validation Fail 不寫 GCS；Read-back Fail = 同步失敗 |
+| `--tenant` / `--sno` | 參數解析與衝突處理 |
 | 無 Cron | 確認無排程觸發 |
 
 #### 不測什麼
 
 | 排除 | 說明 |
 |------|------|
+| Google Drive / Shared / RAG | Phase 6B+ |
 | 上傳頁 UI 自動觸發 | v1 以手動為主 |
 | 多租戶單次命令 | 單 `sno` only |
+| Metadata Promote | Phase 6C～6D |
 
 ---
 
@@ -370,7 +376,38 @@ T-Phase5-05 ──→ Drive 隔離
 | **T-07** | 產生 `validation_report.json` | 每次 sync 必有 | 3, 6 | Implementation Plan §5 |
 | **T-08** | 產生 `error_report.json`（如有錯誤） | Fail 時必有 | 3, 6 | Implementation Plan §5 |
 | **T-09** | 不 hardcode `travel_b` | 程式以參數 / Registry 載入 `sno` | 1～6 | Sync Policy §23 |
-| **T-10** | tenant 從 Registry 讀取 | 無 Registry entry → 拒絕同步 | 4, 6 | Source Registry §7 |
+| **T-10** | tenant 從 Registry 讀取 | 無 Registry entry → 拒絕同步 | 4, 6A | Source Registry §7 |
+
+---
+
+### 3.3 Phase 6A Test Matrix
+
+> Phase 6A 專用測試矩陣；與 T-01～T-10 互補。全部 PASS 方視為 Phase 6A 通過。
+
+| ID | 測試項目 | 輸入／步驟 | 預期結果 | SSOT |
+|----|----------|------------|----------|------|
+| **6A-01** | Registry Load | `--sno` 或 `--tenant` 載入 Registry | 取得 `private_knowledge_sheet_id`、`gcs_prefix`；缺 entry → Fail | Implementation Plan §6A.5 |
+| **6A-02** | Google Sheet Read | Reader 讀取 5 Required Tabs | 5 tabs 資料可解析；缺 tab → 中止 | Phase 4 / Contract §5 |
+| **6A-03** | Validation Success | 合法 Sheet 完整管線 dry-run | `validation_report` → `passed=true` | Contract §8 |
+| **6A-04** | Validation Fail | 故意缺 Required Field / Tab | **不寫 GCS**；`passed=false`；舊 JSON 不變 | Safety §6A.7 |
+| **6A-05** | Knowledge JSON Build | Validation Pass 後 Builder | 5 JSON 結構符合 Contract §6 | `BdsKnowledgeDocumentBuilder` |
+| **6A-06** | GCS Upload | `--dry-run=false --write-gcs` + 雙重門禁 | 5 物件寫入 `tenants/{sno}/knowledge/` | Phase 5C |
+| **6A-07** | Read-back Verification | upload 後 read-back | 5 物件存在且可讀；Fail → **同步失敗** | Phase 5D |
+| **6A-08** | sync_report 驗證 | 成功路徑完整執行 | `sync_report.json` → `status=success`；含 `sno`、時間戳 | Runbook §7 |
+
+**Pilot 驗收命令（概念）：**
+
+```bash
+php bin/bds-sync.php --tenant=travel_b
+php bin/bds-sync.php --sno=5f99b8d665e8444d --dry-run=false --write-gcs
+```
+
+**參數衝突測試（建議納入 6A-01 擴展）：**
+
+| 情境 | 預期 |
+|------|------|
+| `--sno` + `--tenant` 不一致 | 拒絕執行 |
+| 無參數 | 拒絕執行 |
 
 ---
 
@@ -583,13 +620,23 @@ T-Phase5-05 ──→ Drive 隔離
 
 ### Phase 6A — Manual Sync Command ✅
 
+Phase 6A **PASS** 須滿足：
+
+```text
+travel_b → Google Sheet → 5 Knowledge JSON → GCS tenants/{sno}/knowledge/
+         → Read-back PASS → sync_report PASS
+```
+
 | # | 條件 |
 |---|------|
-| 1 | T-01～T-10 **全部** 在端對端場景可重現 |
-| 2 | 手動 CLI 可完成 controlled tenant sync |
-| 3 | 成功 / 失敗皆有完整 report |
-| 4 | 無 Cron；文件化操作步驟 |
-| 5 | Pilot（`travel_b`）可在受控環境跑通 **且不依賴 hardcode** |
+| 1 | Test Matrix **6A-01～6A-08** 全 PASS |
+| 2 | T-01～T-10 在 **6A 端對端** 場景可重現 |
+| 3 | `bin/bds-sync.php` 支援 `--tenant` 與 `--sno` |
+| 4 | Validation Fail **不寫 GCS**；Read-back Fail = 同步失敗 |
+| 5 | 成功 / 失敗皆有完整 report |
+| 6 | 無 Cron；Runbook §13 可重現 |
+| 7 | Pilot **`travel_b`**（`5f99b8d665e8444d`）受控環境跑通 **且不 hardcode** |
+| 8 | **不** 觸及 Google Drive、Shared、RAG |
 
 ---
 
@@ -660,6 +707,7 @@ L2 規劃
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.5** | 2026-06-10 | §3.3 Phase 6A Test Matrix（6A-01～6A-08）；Acceptance Criteria 補強 |
 | **v1.4** | 2026-06-10 | Phase 6A～6E 正名；6B～6E 測試對照；P1 Drive SSOT cross-ref |
 | **v1.3** | 2026-06-10 | Phase 5 Close-out：5D Read-back Verification + Completed 標記 |
 | **v1.2** | 2026-06-09 | 新增 Phase 5 Test Matrix（T-Phase5-01～05） |

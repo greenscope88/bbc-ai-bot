@@ -1193,6 +1193,18 @@ Google Drive **不是** Runtime Source、Search Source、RAG Source。
 
 **交叉引用：** `BATS_DRIVE_GCS_MAPPING.md` §2、§4；`BATS_DRIVE_METADATA_CONTRACT.md` §5
 
+### 18.6 Phase 6A Manual Sync Command
+
+| 項目 | 說明 |
+|------|------|
+| **定位** | 將 Phase 1～5 元件整合為 `bin/bds-sync.php` 手動 CLI |
+| **輸入** | Registry → `private_knowledge_sheet_id` → Google Sheet（5 Tabs） |
+| **輸出** | `tenants/{sno}/knowledge/` 五 JSON + reports + Read-back |
+| **不處理** | Google Drive、Shared、RAG、Cron |
+| **驗收** | Pilot `travel_b`（`5f99b8d665e8444d`） |
+
+**SSOT：** `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §Phase 6A；Runbook §13；Test Plan §3.3
+
 ---
 
 ## 19. Update Entry Rule
@@ -1493,6 +1505,7 @@ Service Account 僅授權必要之 `tenants/{sno}/` prefix；不得授予跨 ten
 |------|------|------|
 | **v1.5** | 2026-06-08 | MVP 範圍校正：1 Sheet / 5 Tabs / 5 JSON；cross-ref `BATS_DATA_CONTRACT.md`（L3 SSOT） |
 | **v1.4** | 2026-06-08 | 新增 `shared_knowledge`（Category C）、`shared/{industry}/knowledge/` GCS 結構、§12.7 Cross-Reference、`BATS_DATA_SOURCE_REGISTRY.md` 對齊 |
+| **v1.6** | 2026-06-10 | §18.6 Phase 6A Manual Sync Command cross-ref |
 | **v1.5** | 2026-06-10 | §18.5 Runtime Source Architecture（P1 SSOT）：Drive = Archive SoT、GCS = Runtime Knowledge Source |
 | **v1.4** | 2026-06-10 | §20／§22 Drive 平台層架構修正：Shared 移出租戶資料夾；GCS 不變 |
 | **v1.3** | 2026-06-08 | 新增 §18～§23：Google Drive Archive Layer、Update Entry Rule、Drive 三層分類、Customer Registration Rule、Tenant Folder Isolation、Anti Hardcode Rule |

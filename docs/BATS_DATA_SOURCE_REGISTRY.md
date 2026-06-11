@@ -732,6 +732,16 @@ gcs_prefix: "tenants/5f99b8d665e8444d/"
 - **不** 對應 GCS `knowledge/` 路徑
 - 見 `BATS_DATA_SYNC_POLICY.md` §21
 
+### 7.9 Phase 6A Manual Sync — Registry 讀取範圍
+
+| 欄位 | Phase 6A |
+|------|----------|
+| `sno`、`tenant_name`、`private_knowledge_sheet_id`、`gcs_prefix`、`enabled` | ✅ 讀取 |
+| `industry_code` | 載入；**不** 觸發 Shared 同步 |
+| Drive 資料夾 ID、Shared 路徑 | ❌ **不讀取**（Phase 6B+） |
+
+**SSOT：** `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §Phase 6A.5
+
 ---
 
 ## 8. Anti Hardcode Rule
@@ -997,6 +1007,7 @@ GCS Knowledge Layer（受控路徑；非 Phase 5 範圍）
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.7** | 2026-06-10 | §7.9 Phase 6A Registry 讀取範圍 |
 | **v1.6** | 2026-06-10 | §10.5 Runtime Source Architecture、Phase 6A～6E 正名、P1 Drive SSOT cross-ref |
 | **v1.5** | 2026-06-10 | Phase 6 Pre-Governance：§6.5 Google Drive Platform Layer Architecture；Shared 移出租戶資料夾 |
 | **v1.4** | 2026-06-09 | 新增 §10.5 Phase 6 Planning — Future Drive Source Registry（Framework only；Schema 不變） |
