@@ -18,6 +18,7 @@
 | §2 | Scope |
 | §3 | Shared Knowledge Layers |
 | §3.4 | Shared Layer Governance |
+| §3.5 | Google Drive Platform Layer（Shared Archive） |
 | §4 | Industry Code Rule |
 | §5 | Shared Knowledge Categories |
 | §6 | Shared Knowledge JSON Contract |
@@ -224,6 +225,34 @@ Knowledge Layer（Category B）
 | **與 Private Layer 對照** | 租戶 `tenants/{sno}/` 與 `shared/` 皆 **非** Public；差異在 **歸屬與 fallback 語意**，非公開程度 |
 
 詳細 Drive 資料夾存取預設見 `BATS_DATA_OWNERSHIP_POLICY.md` §2.5。
+
+#### 3.5 Google Drive Platform Layer（Shared Archive）
+
+> **Phase 6 Pre-Governance：** Shared Layer **不屬於單一旅行社**；位於營運 Google Drive 平台層。
+
+**營運帳號：** `bbcshops88@gmail.com`
+
+| 層級 | Drive Archive 路徑 | GCS 路徑（不變） |
+|------|-------------------|------------------|
+| **Industry Shared** | `shared/{industry_code}/02_Shared_Layer/` | `shared/{industry_code}/knowledge/` |
+| **Global Shared** | `shared/global/02_Global_Shared_Layer/` | `shared/global/knowledge/` |
+
+```text
+shared/
+├── travel/02_Shared_Layer/
+├── hotel/02_Shared_Layer/
+├── restaurant/02_Shared_Layer/
+└── global/02_Global_Shared_Layer/
+```
+
+| 原則 | 說明 |
+|------|------|
+| **禁止租戶下 Shared** | 不得使用 `tenants/{tenant_key}/02_Shared_Layer/` |
+| **Default Private** | Shared Drive 資料夾預設 Private |
+| **Explicit 啟用** | Tenant 不自動消費 Shared；須 Registry + Policy |
+| **產業可擴展** | `travel` 為首個產業；未來產業適用同架構 |
+
+**禁止新增** `private_drive_folder_id` 至 Registry Schema。詳見 `BATS_DATA_SOURCE_REGISTRY.md` §6.5。
 
 #### 3.4.6 Explicit Share Policy
 
@@ -753,6 +782,7 @@ L2 規劃 / 維運
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.2** | 2026-06-10 | 新增 §3.5 Google Drive Platform Layer；Shared 移出租戶資料夾 |
 | **v1.1** | 2026-06-09 | 新增 §3.4 Shared Layer Governance：Default Private、Explicit Share Policy、Drive 載體 |
 | **v1.0** | 2026-06-08 | 第一版：Industry-Agnostic Shared Knowledge Contract、六 category、Industry / Global JSON、Validation |
 

@@ -734,15 +734,16 @@ C:/Web/xampp/php/php.exe tests/bds/test_bds_gcs_real_write.php
 C:/Web/xampp/php/php.exe tests/bds/test_bds_gcs_readback_verification.php
 ```
 
-### 12.7 Phase 6 前提醒（Google Drive Folder Governance）
+### 12.7 Phase 6 Pre-Governance（Google Drive Platform Layer）
 
 | 原則 | 說明 |
 |------|------|
-| **一旅行社一專屬 Folder** | 每 Tenant 一個 Google Drive Folder |
-| **營運帳號** | 目前使用 `bbcshops88@gmail.com` Google Drive |
-| **Default Private** | Folder 預設 Private |
+| **一旅行社一專屬 Folder** | `travel_a`、`travel_b`、`travel_c` → `tenants/{tenant_key}/01_Private_Layer/` |
+| **Shared 不屬於單一旅行社** | 產業／全球 Shared 位於 `shared/{industry}/02_Shared_Layer/` |
+| **營運帳號** | `bbcshops88@gmail.com` Google Drive |
+| **Default Private** | 所有 Drive 資料夾預設 Private |
 | **禁止提前新增 Registry 欄位** | **不得** 新增 `private_drive_folder_id` 至 Registry JSON Schema |
-| **Framework** | 見 `BATS_DATA_SOURCE_REGISTRY.md` §10.5 |
+| **SSOT** | `BATS_DATA_SOURCE_REGISTRY.md` §6.5、`BATS_DATA_OWNERSHIP_POLICY.md` §2.7 |
 
 ---
 
@@ -750,6 +751,7 @@ C:/Web/xampp/php/php.exe tests/bds/test_bds_gcs_readback_verification.php
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.4** | 2026-06-10 | §12.7 Phase 6 Pre-Governance：Google Drive Platform Layer Architecture |
 | **v1.3** | 2026-06-10 | 新增 §12 Phase 5 Close-out Verification Record（5A～5D PASS） |
 | **v1.2** | 2026-06-09 | 新增 §11 Phase 5 Safety Boundary |
 | **v1.1** | 2026-06-09 | 新增 §10 Phase 4 Verification Record（Live Read + Pipeline Dry-run PASS） |

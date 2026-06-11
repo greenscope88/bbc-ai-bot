@@ -18,6 +18,7 @@
 | §2 | Ownership Layers |
 | §2.5 | Default Access Policy |
 | §2.6 | Google Drive Folder Governance |
+| §2.7 | Google Drive Platform Layer Architecture |
 | §3 | Write Boundary |
 | §4 | Override Rule |
 | §5 | BDS Sync Ownership Rule |
@@ -91,7 +92,7 @@ BDS Knowledge Layer 分為 **三層**；每層有明確 **Owner** 與 **Steward*
 | **層級名稱** | Tenant Layer |
 | **data_category** | `tenant_private_knowledge` |
 | **GCS 路徑** | `tenants/{sno}/knowledge/` |
-| **Drive 對應** | `02_Private_Knowledge`（Archive；見 `BATS_DATA_SYNC_POLICY.md` §20.3） |
+| **Drive 對應** | `tenants/{tenant_key}/01_Private_Layer/`（Archive；見 §2.7） |
 
 #### Owner（歸屬主體）
 
@@ -198,7 +199,7 @@ BDS Knowledge Layer 分為 **三層**；每層有明確 **Owner** 與 **Steward*
 | 項目 | 規則 |
 |------|------|
 | **預設** | **Default = Private** — 未經明確政策前，**不得** 視為對外公開或跨租戶可讀 |
-| **適用範圍** | 租戶 `tenants/{sno}/` 三層子資料夾、產業／全球 Shared Layer Drive 資料夾、BDS 協作用 Sheet 來源資料夾 |
+| **適用範圍** | 租戶 `tenants/{tenant_key}/01_Private_Layer/`、平台層 `shared/{industry_code}/`、BDS 協作用 Sheet 來源資料夾 |
 | **≠ Public** | Private 指 **存取控制預設**；與 Knowledge 語意之「Shared Layer」**不同概念**（見 `BATS_TENANT_DATA_CLASSIFICATION.md` §1.6.2） |
 
 #### 2.5.2 Google Drive Folder 預設
@@ -213,10 +214,10 @@ Default = Private（僅 Owner / 明確授權角色可存取）
 
 | 資料夾類型 | Layer | 預設存取 |
 |------------|-------|----------|
-| `tenants/{sno}/02_Private_Knowledge` | Private Layer | **Private** |
-| `tenants/{sno}/01_Itinerary_Data` | Category A（非 Knowledge Layer） | **Private** |
-| `tenants/{sno}/03_Customer_Registration` | Category C | **Private**（含 PII 管控） |
-| 產業／全球 Shared Knowledge Drive 資料夾 | Shared Layer | **Private**（Default Private） |
+| `tenants/{tenant_key}/01_Private_Layer/` | Tenant Private Layer | **Private** |
+| `shared/{industry_code}/02_Shared_Layer/` | Industry Shared Layer（**平台層**） | **Private** |
+| `shared/global/02_Global_Shared_Layer/` | Global Shared Layer（**平台層**） | **Private** |
+| `registrations/` | Category C（平台層 Archive） | **Private**（含 PII 管控） |
 
 #### 2.5.3 啟用共享之唯一路徑
 
@@ -286,6 +287,63 @@ Tenant B ──→ Drive Folder B（Private）
 | **跨 Tenant 共用 Drive Folder** | 資料隔離違規 |
 | **未經 Policy 啟用 Shared 可見性** | 違反 Explicit Share 路徑（§2.5.3） |
 | **將 Drive Folder 預設設為公開連結** | 違反 Default Private |
+
+---
+
+### 2.7 Google Drive Platform Layer Architecture
+
+#### 2.7.1 定位
+
+本節為 **Phase 6 Pre-Governance** 正式 SSOT，定義營運 Google Drive 之平台層資料夾樹。**Shared Layer 不屬於單一旅行社。**
+
+**營運帳號：** `bbcshops88@gmail.com`  
+**交叉引用：** `BATS_DATA_SOURCE_REGISTRY.md` §6.5
+
+#### 2.7.2 正式平台層樹狀結構
+
+```text
+bbcshops88@gmail.com（Google Drive）
+├── tenants/
+│   ├── travel_a/01_Private_Layer/
+│   ├── travel_b/01_Private_Layer/
+│   └── travel_c/01_Private_Layer/
+├── shared/
+│   ├── travel/02_Shared_Layer/
+│   ├── hotel/02_Shared_Layer/
+│   ├── restaurant/02_Shared_Layer/
+│   └── global/02_Global_Shared_Layer/
+└── registrations/
+```
+
+#### 2.7.3 治理原則摘要
+
+| # | 原則 |
+|---|------|
+| 1 | Tenant Private = `tenants/{tenant_key}/01_Private_Layer/`（單一租戶） |
+| 2 | Industry Shared = `shared/{industry_code}/02_Shared_Layer/`（產業層；非 Tenant） |
+| 3 | Global Shared = `shared/global/02_Global_Shared_Layer/`（平台層） |
+| 4 | Shared Layer ≠ Public Layer |
+| 5 | Shared Layer Default Private |
+| 6 | Tenant **不會自動** 使用 Shared；須 Registry + Policy 啟用 |
+| 7 | `travel` 為首個產業；`hotel`、`restaurant`、`beauty`、`education`、`medical` 等適用同架構 |
+
+#### 2.7.4 與 GCS 邊界（不變）
+
+| Drive（Archive） | GCS（Knowledge） |
+|------------------|------------------|
+| `tenants/{tenant_key}/01_Private_Layer/` | `tenants/{sno}/knowledge/` |
+| `shared/{industry}/02_Shared_Layer/` | `shared/{industry_code}/knowledge/` |
+| `shared/global/02_Global_Shared_Layer/` | `shared/global/knowledge/` |
+
+**禁止修改 GCS Path；** Drive 與 GCS 透過 Registry `sno` ↔ `tenant_key` 對照。
+
+#### 2.7.5 Phase 6 限制
+
+| 限制 | 說明 |
+|------|------|
+| **不新增** `private_drive_folder_id` | Registry JSON Schema 不變 |
+| **不修改** `BATS_DATA_CONTRACT.md` | Sheet / JSON Contract 不變 |
+| **不實作** Drive API | 本節僅文件治理 |
 
 ---
 
@@ -626,6 +684,7 @@ L2+ 實作文件、程式
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.3** | 2026-06-10 | 新增 §2.7 Google Drive Platform Layer Architecture；Shared 移出租戶資料夾 |
 | **v1.2** | 2026-06-09 | 新增 §2.6 Google Drive Folder Governance（One Tenant One Folder；Phase 6 對齊） |
 | **v1.1** | 2026-06-09 | 新增 §2.5 Default Access Policy：Drive Folder Default Private、Explicit Share 啟用路徑 |
 | **v1.0** | 2026-06-08 | 第一版：三層 Ownership、Write Boundary、Override Rule、BDS v1 Sync 範圍、Industry Expansion |

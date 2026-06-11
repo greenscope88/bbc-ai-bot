@@ -493,17 +493,30 @@ gs://bbc-ai-saas-data/tenants/5f99b8d665e8444d/knowledge/
 | GCS delete / bucket purge | ✅ 未實作 |
 | 多租戶批次寫入 | ✅ 僅 pilot `5f99b8d665e8444d` |
 
-#### Phase 6 前提醒（Google Drive Folder Governance）
+#### Phase 6 Pre-Governance — Google Drive Platform Layer Architecture
 
-Phase 6 Drive Connector **尚未啟動**；下列為文件治理約束，**不得提前實作於 Registry Schema**：
+Phase 6 Drive Connector **尚未啟動**；下列為 **Phase 6 Pre-Governance** 正式文件約束，**不得提前實作於 Registry Schema**。
+
+**SSOT：** `BATS_DATA_SOURCE_REGISTRY.md` §6.5、`BATS_DATA_OWNERSHIP_POLICY.md` §2.7
+
+```text
+bbcshops88@gmail.com（Google Drive）
+├── tenants/{tenant_key}/01_Private_Layer/    ← 單一租戶 Private
+├── shared/{industry}/02_Shared_Layer/        ← 產業層（非 Tenant）
+├── shared/global/02_Global_Shared_Layer/     ← 平台層
+└── registrations/                            ← Category C 平台層
+```
 
 | 原則 | 說明 |
 |------|------|
-| **一旅行社一專屬 Folder** | 每 Tenant 對應一個 Google Drive Folder |
-| **營運帳號** | 目前使用 `bbcshops88@gmail.com` Google Drive |
-| **Default Private** | Folder 預設 Private；Shared 須明確 Policy 啟用 |
-| **禁止提前新增** | **不得** 於 Registry JSON Schema 新增 `private_drive_folder_id` 為正式必填欄位 |
-| **Framework SSOT** | `BATS_DATA_SOURCE_REGISTRY.md` §10.5、`BATS_DATA_OWNERSHIP_POLICY.md` §2.6 |
+| **一旅行社一專屬 Folder** | `travel_a`、`travel_b`、`travel_c` 各自 `tenants/{tenant_key}/01_Private_Layer/` |
+| **Shared 不屬於單一旅行社** | 禁止 `tenants/{tenant_key}/02_Shared_Layer/` |
+| **營運帳號** | `bbcshops88@gmail.com` Google Drive |
+| **Default Private** | 所有 Drive 資料夾預設 Private |
+| **Tenant 不自動使用 Shared** | 須 Registry + Policy 明確啟用 |
+| **產業可擴展** | `travel` 首個；`hotel`、`restaurant`、`beauty`、`education`、`medical` 等同架構 |
+| **禁止提前新增** | **不得** 新增 `private_drive_folder_id` 至 Registry JSON Schema |
+| **GCS / Contract 不變** | 不修改 `BATS_DATA_CONTRACT.md`、GCS 路徑 |
 
 ---
 
@@ -752,6 +765,7 @@ L3 實作（未來）
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.4** | 2026-06-10 | Phase 6 Pre-Governance：Google Drive Platform Layer Architecture SSOT 修正 |
 | **v1.3** | 2026-06-10 | Phase 5 Close-out：5A～5D Completed；GCS read-back 驗證紀錄；Phase 6 Drive 前提醒 |
 | **v1.2** | 2026-06-09 | Phase 5 GCS Writer Controlled Mode 文件補強；Phase 6 Drive Framework cross-ref |
 | **v1.1** | 2026-06-09 | Phase 4 Close-out：Reader / Live Read / Pipeline Dry-run 標記 Completed + 驗證紀錄 |

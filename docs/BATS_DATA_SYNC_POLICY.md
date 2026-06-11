@@ -1216,16 +1216,29 @@ Google Drive（Archive Layer）
 
 ## 20. Google Drive 三層資料分類
 
-### 20.1 租戶資料夾結構
+> **Phase 6 Pre-Governance 修正：** 平台層 Drive 樹狀結構以 `BATS_DATA_SOURCE_REGISTRY.md` §6.5 為準。**Shared Layer 不屬於單一旅行社**；租戶 Drive 僅含 `01_Private_Layer/`。下列 §20.2～§20.4 為 **data_category 語意**；GCS 路徑（§20.5）**不變**。
 
-每個租戶 Google Drive Folder 採用以下 **正式規劃**：
+### 20.1 平台層 Drive 結構（正式）
+
+**營運帳號：** `bbcshops88@gmail.com`
 
 ```text
-tenants/{sno}/
-├── 01_Itinerary_Data
-├── 02_Private_Knowledge
-└── 03_Customer_Registration
+├── tenants/{tenant_key}/01_Private_Layer/     ← Tenant Private（單一租戶）
+├── shared/{industry_code}/02_Shared_Layer/    ← Industry Shared（平台層）
+├── shared/global/02_Global_Shared_Layer/      ← Global Shared（平台層）
+└── registrations/                           ← customer_registration（平台層）
 ```
+
+### 20.1.1 租戶資料夾（僅 Private）
+
+每個租戶 Google Drive Folder：
+
+```text
+tenants/{tenant_key}/
+└── 01_Private_Layer/
+```
+
+**禁止：** `tenants/{tenant_key}/02_Shared_Layer/` 或任何產業／全球 Shared 置於租戶資料夾下。
 
 ### 20.2 `01_Itinerary_Data`
 
@@ -1259,11 +1272,14 @@ tenants/{sno}/
 
 ### 20.5 與 GCS 路徑對照
 
-| Drive 子資料夾 | GCS 對應（若適用） |
-|----------------|-------------------|
-| `01_Itinerary_Data` | `tenants/{sno}/knowledge/itinerary/`（下一階段） |
-| `02_Private_Knowledge` | `tenants/{sno}/knowledge/service_qa.json` 等 |
-| `03_Customer_Registration` | **無** — 不得寫入 GCS Knowledge |
+> **GCS 路徑不變。** 下列為 data_category 語意與 GCS 對照；Drive 平台層路徑見 §20.1。
+
+| data_category 語意 | Drive 平台層路徑（概念） | GCS 對應（若適用） |
+|--------------------|--------------------------|-------------------|
+| `itinerary_data` | `tenants/{tenant_key}/01_Private_Layer/` | `tenants/{sno}/knowledge/itinerary/`（下一階段） |
+| `tenant_private_knowledge` | `tenants/{tenant_key}/01_Private_Layer/` | `tenants/{sno}/knowledge/service_qa.json` 等 |
+| `shared_knowledge` | `shared/{industry}/02_Shared_Layer/`、`shared/global/02_Global_Shared_Layer/` | `shared/.../knowledge/` |
+| `customer_registration` | `registrations/` | **無** — 不得寫入 GCS Knowledge |
 
 ---
 
@@ -1292,7 +1308,7 @@ tenants/{sno}/
 
 | 層級 | 允許 |
 |------|------|
-| Google Drive `03_Customer_Registration` | ✅ Archive / 交易資料層 |
+| Google Drive `registrations/`（平台層） | ✅ Archive / 交易資料層 |
 | GCS `knowledge/` | ❌ 禁止 |
 | BATS runtime 讀取 | ❌ 禁止 |
 
@@ -1338,16 +1354,16 @@ GCS Knowledge / Gemini / BATS Search
 | **禁止** | 多個租戶共用同一資料夾 |
 | **對應關係** | Drive Folder 必須可對應 `sno`、Google Sheet（若適用）、GCS Prefix `tenants/{sno}/` |
 
-### 22.2 三層子資料夾
+### 22.2 租戶子資料夾
 
-每個 `tenants/{sno}/` 下須含 §20 定義之三層子資料夾：
+每個 `tenants/{tenant_key}/` 下 **僅** 含 Tenant Private Layer：
 
 ```text
-tenants/{sno}/
-├── 01_Itinerary_Data
-├── 02_Private_Knowledge
-└── 03_Customer_Registration
+tenants/{tenant_key}/
+└── 01_Private_Layer/
 ```
+
+產業／全球 Shared 位於平台層 `shared/`（§20.1）；`customer_registration` 位於 `registrations/`（§21.3）。
 
 ### 22.3 與 GCS 隔離對齊
 
@@ -1455,6 +1471,7 @@ Service Account 僅授權必要之 `tenants/{sno}/` prefix；不得授予跨 ten
 |------|------|------|
 | **v1.5** | 2026-06-08 | MVP 範圍校正：1 Sheet / 5 Tabs / 5 JSON；cross-ref `BATS_DATA_CONTRACT.md`（L3 SSOT） |
 | **v1.4** | 2026-06-08 | 新增 `shared_knowledge`（Category C）、`shared/{industry}/knowledge/` GCS 結構、§12.7 Cross-Reference、`BATS_DATA_SOURCE_REGISTRY.md` 對齊 |
+| **v1.4** | 2026-06-10 | §20／§22 Drive 平台層架構修正：Shared 移出租戶資料夾；GCS 不變 |
 | **v1.3** | 2026-06-08 | 新增 §18～§23：Google Drive Archive Layer、Update Entry Rule、Drive 三層分類、Customer Registration Rule、Tenant Folder Isolation、Anti Hardcode Rule |
 | **v1.2** | 2026-06-08 | 新增 BDS Data Category（itinerary_data / tenant_private_knowledge）與六條正式規則 |
 | **v1.1** | 2026-06-08 | 補強 GCS 正式結構、Query/Sync 分離、BDS Safety Rule、MVP Use Case |

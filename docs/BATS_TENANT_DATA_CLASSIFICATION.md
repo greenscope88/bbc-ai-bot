@@ -134,9 +134,10 @@ Tenant Private Data（本文件）
 |------|------|
 | **角色** | Google Drive 為 Shared Layer 之 **Archive／協作儲存載體之一**（與 GCS Knowledge Layer 並存） |
 | **非唯一來源** | BATS 執行時 **不** 直接讀 Drive；正式消費層為 **GCS JSON**（見 `BATS_DATA_SYNC_POLICY.md` §18） |
-| **租戶 Private** | 租戶 `02_Private_Knowledge` 屬 **Private Layer** Archive |
-| **產業／全球 Shared** | 產業／全球共用知識之 Drive 資料夾屬 **Shared Layer** Archive；**預設 Default Private** |
-| **禁止混淆** | 不得因資料夾名稱含「shared」即視為對外公開；須依本節與 Ownership Policy 判斷 |
+| **租戶 Private** | `tenants/{tenant_key}/01_Private_Layer/` 屬 **Private Layer** Archive（單一租戶） |
+| **產業 Shared** | `shared/{industry_code}/02_Shared_Layer/` 屬 **平台層** Industry Shared Archive；**非** 單一 Tenant |
+| **全球 Shared** | `shared/global/02_Global_Shared_Layer/` 屬 **平台層** Global Shared Archive |
+| **禁止混淆** | 不得將 Shared 置於租戶資料夾下；不得因路徑含「shared」即視為 Public |
 
 #### 1.6.5 與三分流對照
 
@@ -145,6 +146,26 @@ Tenant Private Data（本文件）
 | **Category B — Tenant Private** | Private Layer（`tenant_private_knowledge`） |
 | **Category B — Shared fallback** | Shared Layer（`shared_knowledge`） |
 | Category A / C | **不適用** Private + Shared Layer Model |
+
+#### 1.6.6 Google Drive Platform Layer Architecture（Phase 6 Pre-Governance）
+
+**營運帳號：** `bbcshops88@gmail.com` Google Drive
+
+```text
+├── tenants/{tenant_key}/01_Private_Layer/     ← Tenant Private（單一租戶）
+├── shared/{industry_code}/02_Shared_Layer/    ← Industry Shared（平台層）
+├── shared/global/02_Global_Shared_Layer/    ← Global Shared（平台層）
+└── registrations/                             ← Category C（平台層）
+```
+
+| 原則 | 說明 |
+|------|------|
+| **Shared 不屬於單一旅行社** | 禁止 `tenants/{tenant_key}/02_Shared_Layer/` |
+| **Default Private** | 所有 Drive 資料夾預設 Private |
+| **Tenant 不自動使用 Shared** | 須 Registry + Policy 明確啟用 |
+| **GCS 不變** | Drive 為 Archive；GCS 路徑見 §1.6.1 |
+
+詳見 `BATS_DATA_SOURCE_REGISTRY.md` §6.5、`BATS_DATA_OWNERSHIP_POLICY.md` §2.7。
 
 ### 1.7 BDS Data Input Strategy
 
@@ -538,6 +559,7 @@ L1 SSOT
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.3** | 2026-06-10 | §1.6.6 Google Drive Platform Layer Architecture；Shared 移出租戶資料夾 |
 | **v1.2** | 2026-06-09 | 新增 §1.7 BDS Data Input Strategy（Sheet Structured / Drive Unstructured）；Phase 4 Close-out |
 | **v1.1** | 2026-06-09 | 新增 §1.6 Knowledge Layer Model：Private + Shared、Shared ≠ Public、Default Private、Drive 載體 |
 | **v1.0** | 2026-06-09 | 第一版：Tenant Private Data 三分流 A/B/C、PII Host Boundary、Future Registration Contract |
