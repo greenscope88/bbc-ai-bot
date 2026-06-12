@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 /**
- * BDS Source Registry — local config (Phase 6A).
+ * BDS Source Registry — local config (Phase 6A / Phase 6B-2B Drive fields).
  *
  * Aligns with BATS_DATA_SOURCE_REGISTRY.md §7.5 fields.
  * Runtime loads entries by tenant_key or sno; no hardcode in pipeline code.
@@ -24,6 +24,8 @@ return [
             'industry_code' => 'travel',
             'enabled' => true,
             'private_knowledge_sheet_id' => '1al59g7_h_VmeZiL3K0LZpbTf9GdWj5PL92WFSCs1kP8',
+            // industries/travel/tenants/travel_b/01_Private_Layer/ (§6.5 SSOT)
+            'private_knowledge_folder_id' => '17wrq-rrvc7ezclhWlbvdTKxHSf_Hw8pi',
             'gcs_prefix' => 'tenants/5f99b8d665e8444d/',
         ],
     ],

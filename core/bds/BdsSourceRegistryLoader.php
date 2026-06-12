@@ -2,11 +2,11 @@
 declare(strict_types=1);
 
 /**
- * BDS Phase 6A — Source Registry loader.
+ * BDS Phase 6A — Source Registry loader; Phase 6B-2B Drive folder ID resolution.
  *
  * Resolves tenant entries by tenant_key or sno from config/bds_source_registry.php.
  *
- * @see docs/BATS_DATA_SOURCE_REGISTRY.md §7.9
+ * @see docs/BATS_DATA_SOURCE_REGISTRY.md §6.3、§7.9
  * @see docs/BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md §Phase 6A.5
  */
 final class BdsSourceRegistryLoader
@@ -143,7 +143,28 @@ final class BdsSourceRegistryLoader
             'enabled' => !isset($entry['enabled']) || $entry['enabled'] === true,
             'private_knowledge_sheet_id' => $sheetId,
             'gcs_prefix' => $gcsPrefix,
+            'drive_root_folder_id' => self::normalizeOptionalDriveFolderId($entry, 'drive_root_folder_id'),
+            'private_knowledge_folder_id' => self::normalizeOptionalDriveFolderId($entry, 'private_knowledge_folder_id'),
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $entry
+     */
+    private static function normalizeOptionalDriveFolderId(array $entry, string $field): ?string
+    {
+        if (!array_key_exists($field, $entry)) {
+            return null;
+        }
+
+        $value = $entry[$field];
+        if ($value === null) {
+            return null;
+        }
+
+        $trimmed = trim((string) $value);
+
+        return $trimmed !== '' ? $trimmed : null;
     }
 
     private static function envString(string $name): string
