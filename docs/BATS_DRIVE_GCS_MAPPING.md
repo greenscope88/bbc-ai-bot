@@ -130,17 +130,18 @@ Archive Layer（原件）     Metadata Layer（描述）     Knowledge Layer（�
 **營運帳號：** `bbcshops88@gmail.com`
 
 ```text
-├── tenants/{tenant_key}/01_Private_Layer/
-├── shared/{industry_code}/02_Shared_Layer/
-├── shared/global/02_Global_Shared_Layer/
+bbcshops88@gmail.com
+├── industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/
+├── industries/{industry_code}/shared/02_Shared_Layer/
+├── global/02_Global_Shared_Layer/
 └── registrations/
 ```
 
 | 層級 | Drive 邏輯路徑 | 歸屬 |
 |------|----------------|------|
-| **Tenant Private** | `tenants/{tenant_key}/01_Private_Layer/` | 單一租戶 |
-| **Industry Shared** | `shared/{industry_code}/02_Shared_Layer/` | 產業層 |
-| **Global Shared** | `shared/global/02_Global_Shared_Layer/` | 平台層 |
+| **Tenant Private** | `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/` | 單一租戶 |
+| **Industry Shared** | `industries/{industry_code}/shared/02_Shared_Layer/` | 產業層 |
+| **Global Shared** | `global/02_Global_Shared_Layer/` | 平台層 |
 
 **禁止：** `tenants/{tenant_key}/02_Shared_Layer/`
 
@@ -191,7 +192,7 @@ Archive Layer（原件）     Metadata Layer（描述）     Knowledge Layer（�
 | **Excel** | `itinerary_data` | 同上 | `tenants/{sno}/archive/...` 或 `knowledge/itinerary/`（下一階段） | 下一階段細化 |
 | **Word** | archive | 同上 | `tenants/{sno}/archive/...` | 受控 promote |
 | **PowerPoint** | archive | 同上 | 同上 | 受控 promote |
-| **Shared PDF/Image** | `shared_knowledge`（archive） | `shared/{industry}/02_Shared_Layer/` | `shared/{industry}/archive/...` | Phase 6E；須 Policy 啟用 |
+| **Shared PDF/Image** | `shared_knowledge`（archive） | `industries/{industry_code}/shared/02_Shared_Layer/` | `shared/{industry}/archive/...` | Phase 6E；須 Policy 啟用 |
 | **Registration 匯出** | `customer_registration` | `registrations/` | **禁止** `knowledge/` | Archive only |
 
 **注意：** Excel 若為 **Google Sheet 維護之結構化知識**，應走 **Pipeline A**，**不** 走 Drive Unstructured Mapping。
@@ -228,7 +229,7 @@ Archive Layer（原件）     Metadata Layer（描述）     Knowledge Layer（�
 
 | 原則 | 說明 |
 |------|------|
-| **One Tenant One Folder** | 每 Tenant **唯一** `tenants/{tenant_key}/01_Private_Layer/` |
+| **One Tenant One Folder** | 每 Tenant **唯一** `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/` |
 | **唯一 Tenant Archive Source** | 該路徑為該租戶私有非結構化 Archive 來源 |
 | **GCS 對照** | promote 目標 **僅** `tenants/{sno}/archive/`（概念）；**禁止** 跨 tenant prefix |
 | **禁止** | 跨 Tenant 共用 Folder；跨 Tenant 存放私有資料 |
@@ -273,7 +274,7 @@ Archive Layer（原件）     Metadata Layer（描述）     Knowledge Layer（�
 | 原則 | 說明 |
 |------|------|
 | **`tenant_key` vs `sno`** | Drive 路徑用 `tenant_key`；GCS 用 `sno`；Registry 對照 |
-| **產業擴展** | 新增 `industry_code` → 新增 `shared/{industry}/02_Shared_Layer/` 與對應 GCS prefix |
+| **產業擴展** | 新增 `industry_code` → 新增 `industries/{industry_code}/shared/02_Shared_Layer/`（Drive）與對應 GCS prefix |
 | **不寫死租戶** | 禁止 hardcode `travel_b` 路徑規則 |
 | **可擴充矩陣** | 新檔案類型透過 Mapping Matrix **增列**；不改核心管線 |
 
@@ -308,6 +309,7 @@ Archive Layer（原件）     Metadata Layer（描述）     Knowledge Layer（�
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.3** | 2026-06-06 | Phase 6B-1D：§5 Drive Path 對齊 Industry First（`industries/{industry_code}/...`） |
 | **v1.2** | 2026-06-10 | Pipeline A1/A2/A3 Structured Sheet 三層；Structured Knowledge = Google Sheet |
 | **v1.1** | 2026-06-10 | P1 Final：三層分離、Drive→GCS Mapping、Runtime Source、One Tenant One Folder、Shared Boundary、Object Versioning |
 | **v1.0** | 2026-06-10 | Phase 6 P1：Drive → GCS Mapping 治理方向（Planned） |

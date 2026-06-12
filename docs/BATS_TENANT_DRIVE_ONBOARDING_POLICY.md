@@ -62,7 +62,7 @@
 
 | 項目 | 說明 |
 |------|------|
-| **Tenant Private Drive** | `tenants/{tenant_key}/01_Private_Layer/` |
+| **Tenant Private Drive** | `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/` |
 | **Registry 對照** | `sno`、`tenant_key`、`industry_code`、現行 Registry 欄位 |
 | **Service Account 授權** | 最小權限原則 |
 | **Pilot 驗證** | 受控環境 read/list 或 sync dry-run |
@@ -83,7 +83,7 @@
 | # | 要件 | 說明 |
 |---|------|------|
 | 1 | **Tenant 決策完成** | `tenant_key`、`sno`、`industry_code` 已分配 |
-| 2 | **營運 Drive 帳號** | `bbcshops88@gmail.com` 可管理 `tenants/` |
+| 2 | **營運 Drive 帳號** | `bbcshops88@gmail.com` 可管理 `industries/{industry_code}/tenants/` |
 | 3 | **Structured Sheet 就緒** | `private_knowledge_sheet_id` 已建立（Pipeline A） |
 | 4 | **GCS Prefix 已知** | `tenants/{sno}/` |
 | 5 | **Default Private** | 新建 Folder **不得** 預設公開連結 |
@@ -96,7 +96,7 @@
 
 | 步驟 | 動作 | 產出／驗證 |
 |------|------|------------|
-| **1** | **建立 Tenant Folder** | `tenants/{tenant_key}/01_Private_Layer/` 存在；One Tenant One Folder |
+| **1** | **建立 Tenant Folder** | `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/` 存在；One Tenant One Folder |
 | **2** | **建立 Google Sheet** | `private_knowledge_sheet_id` 就緒；符合 `BATS_DATA_CONTRACT.md` 5 Tab |
 | **3** | **授權 Service Account** | `bbc-ai-sync@...` 具最小權限讀取 Drive / Sheet |
 | **4** | **驗證 Folder** | 路徑、隔離、Default Private；無 `02_Shared_Layer` 於租戶下 |
@@ -124,9 +124,11 @@
 
 ```text
 bbcshops88@gmail.com
-└── tenants/
-    └── {tenant_key}/
-        └── 01_Private_Layer/
+└── industries/
+    └── {industry_code}/
+        └── tenants/
+            └── {tenant_key}/
+                └── 01_Private_Layer/
 ```
 
 | 原則 | 說明 |
@@ -162,10 +164,10 @@ Onboarding 完成後，Registry Entry 須能對照：
 | Registry 語意 | 對照目標 |
 |---------------|----------|
 | `sno` | GCS `tenants/{sno}/` |
-| `tenant_name` / `tenant_key` | Drive `tenants/{tenant_key}/` |
-| `industry_code` | Shared fallback `shared/{industry_code}/`（GCS） |
-| `drive_root_folder_id` | `tenants/{tenant_key}/` 根 ID |
-| `private_knowledge_folder_id` | `01_Private_Layer/` ID（邏輯對照） |
+| `tenant_name` / `tenant_key` | Drive `industries/{industry_code}/tenants/{tenant_key}/` |
+| `industry_code` | Drive Industry Shared `industries/{industry_code}/shared/`；GCS fallback `shared/{industry_code}/` |
+| `drive_root_folder_id` | `industries/{industry_code}/tenants/{tenant_key}/` 根 ID |
+| `private_knowledge_folder_id` | `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/` ID |
 | `private_knowledge_sheet_id` | Structured Pipeline A |
 
 > **Registry JSON Schema 不變**；**不新增** `private_drive_folder_id`。
@@ -189,8 +191,8 @@ Onboarding 完成後，Registry Entry 須能對照：
 
 | 角色 | 建議權限 |
 |------|----------|
-| **Service Account**（`bbc-ai-sync@...`） | 受控讀取／寫入 `tenants/{tenant_key}/`；最小權限 |
-| **BBC Admin** | 平台 `tenants/` 管理 |
+| **Service Account**（`bbc-ai-sync@...`） | 受控讀取／寫入 `industries/{industry_code}/tenants/{tenant_key}/`；最小權限 |
+| **BBC Admin** | 平台 `industries/` 管理 |
 | **租戶人員** | 可檢視／下載（政策另定）；**不可** 直接觸發 BDS 同步 |
 | **Shared 資料夾** | 須 **Explicit Share Policy**；非 Onboarding 預設步驟 |
 
@@ -202,7 +204,7 @@ Onboarding 完成前建議確認（對照 §4 步驟 4～6）：
 
 | # | 檢查項 | 預期 |
 |---|--------|------|
-| 1 | Drive 路徑存在 | `tenants/{tenant_key}/01_Private_Layer/` |
+| 1 | Drive 路徑存在 | `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/` |
 | 2 | 無 Shared 在租戶下 | 無 `02_Shared_Layer` |
 | 3 | Registry `sno` 一致 | 與 GCS prefix 對照 |
 | 4 | Sheet ID 可讀 | Phase 4 Reader PASS（可選） |
@@ -228,7 +230,7 @@ Onboarding 完成前建議確認（對照 §4 步驟 4～6）：
 | 原則 | 說明 |
 |------|------|
 | **產業代碼** | 每 Tenant 必填 `industry_code`（如 `travel`、`hotel`） |
-| **Shared 資料夾** | 產業層 `shared/{industry_code}/02_Shared_Layer/` 由 **平台** 維護；**非** 每租戶 Onboarding 建立 |
+| **Shared 資料夾** | 產業層 `industries/{industry_code}/shared/02_Shared_Layer/` 由 **平台** 維護；**非** 每租戶 Onboarding 建立 |
 | **同架構** | 新產業僅擴充 `industry_code` + Shared 路徑；Tenant Onboarding **流程不變** |
 | **可擴充** | 未來 Onboarding Wizard 可實作本流程；**不改** 核心規則 |
 
@@ -238,10 +240,19 @@ Onboarding 完成前建議確認（對照 §4 步驟 4～6）：
 
 | 原則 | 說明 |
 |------|------|
-| **One Tenant One Folder** | 每 Tenant **必須** 擁有 `tenants/{tenant_key}/01_Private_Layer/` |
+| **One Tenant One Folder** | 每 Tenant **必須** 擁有 `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/` |
 | **唯一 Tenant Archive Source** | 作為該租戶非結構化 Archive 唯一來源 |
 | **禁止跨 Tenant 共用 Folder** | Onboarding 驗證項（§8 #1） |
 | **禁止跨 Tenant 存放私有資料** | 違反 Tenant Isolation |
+
+### 11.1 Legacy Folder Migration Note
+
+| 項目 | 說明 |
+|------|------|
+| **Legacy 候選** | `travel_b` folder ID `1gCTmLPa4ckfhWIhxoSdUZ4H1lvSS7xEe`（pre-governance flat folder） |
+| **正式目標** | `industries/travel/tenants/travel_b/01_Private_Layer/` |
+| **暫時映射** | 標記 **Migration Debt**；不得視為長期 SSOT |
+| **SSOT** | `BATS_DATA_SOURCE_REGISTRY.md` §6.5.6 |
 
 ---
 
@@ -272,6 +283,7 @@ Onboarding 完成前建議確認（對照 §4 步驟 4～6）：
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.2** | 2026-06-06 | Phase 6B-1D：Industry First Drive 路徑；§11.1 Legacy Migration Note |
 | **v1.1** | 2026-06-10 | P1 Final：6 步驟正式流程、2～200 Tenant、One Tenant One Folder |
 | **v1.0** | 2026-06-10 | Phase 6 P1：Tenant Drive Onboarding 政策（Planned） |
 

@@ -14,7 +14,7 @@
 | §1 | 文件目的 |
 | §2 | 核心原則 |
 | §3 | 文件治理原則 |
-| §4 | 架構治理原則 |
+| §4 | 架構治理原則（含 §4.4 Architecture Before Runtime、§4.5 Multi-Industry First） |
 | §5 | Git Safe 原則 |
 | §6 | P1 / P2 / P3 原則 |
 | §7 | Cursor 協作原則 |
@@ -133,6 +133,73 @@
 - 短網址：**集中** `ShortUrlService` / `ProductSourceUrlPublisher`
 - 多商品源 URL：**集中** `MultiSourceSearchUrlBuilder` + Link Service
 - 日期規則：**集中** `BATS_HYBRID_DATE_POLICY.md` 及對應 Policy 層
+
+### 4.4 Architecture Before Runtime Principle（架構先於 Runtime）
+
+**Runtime Implementation 不得先於架構確認。**
+
+下列項目 **尚未確認** 時，**禁止** 進入 Runtime Implementation（含 CLI、Service、Connector、Pipeline 串接）：
+
+| 前置項 | 說明 |
+|--------|------|
+| **Registry Design** | Tenant / Source Registry entry、必填欄位、Onboarding 對照 |
+| **Folder Structure** | Drive / GCS 邏輯路徑與實體 Folder ID 對照；Drive 以 `BATS_DATA_SOURCE_REGISTRY.md` §6.5（Industry First, Tenant Second）為準 |
+| **Data Contract** | 輸入／輸出 JSON、Required Tabs、Validation 邊界 |
+| **Metadata Contract** | Metadata envelope、`data_category` 等（若適用） |
+| **SSOT Definition** | 對應領域正式 SSOT 已 Adopted 或已明確引用 |
+
+**若 Runtime 所依賴之 Registry、Metadata、Folder Structure、Data Contract 尚未確認：**
+
+1. **不得** 開始 Runtime Implementation
+2. **應先** 完成 **SSOT Check**（§15.9）
+3. **應先** 完成 **Architecture Review**、**Boundary Review**（必要時 Registry Impact Review）
+4. **確認後** 再進入設計與開發
+
+| 禁止 | 說明 |
+|------|------|
+| **Runtime 先於架構** | 不得在 Folder ID、Registry 欄位、契約未確認時實作 Drive Client、Scanner、Uploader 等 |
+| **以 Pilot 特例跳過審查** | Pilot tenant 僅為驗收用例，**不得** 作為跳過 Architecture Review 的理由 |
+| **口頭共識取代審查** | 審查結論須可追溯（正式文件或已採納之 Review 報告） |
+
+**與其他原則的關係：**
+
+| 原則 | 關係 |
+|------|------|
+| §3 文件先於程式 | 架構確認通常以文件／SSOT 為載體 |
+| §15 SSOT First | SSOT Check 為進入 Runtime 前之強制步驟 |
+| §7.4 Development First | 主線交付優先，**不** 表示可跳過架構前置；審查屬必要前置，非無止境治理循環 |
+
+### 4.5 Multi-Industry First Principle（多產業優先）
+
+**BBC AI SaaS 必須支援 Multi-Industry + Multi-Tenant。**
+
+所有 **新架構設計**（Registry、Drive、GCS、BDS、BATS 管線、Onboarding 流程）**必須先驗證**：
+
+> 新增一個新 **Industry**（如 `hotel`、`restaurant`、`education`、`medical`）時，是否 **僅需** Configuration、Registry、Onboarding 即可完成導入？
+
+| 可接受擴展 | 不可接受（Architecture Defect） |
+|------------|--------------------------------|
+| 新增 Registry entry | Registry **Schema Change**（未經 SSOT 修訂） |
+| 新增 `industry_code` 與對應路徑 | **Code Refactor** 同步核心 |
+| 新增 Drive / GCS prefix 設定值 | **Architecture Redesign** 因單一產業需求 |
+| 沿用同一 BDS / BATS 管線 | per-industry fork、hardcode 產業邏輯 |
+
+**禁止：**
+
+| 禁止 | 說明 |
+|------|------|
+| **Travel-only Assumption** | 不得假設所有租戶皆為 `travel` 或旅行社語意 |
+| **Single-Industry Architecture** | 不得以單一產業特例設計不可逆的架構分叉 |
+| **為 Pilot 產業 fork 核心** | `travel_b` 等 Pilot 僅為驗收用例；擴展須 Registry Driven |
+
+**設計自檢（新增架構時必答）：**
+
+1. 新 Industry 是否 **只** 新增設定與 Registry，而不改同步核心？
+2. Shared / Global 路徑是否依 `industry_code` 解析，而非 hardcode `travel`？
+3. Drive Tenant Private 是否嵌於 `industries/{industry_code}/tenants/{tenant_key}/`（§6.5）？
+4. 是否仍符合 §4.4（架構／契約先確認，再 Runtime）？
+
+**交叉引用：** `BATS_DATA_SOURCE_REGISTRY.md` §4.5、§6.5、`BATS_DATA_SYNC_POLICY.md` §23（Anti Hardcode）
 
 ---
 
@@ -528,6 +595,7 @@ C:\bbc-ai-bot\docs\TECH_DEBT.md
 | 章節 | 關聯 |
 |------|------|
 | §3 文件治理原則 | 定義「文件先於程式」流程 |
+| §4.4 / §4.5 | Architecture Before Runtime、Multi-Industry First |
 | §8 文件優先順序 | 定義 L0–L3 解讀順序 |
 | §15 SSOT First 原則 | 工作前 SSOT 確認與五步流程 |
 | `DOCUMENTATION_GOVERNANCE_POLICY.md` | L0 文件治理細則（SSOT、命名、生命週期） |
@@ -631,6 +699,7 @@ L2 — Design Files（如 BATS_HYBRID_DATE_POLICY …）
 | Tenant / Source Registry | `TENANT_SOURCE_REGISTRY_POLICY.md` |
 | Short URL | `PRODUCT_SOURCE_SHORTURL_POLICY.md` |
 | 文件治理 | `DOCUMENTATION_GOVERNANCE_POLICY.md` |
+| BDS Source Registry / Drive Platform Layer | `BATS_DATA_SOURCE_REGISTRY.md` §6.5 |
 | 最高協作治理 | 本文件 |
 
 **禁止** 同一領域平行多份 SSOT 互相矛盾（詳 §8、`DOCUMENTATION_GOVERNANCE_POLICY.md` §2、§5.6）。
@@ -643,7 +712,9 @@ L2 — Design Files（如 BATS_HYBRID_DATE_POLICY …）
 | §13 文件驅動開發 | 實作前查閱 SSOT |
 | §8 文件優先順序 | L0–L2 鏈 |
 | §7 Cursor 協作原則 | AI 建議不得凌駕 SSOT |
-| §7.4 Development First | 主線優先；治理工具不取代交付 |
+| §7.4 Development First | 主線優先；治理工具不取代交付；**不** 凌駕 §4.4 架構前置 |
+| §4.4 Architecture Before Runtime | Runtime 前須完成 SSOT Check 與架構／邊界審查 |
+| §4.5 Multi-Industry First | 新 Industry 僅 Configuration + Registry + Onboarding |
 | §5.5 Commit Necessity | Commit 須 Necessity + Safety 雙軸 |
 | §5.6 中文 Commit Message | 預設中文 Conventional Commits |
 | §9.3 Commit 規劃回報 | 提出 commit 建議時之四項說明 |
@@ -683,6 +754,8 @@ L2 — Design Files（如 BATS_HYBRID_DATE_POLICY …）
 - **開發**
 - **測試**
 
+若涉及 **Runtime Implementation**，且依賴 Registry、Folder Structure、Data Contract 或 Metadata Contract，**另須** 符合 §4.4 Architecture Before Runtime（Architecture Review / Boundary Review 完成後方可開發）。
+
 #### 若沒有 SSOT
 
 流程改為：
@@ -716,7 +789,7 @@ L2 — Design Files（如 BATS_HYBRID_DATE_POLICY …）
 | **ChatGPT Prompt** | 分析、設計、實作建議前 |
 | **Cursor Prompt** | 任何程式修改或架構建議前 |
 | **Code Review** | 審查變更是否符合 SSOT |
-| **Architecture Review** | 架構決策與分層邊界審查 |
+| **Architecture Review** | 架構決策與分層邊界審查；須符合 §4.4、§4.5 |
 
 ---
 
@@ -733,6 +806,8 @@ L2 — Design Files（如 BATS_HYBRID_DATE_POLICY …）
 5. **依 P1 / P2 / P3** 決定執行優先順序；**依 §7.4** 主線未完成時優先交付
 6. **依 Recovery First**（§14）確保可恢復、可追蹤、可驗證後再上線
 7. **依 SSOT First**（§15）任何工作先確認並遵循正式 SSOT；**功能開發前必須完成 SSOT Check**（§15.9）
+8. **依 Architecture Before Runtime**（§4.4）Registry、Folder Structure、Data Contract 等未確認前不得 Runtime Implementation
+9. **依 Multi-Industry First**（§4.5）新架構須可僅以 Configuration + Registry + Onboarding 擴展新 Industry
 
 ChatGPT、Cursor、開發者皆應以本文件為協作起點；若與其他文件或實作衝突，**以本文件為準**。
 
@@ -748,3 +823,5 @@ ChatGPT、Cursor、開發者皆應以本文件為協作起點；若與其他文�
 | 1.3 | 2026-06-05 | Add mandatory SSOT Check workflow. |
 | 1.4 | 2026-06-06 | Add Commit Necessity、Commit 規劃回報、中文 Commit Message、Development First 原則（Gap D-3 補強） |
 | 1.5 | 2026-06-06 | Add §9.4 標準開發節奏（Development Rhythm）；補強非主動治理回報與 §9.3 並存關係 |
+| 1.7 | 2026-06-06 | Phase 6B-1D：§4.4／§4.5 Drive Industry First cross-ref；§15.7 BDS Drive Platform SSOT |
+| 1.6 | 2026-06-06 | Add §4.4 Architecture Before Runtime Principle、§4.5 Multi-Industry First Principle（Phase 6B 架構治理補強） |

@@ -177,7 +177,7 @@ Knowledge Source 分 **三類**（供 BATS 讀取 GCS Knowledge Layer）；另�
 | **中文** | 旅行社私有知識 |
 | **Registry 層級** | `tenants/{sno}/` |
 | **GCS 路徑** | `tenants/{sno}/knowledge/` 下 5 JSON（見 `BATS_DATA_CONTRACT.md` §6） |
-| **Drive 對應** | `tenants/{tenant_key}/01_Private_Layer/`（§6.5） |
+| **Drive 對應** | `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/`（§6.5） |
 
 #### 典型內容
 
@@ -202,7 +202,7 @@ Knowledge Source 分 **三類**（供 BATS 讀取 GCS Knowledge Layer）；另�
 | **中文** | 行程資料 |
 | **Registry 層級** | `tenants/{sno}/` |
 | **GCS 路徑** | `tenants/{sno}/knowledge/itinerary/` |
-| **Drive 對應** | `tenants/{tenant_key}/01_Private_Layer/`（Category A Archive；§6.5） |
+| **Drive 對應** | `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/`（Category A Archive；§6.5） |
 
 #### 典型內容
 
@@ -586,16 +586,16 @@ shared/global  global shared          護照代辦 2000
 
 | 項目 | 規則 |
 |------|------|
-| **格式** | `tenants/{sno}/` |
+| **格式** | `industries/{industry_code}/tenants/{tenant_key}/` |
 | **禁止** | 多個租戶共用同一 Folder |
 | **對應** | Registry 須記錄 `drive_root_folder_id` 與子資料夾 ID（§7）；Drive 平台層見 §6.5 |
 
 ### 6.2 租戶 Drive 子資料夾（Tenant Private Only）
 
-> **架構修正（Phase 6 Pre-Governance）：** **Shared Layer 不屬於單一旅行社**；產業／全球 Shared 位於平台層 `shared/`（見 §6.5）。租戶 Drive 僅含 **Private Layer**。
+> **架構修正（Phase 6B-1D）：** **Industry First, Tenant Second**。**Shared Layer 不屬於單一旅行社**；產業 Shared 位於 `industries/{industry_code}/shared/`，Global Shared 位於 `global/`（見 §6.5）。租戶 Drive 僅含 **Private Layer**。
 
 ```text
-tenants/{tenant_key}/
+industries/{industry_code}/tenants/{tenant_key}/
 └── 01_Private_Layer/          → Tenant Private Archive（單一租戶）
 ```
 
@@ -605,20 +605,21 @@ tenants/{tenant_key}/
 
 **禁止：** 於租戶資料夾下建立 `02_Shared_Layer` 或任何產業／全球共用層（違反平台層架構）。
 
-**現行 Pilot 範例：** `travel_a`、`travel_b`、`travel_c` 各自擁有 `tenants/{tenant_key}/01_Private_Layer/`。
+**現行 Pilot 範例：** `travel_a`、`travel_b`、`travel_c` 各自擁有 `industries/travel/tenants/{tenant_key}/01_Private_Layer/`。
 
 ### 6.3 Registry 與實體對應
 
-> **Registry JSON Schema 不變**；下列為 Drive **邏輯路徑** 與現行 Registry 欄位之對照（Phase 6 前規劃）。
+> **Registry JSON Schema 不變**；下列為 Drive **邏輯路徑** 與現行 Registry 欄位之對照。**不新增** `private_drive_folder_id`、`shared_drive_folder_id`。
 
 | Registry 欄位 | Drive 邏輯路徑（概念） | 說明 |
 |---------------|------------------------|------|
-| `drive_root_folder_id` | `tenants/{tenant_key}/` | 租戶根資料夾（如 `travel_b`） |
-| `private_knowledge_folder_id` | `tenants/{tenant_key}/01_Private_Layer/` | Tenant Private Archive |
-| `itinerary_folder_id` | `tenants/{tenant_key}/01_Private_Layer/`（或子路徑） | Category A Archive；**不** 獨立 Shared |
+| `drive_root_folder_id` | `industries/{industry_code}/tenants/{tenant_key}/` | 租戶根資料夾（如 `industries/travel/tenants/travel_b/`） |
+| `private_knowledge_folder_id` | `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/` | Tenant Private Archive |
+| `itinerary_folder_id` | `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/`（或子路徑） | Category A Archive；**不** 獨立 Shared |
 | `customer_registration_folder_id` | `registrations/`（平台層）或受控子路徑 | Category C；見 `BATS_DATA_SYNC_POLICY.md` §21 |
+| `industry_code`（語意） | `industries/{industry_code}/shared/02_Shared_Layer/` | Industry Shared **不** 屬 Tenant；由 `industry_code` + 平台 Shared Registry / Policy 解析 |
 
-**不新增** `private_drive_folder_id` 為正式必填欄位。
+**Industry Shared 不登錄於 Tenant Registry 之 Drive 子欄位**；Tenant Entry 僅含 Private Layer 相關 Folder ID。
 
 ### 6.4 與 GCS / Sheet 對齊
 
@@ -634,7 +635,7 @@ tenants/{tenant_key}/
 
 #### 6.5.1 定位
 
-定義 **營運 Google Drive** 之正式平台層資料夾樹；與 GCS Knowledge Layer **分離**。本節為 Phase 6 Pre-Governance SSOT。
+定義 **營運 Google Drive** 之正式平台層資料夾樹；與 GCS Knowledge Layer **分離**。本節為 **Industry First, Tenant Second** 之 Drive SSOT（Phase 6B-1D）。
 
 **營運帳號：** `bbcshops88@gmail.com` Google Drive  
 **Default：** **Private**（所有層級）
@@ -643,53 +644,83 @@ tenants/{tenant_key}/
 
 ```text
 bbcshops88@gmail.com（Google Drive）
-├── tenants/
-│   ├── travel_a/
-│   │   └── 01_Private_Layer/          ← Tenant Private（單一租戶）
-│   ├── travel_b/
-│   │   └── 01_Private_Layer/
-│   └── travel_c/
-│       └── 01_Private_Layer/
-├── shared/                             ← 平台層；非單一 Tenant
+├── industries/
 │   ├── travel/
-│   │   └── 02_Shared_Layer/           ← Industry Shared
+│   │   ├── tenants/
+│   │   │   ├── travel_a/
+│   │   │   │   └── 01_Private_Layer/    ← Tenant Private（單一租戶）
+│   │   │   ├── travel_b/
+│   │   │   │   └── 01_Private_Layer/
+│   │   │   └── travel_c/
+│   │   │       └── 01_Private_Layer/
+│   │   └── shared/
+│   │       └── 02_Shared_Layer/         ← Industry Shared
 │   ├── hotel/
-│   │   └── 02_Shared_Layer/
+│   │   ├── tenants/
+│   │   └── shared/
+│   │       └── 02_Shared_Layer/
 │   ├── restaurant/
-│   │   └── 02_Shared_Layer/
-│   └── global/
-│       └── 02_Global_Shared_Layer/    ← Global Shared
-└── registrations/                      ← 平台層報名／交易 Archive（Category C）
+│   │   ├── tenants/
+│   │   └── shared/
+│   │       └── 02_Shared_Layer/
+│   └── ...
+├── global/
+│   └── 02_Global_Shared_Layer/          ← Global Shared
+└── registrations/                       ← Category C 平台層（路徑不變）
 ```
+
+**路徑範例：**
+
+| 用途 | 正式 Drive 路徑 |
+|------|-----------------|
+| `travel_b` Tenant Private | `industries/travel/tenants/travel_b/01_Private_Layer/` |
+| `travel` Industry Shared | `industries/travel/shared/02_Shared_Layer/` |
+| `hotel_a` Tenant Private | `industries/hotel/tenants/hotel_a/01_Private_Layer/` |
+| Global Shared | `global/02_Global_Shared_Layer/` |
 
 #### 6.5.3 三層治理對照
 
 | 層級 | Drive 邏輯路徑 | 歸屬 | GCS 對應（不變） |
 |------|----------------|------|------------------|
-| **Tenant Private** | `tenants/{tenant_key}/01_Private_Layer/` | 單一 Tenant | `tenants/{sno}/knowledge/` |
-| **Industry Shared** | `shared/{industry_code}/02_Shared_Layer/` | 產業層；**非** 單一 Tenant | `shared/{industry_code}/knowledge/` |
-| **Global Shared** | `shared/global/02_Global_Shared_Layer/` | 平台層 | `shared/global/knowledge/` |
+| **Tenant Private** | `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/` | 單一 Tenant | `tenants/{sno}/knowledge/` |
+| **Industry Shared** | `industries/{industry_code}/shared/02_Shared_Layer/` | 產業層；**非** 單一 Tenant | `shared/{industry_code}/knowledge/` |
+| **Global Shared** | `global/02_Global_Shared_Layer/` | 平台層 | `shared/global/knowledge/` |
 
 #### 6.5.4 正式治理原則
 
 | # | 原則 | 說明 |
 |---|------|------|
-| 1 | **Tenant Private = 單一租戶** | `tenants/{tenant_key}/01_Private_Layer/` 僅屬該 Tenant |
-| 2 | **Industry Shared = 產業層** | `shared/{industry_code}/02_Shared_Layer/` **不** 置於租戶資料夾下 |
-| 3 | **Global Shared = 平台層** | `shared/global/02_Global_Shared_Layer/` |
-| 4 | **Shared ≠ Public** | Shared 指 fallback 知識語意，**不是** 對外公開層 |
-| 5 | **Default Private** | 所有 Drive 資料夾預設 Private |
-| 6 | **Tenant 不自動使用 Shared** | 須 **Registry + Policy** 明確啟用 |
-| 7 | **產業可擴展** | `travel` 為首個產業；`hotel`、`restaurant`、`beauty`、`education`、`medical` 等適用同架構 |
+| 1 | **Industry First, Tenant Second** | 所有 Tenant Private 路徑 **必須** 嵌於 `industries/{industry_code}/tenants/` 下 |
+| 2 | **Tenant Private = 單一租戶** | `.../tenants/{tenant_key}/01_Private_Layer/` 僅屬該 Tenant |
+| 3 | **Industry Shared = 產業層** | `industries/{industry_code}/shared/02_Shared_Layer/` **不** 置於租戶資料夾下 |
+| 4 | **Global Shared = 平台層** | `global/02_Global_Shared_Layer/` |
+| 5 | **Shared ≠ Public** | Shared 指 fallback 知識語意，**不是** 對外公開層 |
+| 6 | **Default Private** | 所有 Drive 資料夾預設 Private |
+| 7 | **Tenant 不自動使用 Shared** | 須 **Registry + Policy** 明確啟用 |
+| 8 | **產業可擴展** | `travel` 為首個產業；`hotel`、`restaurant`、`beauty`、`education`、`medical` 等適用同架構 |
 
 #### 6.5.5 明確禁止
 
 | 禁止 | 說明 |
 |------|------|
 | `tenants/{tenant_key}/02_Shared_Layer/` | Shared 不得置於租戶資料夾下 |
+| **tenant-specific shared folder** | 禁止每租戶獨立 Shared 資料夾 |
+| 根層 `tenants/{tenant_key}/`（無 `industries/` 前綴） | 違反 Industry First 架構；僅允許 **Migration Debt** 暫時映射 |
 | 多租戶共用同一 `01_Private_Layer` | 違反 Tenant Isolation |
 | 未登錄 Registry 即啟用 Shared 可見性 | 違反 Explicit Share Policy |
-| 新增 `private_drive_folder_id` 至 Registry Schema | Phase 6 前 **禁止** |
+| 新增 `private_drive_folder_id` / `shared_drive_folder_id` | Registry Schema **禁止** |
+
+#### 6.5.6 Legacy Folder Migration Note
+
+部分 Pilot 租戶可能存在 **pre-governance 扁平資料夾**（Legacy flat folders），**不得** 視為長期 SSOT。
+
+| 項目 | 說明 |
+|------|------|
+| **Legacy 候選** | `travel_b` legacy folder ID：`1gCTmLPa4ckfhWIhxoSdUZ4H1lvSS7xEe` |
+| **性質** | 可能為 Phase 6 前 flat folder；**未確認** 對齊 `01_Private_Layer` 命名 |
+| **正式 Onboarding** | 須對齊 `industries/travel/tenants/travel_b/01_Private_Layer/` |
+| **暫時映射** | 若 Registry 仍指向 legacy ID，須標記為 **Migration Debt**；Phase 6B-2 前完成實體搬移或重新 Onboarding |
+| **禁止** | 將 legacy flat path 寫入新 SSOT 或視為正式架構 |
 
 ---
 
@@ -707,14 +738,14 @@ bbcshops88@gmail.com（Google Drive）
 | **`tenant_name`** | string | 人類可讀名稱（如 `travel_b`） |
 | **`industry_code`** | string | 產業代碼；決定 `shared/{industry_code}/knowledge/` fallback 路徑 |
 | **`enabled`** | boolean | 是否啟用 BDS 同步與知識讀取 |
-| **`drive_root_folder_id`** | string | Google Drive 根資料夾 ID（`tenants/{sno}/`） |
+| **`drive_root_folder_id`** | string | Google Drive 根資料夾 ID（`industries/{industry_code}/tenants/{tenant_key}/`） |
 | **`itinerary_folder_id`** | string | `01_Itinerary_Data` 資料夾 ID |
 | **`private_knowledge_folder_id`** | string | `02_Private_Knowledge` 資料夾 ID |
 | **`customer_registration_folder_id`** | string | `03_Customer_Registration` 資料夾 ID |
 | **`private_knowledge_sheet_id`** | string | BDS v1 Tenant Private Knowledge Google Sheet ID；須符合 `BATS_DATA_CONTRACT.md` 5 Tab Contract |
 | **`gcs_prefix`** | string | GCS 路徑前綴；正式值 `tenants/{sno}/` |
 
-> **Drive 邏輯路徑對照（Schema 欄位名不變）：** 見 §6.3。`private_knowledge_folder_id` 對應 `01_Private_Layer/`；Shared 資料夾 ID 登錄於平台層 `shared/`（Phase 6 前規劃）。**不新增** `private_drive_folder_id`。
+> **Drive 邏輯路徑對照（Schema 欄位名不變）：** 見 §6.3。`private_knowledge_folder_id` 對應 `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/`。**Industry Shared** 由 `industry_code` + 平台 Shared Registry / Policy 解析 `industries/{industry_code}/shared/02_Shared_Layer/`，**不** 登錄於 Tenant Entry。**不新增** `private_drive_folder_id`、`shared_drive_folder_id`。
 
 ### 7.3 `industry_code` 正式定義
 
@@ -730,7 +761,8 @@ bbcshops88@gmail.com（Google Drive）
 | **必填** | 每個 Tenant Registry Entry 須有 `industry_code` |
 | **fallback 路徑** | BATS 依此欄位解析 §4 順序第 2 層 |
 | **global 共用** | `shared/global/knowledge/` 對所有 `industry_code` 皆為最終 fallback |
-| **擴展** | 新增產業僅新增 code + `shared/{industry}/`；見 §4.5 |
+| **擴展** | 新增產業僅新增 code + `shared/{industry}/`（GCS）與 `industries/{industry}/`（Drive）；見 §4.5 |
+| **Drive Industry Shared** | `industry_code` 解析 `industries/{industry_code}/shared/02_Shared_Layer/`；**不** 登錄於 Tenant Entry |
 
 ### 7.4 建議擴充欄位（非 v1 必填）
 
@@ -1012,13 +1044,13 @@ GCS Knowledge Layer（受控路徑；非 Phase 5 範圍）
 
 | 原則 | 說明 |
 |------|------|
-| **One Tenant One Folder** | 每個 Tenant 對應 **一個** 專屬 Drive Folder：`tenants/{tenant_key}/` |
+| **One Tenant One Folder** | 每個 Tenant 對應 **一個** 專屬 Drive Folder：`industries/{industry_code}/tenants/{tenant_key}/` |
 | **Tenant Private Only** | 租戶資料夾下 **僅** `01_Private_Layer/`；**不含** Shared Layer |
 | **Folder Default = Private** | 預設 Private；見 `BATS_DATA_OWNERSHIP_POLICY.md` §2.5、§2.7 |
 | **禁止跨 Tenant 共用 Folder** | 違反 Tenant Isolation |
-| **Shared Layer** | 位於平台層 `shared/{industry_code}/`；須 **Registry + Policy** 啟用 |
+| **Shared Layer** | 位於 `industries/{industry_code}/shared/` 與 `global/`；須 **Registry + Policy** 啟用 |
 
-**Pilot：** `travel_a`、`travel_b`、`travel_c` 各自擁有 `01_Private_Layer/`（見 §6.5.2）。
+**Pilot：** `travel_a`、`travel_b`、`travel_c` 各自擁有 `industries/travel/tenants/{tenant_key}/01_Private_Layer/`（見 §6.5.2）。
 
 #### 10.5.4 與現有 Registry 邊界
 
@@ -1066,6 +1098,7 @@ GCS Knowledge Layer（受控路徑；非 Phase 5 範圍）
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v2.0** | 2026-06-06 | Phase 6B-1D：§6.5 Drive Tree SSOT 遷移為 Industry First / Tenant Second（`industries/{industry_code}/...`）；§6.5.6 Legacy Migration Note |
 | **v1.9** | 2026-06-10 | §4.4 P1-7 四層 Priority、Fallback Rule、Industry Shared First |
 | **v1.8** | 2026-06-10 | §3.1.1 Structured Knowledge Input Source（Sheet = 三層 Knowledge Input） |
 | **v1.7** | 2026-06-10 | §7.9 Phase 6A Registry 讀取範圍 |

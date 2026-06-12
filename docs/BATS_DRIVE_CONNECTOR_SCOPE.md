@@ -198,9 +198,9 @@ Reports / Preflight
 
 | 層級 | 路徑 | Phase |
 |------|------|-------|
-| **Tenant Private** | `tenants/{tenant_key}/01_Private_Layer/` | 6B～6D |
-| **Industry Shared** | `shared/{industry_code}/02_Shared_Layer/` | 6E（須 Policy） |
-| **Global Shared** | `shared/global/02_Global_Shared_Layer/` | 6E（須 Policy） |
+| **Tenant Private** | `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/` | 6B～6D |
+| **Industry Shared** | `industries/{industry_code}/shared/02_Shared_Layer/` | 6E（須 Policy） |
+| **Global Shared** | `global/02_Global_Shared_Layer/` | 6E（須 Policy） |
 
 ### 4.2 禁止路徑
 
@@ -269,7 +269,7 @@ Phase 6A（Sheet E2E）──→ Phase 6B（Drive Read）──→ Phase 6C（Me
 
 | 原則 | 說明 |
 |------|------|
-| **One Tenant One Folder** | 每個 Tenant **必須** 擁有獨立 `tenants/{tenant_key}/01_Private_Layer/` |
+| **One Tenant One Folder** | 每個 Tenant **必須** 擁有獨立 `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/` |
 | **唯一 Tenant Archive Source** | 該路徑為該租戶 **唯一** 私有非結構化 Archive 來源 |
 | **禁止跨 Tenant 共用 Folder** | 多租戶共用同一 Folder → Tenant Isolation 違規 |
 | **禁止跨 Tenant 存放私有資料** | 他社檔案 **不得** 置於其他 tenant 的 `01_Private_Layer/` |
@@ -318,7 +318,7 @@ Phase 6A（Sheet E2E）──→ Phase 6B（Drive Read）──→ Phase 6C（Me
 | 原則 | 說明 |
 |------|------|
 | **Registry Driven** | 路徑與 ID 來自 Registry；禁止 hardcode `travel_b` |
-| **產業擴展** | 新 `industry_code` → 新 `shared/{industry}/02_Shared_Layer/` |
+| **產業擴展** | 新 `industry_code` → 新 `industries/{industry_code}/shared/02_Shared_Layer/` |
 | **可擴充 Connector** | 新檔案類型增列 §5；核心隔離規則不變 |
 | **Pilot** | `travel_b` 為驗證用例，非架構特例 |
 
@@ -357,6 +357,7 @@ Phase 6A（Sheet E2E）──→ Phase 6B（Drive Read）──→ Phase 6C（Me
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.3** | 2026-06-06 | Phase 6B-1D：§5 Drive Path 對齊 Industry First（`industries/{industry_code}/...`） |
 | **v1.2** | 2026-06-10 | §2.3.1 Structured Knowledge vs Drive；Sheet = 全層 Structured Input |
 | **v1.1** | 2026-06-10 | P1 Final：Runtime Source Architecture、6A～6E 正名、One Tenant One Folder、Shared Runtime Boundary、Object Versioning |
 | **v1.0** | 2026-06-10 | Phase 6 P1：Drive Connector Scope 治理（Planned） |

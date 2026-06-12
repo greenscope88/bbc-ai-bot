@@ -1320,17 +1320,19 @@ Google Drive（Archive Layer）
 
 ## 20. Google Drive 三層資料分類
 
-> **Phase 6 Pre-Governance 修正：** 平台層 Drive 樹狀結構以 `BATS_DATA_SOURCE_REGISTRY.md` §6.5 為準。**Shared Layer 不屬於單一旅行社**；租戶 Drive 僅含 `01_Private_Layer/`。下列 §20.2～§20.4 為 **data_category 語意**；GCS 路徑（§20.5）**不變**。
+> **Phase 6B-1D 修正：** 平台層 Drive 樹狀結構以 `BATS_DATA_SOURCE_REGISTRY.md` §6.5 為準（**Industry First, Tenant Second**）。**Shared Layer 不屬於單一旅行社**；租戶 Drive 僅含 `01_Private_Layer/`。下列 §20.2～§20.4 為 **data_category 語意**；GCS 路徑（§20.5）**不變**。
 
 ### 20.1 平台層 Drive 結構（正式）
 
 **營運帳號：** `bbcshops88@gmail.com`
 
 ```text
-├── tenants/{tenant_key}/01_Private_Layer/     ← Tenant Private（單一租戶）
-├── shared/{industry_code}/02_Shared_Layer/    ← Industry Shared（平台層）
-├── shared/global/02_Global_Shared_Layer/      ← Global Shared（平台層）
-└── registrations/                           ← customer_registration（平台層）
+bbcshops88@gmail.com
+├── industries/{industry_code}/
+│   ├── tenants/{tenant_key}/01_Private_Layer/   ← Tenant Private（單一租戶）
+│   └── shared/02_Shared_Layer/                  ← Industry Shared（產業層）
+├── global/02_Global_Shared_Layer/               ← Global Shared（平台層）
+└── registrations/                               ← customer_registration（平台層）
 ```
 
 ### 20.1.1 租戶資料夾（僅 Private）
@@ -1338,11 +1340,11 @@ Google Drive（Archive Layer）
 每個租戶 Google Drive Folder：
 
 ```text
-tenants/{tenant_key}/
+industries/{industry_code}/tenants/{tenant_key}/
 └── 01_Private_Layer/
 ```
 
-**禁止：** `tenants/{tenant_key}/02_Shared_Layer/` 或任何產業／全球 Shared 置於租戶資料夾下。
+**禁止：** `tenants/{tenant_key}/02_Shared_Layer/`、租戶下任何 Shared 子資料夾，或 **tenant-specific shared folder**。
 
 ### 20.2 `01_Itinerary_Data`
 
@@ -1380,9 +1382,9 @@ tenants/{tenant_key}/
 
 | data_category 語意 | Drive 平台層路徑（概念） | GCS 對應（若適用） |
 |--------------------|--------------------------|-------------------|
-| `itinerary_data` | `tenants/{tenant_key}/01_Private_Layer/` | `tenants/{sno}/knowledge/itinerary/`（下一階段） |
-| `tenant_private_knowledge` | `tenants/{tenant_key}/01_Private_Layer/` | `tenants/{sno}/knowledge/service_qa.json` 等 |
-| `shared_knowledge` | `shared/{industry}/02_Shared_Layer/`、`shared/global/02_Global_Shared_Layer/` | `shared/.../knowledge/` |
+| `itinerary_data` | `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/` | `tenants/{sno}/knowledge/itinerary/`（下一階段） |
+| `tenant_private_knowledge` | `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/` | `tenants/{sno}/knowledge/service_qa.json` 等 |
+| `shared_knowledge` | `industries/{industry_code}/shared/02_Shared_Layer/`、`global/02_Global_Shared_Layer/` | `shared/.../knowledge/` |
 | `customer_registration` | `registrations/` | **無** — 不得寫入 GCS Knowledge |
 
 ---
@@ -1454,26 +1456,28 @@ GCS Knowledge / Gemini / BATS Search
 
 | 項目 | 規則 |
 |------|------|
-| **格式** | `tenants/{sno}/` |
+| **格式** | `industries/{industry_code}/tenants/{tenant_key}/` |
 | **禁止** | 多個租戶共用同一資料夾 |
-| **對應關係** | Drive Folder 必須可對應 `sno`、Google Sheet（若適用）、GCS Prefix `tenants/{sno}/` |
+| **對應關係** | Drive Folder 必須可對應 `sno`、`industry_code`、`tenant_key`、Google Sheet（若適用）、GCS Prefix `tenants/{sno}/` |
 
 ### 22.2 租戶子資料夾
 
-每個 `tenants/{tenant_key}/` 下 **僅** 含 Tenant Private Layer：
+每個 `industries/{industry_code}/tenants/{tenant_key}/` 下 **僅** 含 Tenant Private Layer：
 
 ```text
-tenants/{tenant_key}/
+industries/{industry_code}/tenants/{tenant_key}/
 └── 01_Private_Layer/
 ```
 
-產業／全球 Shared 位於平台層 `shared/`（§20.1）；`customer_registration` 位於 `registrations/`（§21.3）。
+產業 Shared 位於 `industries/{industry_code}/shared/`（§20.1）；Global Shared 位於 `global/`；`customer_registration` 位於 `registrations/`（§21.3）。
+
+> **Legacy flat folders：** 根層 `tenants/{tenant_key}/` 或 pre-governance folder ID 僅能作 **Migration Debt** 暫時映射；正式 SSOT 見 `BATS_DATA_SOURCE_REGISTRY.md` §6.5.6。
 
 ### 22.3 與 GCS 隔離對齊
 
 | 邊界 | Drive | GCS |
 |------|-------|-----|
-| 租戶識別 | `tenants/{sno}/` | `tenants/{sno}/` |
+| 租戶識別 | `industries/{industry_code}/tenants/{tenant_key}/`（邏輯） | `tenants/{sno}/` |
 | 跨 tenant 讀寫 | **禁止** | **禁止**（§10.1） |
 
 ### 22.4 Service Account 權限
@@ -1573,6 +1577,7 @@ Service Account 僅授權必要之 `tenants/{sno}/` prefix；不得授予跨 ten
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.9** | 2026-06-06 | Phase 6B-1D：§20／§22 Drive Tree 遷移為 Industry First（`industries/{industry_code}/...`）；GCS 不變 |
 | **v1.5** | 2026-06-08 | MVP 範圍校正：1 Sheet / 5 Tabs / 5 JSON；cross-ref `BATS_DATA_CONTRACT.md`（L3 SSOT） |
 | **v1.4** | 2026-06-08 | 新增 `shared_knowledge`（Category C）、`shared/{industry}/knowledge/` GCS 結構、§12.7 Cross-Reference、`BATS_DATA_SOURCE_REGISTRY.md` 對齊 |
 | **v1.8** | 2026-06-10 | §18.8 P1-7 Knowledge Priority Rule；Industry Shared First；Human Service Level 4 |

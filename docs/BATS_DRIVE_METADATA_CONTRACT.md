@@ -59,7 +59,7 @@
 | 項目 | 說明 |
 |------|------|
 | **檔案類型** | PDF、Image、Excel、Word、PowerPoint（見 `BATS_DRIVE_CONNECTOR_SCOPE.md`） |
-| **Drive 路徑** | `tenants/{tenant_key}/01_Private_Layer/`、`shared/{industry_code}/02_Shared_Layer/`、`shared/global/02_Global_Shared_Layer/` |
+| **Drive 路徑** | `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/`、`industries/{industry_code}/shared/02_Shared_Layer/`、`global/02_Global_Shared_Layer/` |
 | **用途** | Archive 追溯、GCS promote 對照、同步報告、rollback 參照 |
 
 ### 2.2 Out of Scope
@@ -106,9 +106,9 @@ GCS Object（含 metadata 對照）
 
 | 層級 | Metadata 歸屬 | 說明 |
 |------|---------------|------|
-| **Tenant Private** | 單一 `sno` / `tenant_key` | `tenants/{tenant_key}/01_Private_Layer/` |
-| **Industry Shared** | `industry_code` | `shared/{industry_code}/02_Shared_Layer/` |
-| **Global Shared** | `global` | `shared/global/02_Global_Shared_Layer/` |
+| **Tenant Private** | 單一 `sno` / `tenant_key` | `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/` |
+| **Industry Shared** | `industry_code` | `industries/{industry_code}/shared/02_Shared_Layer/` |
+| **Global Shared** | `global` | `global/02_Global_Shared_Layer/` |
 
 **Shared Layer ≠ Public Layer** — Metadata 描述 **歸屬與追溯**，**不是** 公開可見性宣告。
 
@@ -160,7 +160,7 @@ Drive File → Metadata Envelope（描述）     ≠  Knowledge JSON（內容）
 | **`file_name`** | 原始檔名 | `original_filename` | `itinerary_v2.pdf` |
 | **`mime_type`** | MIME 類型 | — | `application/pdf` |
 | **`checksum`** | 內容指紋 | `content_hash` | SHA-256 |
-| **`source_path`** | Drive 邏輯路徑 | `drive_folder_path` | `tenants/travel_b/01_Private_Layer/...` |
+| **`source_path`** | Drive 邏輯路徑 | `drive_folder_path` | `industries/travel/tenants/travel_b/01_Private_Layer/...` |
 | **`uploaded_at`** | 上傳／首次寫入時間（UTC） | — | ISO 8601 |
 | **`modified_at`** | Drive 最後修改時間（UTC） | `source_revision` | ISO 8601 |
 | **`data_category`** | 對照 `BATS_TENANT_DATA_CLASSIFICATION.md` | — | `itinerary_data`、`shared_knowledge`（archive） |
@@ -207,7 +207,7 @@ Drive File → Metadata Envelope（描述）     ≠  Knowledge JSON（內容）
 
 | 原則 | 說明 |
 |------|------|
-| **多租戶** | 每家旅行社獨立 `tenants/{tenant_key}/01_Private_Layer/`；Metadata 須可區分 `sno` |
+| **多租戶** | 每家旅行社獨立 `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/`；Metadata 須可區分 `sno` |
 | **多產業** | `industry_code` 決定 Shared fallback 路徑；新增產業 **僅擴充** code + 路徑 |
 | **可擴充** | 新檔案類型、新 parser profile 透過 **schema_version** 演進；不破壞 v1 語意 |
 | **Pilot ≠ 特例** | `travel_b` 僅測試用例；Metadata 規則 **不得** hardcode |
@@ -244,6 +244,7 @@ Drive File → Metadata Envelope（描述）     ≠  Knowledge JSON（內容）
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.2** | 2026-06-06 | Phase 6B-1D：Drive 路徑對齊 Industry First（`industries/{industry_code}/...`） |
 | **v1.1** | 2026-06-10 | P1 Final：Metadata ≠ Knowledge、P1 必填欄位正名、Runtime Source 對齊 |
 | **v1.0** | 2026-06-10 | Phase 6 P1：Drive Metadata Contract 治理方向（Planned） |
 

@@ -594,7 +594,9 @@ gcloud storage buckets update gs://bbc-ai-saas-data --lifecycle-file=lifecycle.j
 
 ### 15.3 與 Phase 6B Drive Archive 關係
 
-Drive Connector（Phase 6B+）promote 至 `tenants/{sno}/archive/`（概念路徑），**不覆蓋** `knowledge/*.json`。Object Versioning 同樣適用於 archive 物件之 Recovery，但 Structured Knowledge 仍以 Sheet → GCS knowledge 管線為準。
+Drive Connector（Phase 6B+）promote 至 `tenants/{sno}/archive/`（**GCS** 概念路徑），**不覆蓋** `knowledge/*.json`。Object Versioning 同樣適用於 archive 物件之 Recovery，但 Structured Knowledge 仍以 Sheet → GCS knowledge 管線為準。
+
+**Drive 來源路徑**（Archive Source）以 `BATS_DATA_SOURCE_REGISTRY.md` §6.5 為準：**Industry First, Tenant Second**（`industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/`）。本文件 **不修改** GCS Runtime Knowledge 路徑。
 
 ---
 
@@ -602,4 +604,5 @@ Drive Connector（Phase 6B+）promote 至 `tenants/{sno}/archive/`（概念路�
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.1** | 2026-06-06 | Phase 6B-1D：§15.3 Drive 來源路徑 cross-ref §6.5（GCS 不變） |
 | **v1.0** | 2026-06-05 | Phase 6A.1 初版：Runtime Storage Governance + GCS Object Versioning Policy |
