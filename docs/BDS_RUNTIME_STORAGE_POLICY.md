@@ -598,11 +598,23 @@ Drive Connector（Phase 6B+）promote 至 `tenants/{sno}/archive/`（**GCS** 概
 
 **Drive 來源路徑**（Archive Source）以 `BATS_DATA_SOURCE_REGISTRY.md` §6.5 為準：**Industry First, Tenant Second**（`industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/`）。本文件 **不修改** GCS Runtime Knowledge 路徑。
 
+### 15.4 與 Phase 7 Upload-Triggered Sync 關係
+
+> **Status: Pre-Planning** — 見 `BATS_DATA_SYNC_POLICY.md` §17。
+
+| 項目 | 說明 |
+|------|------|
+| **Phase 7 觸發** | Host A Upload Portal → BDS → **GCS Knowledge**（Upload-Triggered；**非** Cron First） |
+| **本文件適用** | GCS `knowledge/*.json` 仍為 Runtime Storage；Versioning／`var/bds/` 治理 **不變** |
+| **Drive** | Archive 與 Structured Upload **分離**；Drive promote **不** 取代 GCS Knowledge 寫入路徑 |
+| **Read-back** | Phase 7 須對齊 Phase 6A Read-back 與 Object Versioning Recovery 原則 |
+
 ---
 
 ## 版本紀錄
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.2** | 2026-06-06 | Phase 7 Pre-Planning：§15.4 Upload-Triggered Sync 與 GCS Runtime 邊界 |
 | **v1.1** | 2026-06-06 | Phase 6B-1D：§15.3 Drive 來源路徑 cross-ref §6.5（GCS 不變） |
 | **v1.0** | 2026-06-05 | Phase 6A.1 初版：Runtime Storage Governance + GCS Object Versioning Policy |

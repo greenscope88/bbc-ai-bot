@@ -28,6 +28,7 @@
 | §9 | Shared Layer Structure |
 | §10 | Future Roadmap |
 | §10.5 | Phase 6 Planning — Future Drive Source Registry |
+| §10.6 | Phase 7 Planning — Upload-Triggered Sync |
 | §6.5 | Google Drive Platform Layer Architecture |
 
 ---
@@ -1080,6 +1081,45 @@ GCS Knowledge Layer（受控路徑；非 Phase 5 範圍）
 | `BATS_DRIVE_GCS_MAPPING.md` | Drive → GCS、三層分離 |
 | `BATS_TENANT_DRIVE_ONBOARDING_POLICY.md` | 6 步驟 Onboarding |
 
+### 10.6 Phase 7 Planning — Upload-Triggered Sync
+
+> **Status: Pre-Planning** — 文件決策；**不修改** Registry JSON Schema；**不實作** Upload Portal 或 Scheduler。
+
+#### 10.6.1 正式決策
+
+| 項目 | 說明 |
+|------|------|
+| **Phase 7 主軸** | **Upload-Triggered Sync**（`BATS_DATA_SYNC_POLICY.md` §17） |
+| **不是** | Cron Scheduler First |
+| **唯一 Structured 更新入口** | **Host A Upload Portal** |
+| **Runtime** | **GCS** — `tenants/{sno}/knowledge/`、`shared/{industry_code}/knowledge/`、`shared/global/knowledge/` **不變** |
+
+#### 10.6.2 三層 Registry 解析（同一 BDS 管線）
+
+| 層級 | Registry 關鍵欄位 | GCS 路徑 | Upload 觸發後 BDS 目標 |
+|------|-------------------|----------|------------------------|
+| **Tenant Private** | `sno`、`tenant_key`、`private_knowledge_sheet_id`（或上傳 Excel profile） | `tenants/{sno}/knowledge/` | 租戶私有 JSON |
+| **Industry Shared** | `industry_code` + 平台 Shared Registry／Policy | `shared/{industry_code}/knowledge/` | 產業 Shared JSON；**非** Tenant Entry 專屬欄位 |
+| **Global Shared** | 平台 Global Registry／Policy | `shared/global/knowledge/` | Global Shared JSON |
+
+三層 **共用** Upload → Validation → Build → GCS Upload → Read-back；**禁止** tenant-specific shared、**禁止** 繞過 Upload Portal 直改 GCS。
+
+#### 10.6.3 與 Drive / Phase 6B 邊界
+
+| 載體 | 角色 |
+|------|------|
+| **Upload Portal + Excel** | Structured Knowledge 更新主徑（Phase 7） |
+| **Google Drive** | Archive Source（Phase 6B+）；**不是** Structured 更新入口 |
+| **`private_knowledge_folder_id`** | Drive Archive；**不** 取代 Upload 觸發 Structured Sync |
+
+#### 10.6.4 明確不做
+
+| 不做 | 說明 |
+|------|------|
+| 新增 `shared_drive_folder_id` 等 Schema 欄位 | Registry Schema 不變 |
+| Cron / Scheduler 程式 | Phase 7 Planning 不實作 |
+| 修改 GCS Knowledge 路徑 | SSOT 不變 |
+
 ---
 
 ## 相關文件
@@ -1098,6 +1138,7 @@ GCS Knowledge Layer（受控路徑；非 Phase 5 範圍）
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v2.1** | 2026-06-06 | Phase 7 Pre-Planning：§10.6 Upload-Triggered Sync；三層 Structured Knowledge 同一管線 |
 | **v2.0** | 2026-06-06 | Phase 6B-1D：§6.5 Drive Tree SSOT 遷移為 Industry First / Tenant Second（`industries/{industry_code}/...`）；§6.5.6 Legacy Migration Note |
 | **v1.9** | 2026-06-10 | §4.4 P1-7 四層 Priority、Fallback Rule、Industry Shared First |
 | **v1.8** | 2026-06-10 | §3.1.1 Structured Knowledge Input Source（Sheet = 三層 Knowledge Input） |

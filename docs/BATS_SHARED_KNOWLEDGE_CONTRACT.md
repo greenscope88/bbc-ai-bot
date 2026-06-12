@@ -54,7 +54,7 @@
 | **與 Tenant Contract 分離** | `tenant_private_knowledge` 見 `BATS_DATA_CONTRACT.md`；**禁止** 共用同一 JSON schema |
 | **Category 驅動** | 以 `category`（faq / guide / notice 等）組織內容，不以產業專屬欄位組織 |
 | **Resolution 不變** | Tenant > Industry > Global 優先序 **不由本 Contract 變更** |
-| **BDS v1 不同步** | 本 Contract 定義格式；Shared Layer **同步管線** 列入 Future Roadmap |
+| **BDS v1 不同步 Shared** | Phase 6A 僅 Tenant Private；Shared **同步管線** 列入 Phase 7 Upload-Triggered（§11.2） |
 
 ### 1.3 本文件回答
 
@@ -103,7 +103,7 @@
 | 層級 | Contract | BDS 同步 |
 |------|----------|----------|
 | Tenant Private | `BATS_DATA_CONTRACT.md` | Phase 6A（Sheet → GCS） |
-| Industry / Global Shared | **本文件** | **未實作**（Sheet Input SSOT 已定；§3.6） |
+| Industry / Global Shared | **本文件** | **Phase 7 Planning**（Upload-Triggered；§11.2）；Phase 6A 未實作 |
 
 ---
 
@@ -727,12 +727,15 @@ Level 4  Human Service                轉人工
 | **可寫入** | Global Shared 路徑（未來版本） |
 | **不可寫入** | 任一租戶路徑；Industry 路徑 |
 
-### 9.4 BDS v1 同步邊界
+### 9.4 BDS 同步邊界
 
-| 層級 | BDS v1 |
-|------|--------|
-| Tenant Private | **允許** 同步 |
-| Industry / Global Shared | **不允許** 同步（見 Ownership §5.3、Implementation Plan §2.2） |
+| 層級 | Phase 6A（現況） | Phase 7（Planning） |
+|------|------------------|---------------------|
+| Tenant Private | **允許**（Manual Sync / Upload-Triggered） | 同上 |
+| Industry Shared | **不允許** | **Upload-Triggered** — Industry Maintainer 經 **Host A Upload Portal** 上傳產業 Excel；**非** 單一 tenant 維護 |
+| Global Shared | **不允許** | **Upload-Triggered** — Platform Admin 經 Upload Portal 上傳平台 Excel |
+
+> Industry Shared **不是** 直接人工改 GCS Runtime；**不是** tenant-specific shared folder。須走 Upload → Validate → GCS → Read-back（`BATS_DATA_SYNC_POLICY.md` §17）。
 
 ---
 
@@ -818,6 +821,41 @@ Level 4  Human Service                轉人工
 | **Shared Sync v1** | Industry Maintainer 發布管線 |
 | **Shared Sync v2** | Global + Approval + Audit |
 
+### 11.2 Phase 7 — Upload-Triggered Sync（Pre-Planning）
+
+> **Status: Pre-Planning** — SSOT 決策；**非實作 Phase**。主軸見 `BATS_DATA_SYNC_POLICY.md` §17。
+
+#### 11.2.1 正式決策
+
+| 項目 | 說明 |
+|------|------|
+| **觸發方式** | **Upload-Triggered Sync** — Host A Upload Portal 上傳成功即觸發 BDS |
+| **不是** | Cron Scheduler First、定時批次為主軸 |
+| **輸入** | Google Sheet / Excel（`BATS_SHARED_KNOWLEDGE_SHEET_CONTRACT.md`） |
+| **輸出** | GCS `shared/{industry_code}/knowledge/`、`shared/global/knowledge/` |
+| **Drive** | Archive only；**不是** Structured Knowledge 更新入口 |
+
+#### 11.2.2 Industry / Global 上傳範例
+
+| 層級 | 上傳者 | 範例 |
+|------|--------|------|
+| **Industry Shared** | BBC Industry Maintainer | `travel` 旅遊業公有知識 Excel、`hotel` 飯店業、`restaurant` 餐飲業 |
+| **Global Shared** | BBC Platform Admin | 平台共用知識 Excel |
+
+與 **Tenant Private**（`travel_b` 私有知識 Excel）**共用** Upload → Validate → Build → GCS → Read-back 管線；**不得** 為單一 tenant 建立獨立 Shared 資料夾或繞過 Upload Portal 直寫 GCS。
+
+#### 11.2.3 Cron / Scheduler
+
+Cron、排程、批次僅能作為 **未來輔助**（補償、離峰重試）；**不得** 取代 Upload Portal 為 Structured Shared Knowledge 之正式更新入口。
+
+#### 11.2.4 與 Phase 6B Drive Connector
+
+| 項目 | Phase 6B | Phase 7 |
+|------|----------|---------|
+| **Structured Shared Excel** | 非主徑 | Upload Portal → BDS → GCS |
+| **Drive PDF / Image** | Archive read／promote | 不經 Shared JSON Contract |
+| **混淆禁止** | Drive list／promote **不得** 取代 Upload 觸發 Shared Sync |
+
 ---
 
 ## 12. Cross References
@@ -864,6 +902,7 @@ L2 規劃 / 維運
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.5** | 2026-06-06 | Phase 7 Pre-Planning：§11.2 Upload-Triggered Sync；§9.4 三層同步邊界 |
 | **v1.4** | 2026-06-10 | §8 P1-7 四層 Priority + Human Service；§8.5 Industry Shared First；§8.6 Sheet Contract cross-ref |
 | **v1.3** | 2026-06-10 | §3.6 Structured Knowledge Input Source（Industry/Global Shared = Google Sheet） |
 | **v1.2** | 2026-06-10 | 新增 §3.5 Google Drive Platform Layer；Shared 移出租戶資料夾 |

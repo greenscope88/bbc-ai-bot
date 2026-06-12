@@ -30,6 +30,7 @@
 | §14 | Error Handling |
 | §15 | BDS v1 MVP Use Case |
 | §16 | Future Roadmap |
+| §17 | Phase 7 — Upload-Triggered Sync（Pre-Planning） |
 | §18 | Google Drive Archive Layer |
 | §19 | Update Entry Rule |
 | §20 | Google Drive 三層資料分類 |
@@ -105,7 +106,8 @@ BATS 使用最新資料
 | **BATS** | BBC AI Tour Search（語境下指 Host A 智慧層執行環境） | 消費 GCS 知識層、產生搜尋與回覆上下文 |
 | **GCS** | Google Cloud Storage | Knowledge Layer 權威儲存 |
 | **Mode B** | Upload-Triggered Immediate Sync | BDS 唯一正式同步模式 |
-| **Source Layer** | — | 主機A固定上傳頁（唯一資料更新入口） |
+| **Phase 7** | Upload-Triggered Sync | Structured Knowledge 上傳觸發同步（§17）；**非** Cron Scheduler First |
+| **Source Layer** | — | 主機A固定上傳頁（Structured Knowledge **唯一更新入口**） |
 | **Archive Layer** | — | Google Drive（原始檔保存；不作 BATS 查詢來源） |
 | **Knowledge Layer** | — | GCS |
 | **Intelligence Layer** | — | BATS |
@@ -878,11 +880,15 @@ BDS Safety Rule（§14.1）之 Validation 步驟 **須依 `data_category` 選用
 
 ### 13.2 觸發方式（實作 Phase 待定）
 
+> **Phase 7 決策（§17）：** 正式主徑為 **Host A Upload Portal → Upload-Triggered Sync**；**非** Cron Scheduler First。
+
 | 方式 | 說明 | 優先級 |
 |------|------|--------|
-| **手動觸發** | 營運按「同步至 GCS」 | Phase 1 建議 |
-| **Webhook** | Drive / Apps Script 通知 BDS | Phase 2 |
-| **CI 觸發** | 設定檔 PR merge 後觸發 | 僅限 Git-managed config，非 Sheet 主徑 |
+| **Upload Portal 觸發** | 上傳 Excel 成功 → 立即 BDS（Mode B） | **Phase 7 MVP 主軸** |
+| **手動觸發（CLI）** | Phase 6A `bds-sync` 等營運命令 | 過渡／驗收用 |
+| **Webhook** | 上傳頁或後端事件通知 BDS | 未來輔助 |
+| **Cron / Scheduler** | 定時批次 | **未來輔助**；**非** Phase 7 主軸（§17.5、§16.2 Mode C） |
+| **CI 觸發** | 設定檔 PR merge 後觸發 | 僅限 Git-managed config，非 Structured 主徑 |
 
 ### 13.3 BATS Query Flow 不得觸發同步（正式規則）
 
@@ -1100,7 +1106,10 @@ tenants/5f99b8d665e8444d/knowledge/
 | Phase | 內容 | 狀態 |
 |-------|------|------|
 | **BDS v1 MVP** | travel_b `tenant_private_knowledge`：1 Sheet / 5 Tabs → 5 JSON；Mode B；`BATS_DATA_CONTRACT.md` | 規劃中 |
-| **BDS Phase 2** | `itinerary_data` 規劃啟動；`config/product_sources.json`；`shared_knowledge` Contract；Webhook | 規劃中 |
+| **Phase 6A** | Manual Sync Command（Sheet → GCS）；營運 CLI | 已完成 |
+| **Phase 6B** | Drive Connector Read-only / Archive（**非** Structured 更新入口） | 進行中 |
+| **Phase 7** | **Upload-Triggered Sync** — Host A Upload Portal → Excel → BDS → GCS → Read-back（§17） | **Pre-Planning** |
+| **BDS Phase 2** | `itinerary_data` 規劃啟動；`config/product_sources.json`；Webhook | 規劃中 |
 | **Tenant Bridge Phase 1D** | 任意 tenant path 解析；travel_c pilot | 規劃中 |
 | **Tenant Bridge Phase 1E** | GCS Provider 真實下載 + cache | 規劃中 |
 
@@ -1111,10 +1120,11 @@ tenants/5f99b8d665e8444d/knowledge/
 | 項目 | 說明 |
 |------|------|
 | **狀態** | **不實作**；不納入第一版 BDS |
-| **可能用途** | 離峰大量知識文件同步、歷史資料遷移 |
+| **可能用途** | 離峰大量知識文件同步、歷史資料遷移、**未來輔助** 重試／補償（**非** Phase 7 MVP 主軸） |
 | **啟用條件** | 須另開 SSOT 修訂；不得與 Mode B 並存為「雙正式模式」 |
 
-> **正式決議不變：** 第一版 BDS 僅 **Mode B**。Mode C 僅作為未來可能方向記錄於本節，**不得** 在實作 Phase 中提前引入。
+> **正式決議不變：** 第一版 BDS 僅 **Mode B**。Mode C 僅作為未來可能方向記錄於本節，**不得** 在實作 Phase 中提前引入。  
+> **Phase 7 澄清：** Phase 7 **不是** Cron Scheduler First；Cron／排程僅能作為 **Upload-Triggered Sync 之後** 的輔助機制（見 §17.5）。
 
 ### 16.3 長期願景（20～200 家旅行社）
 
@@ -1124,6 +1134,101 @@ tenants/5f99b8d665e8444d/knowledge/
 | 共用 BDS 管線 | 單一 Mode B 同步服務，tenant 參數化 |
 | 無 per-tenant PHP config fork | 不建立 `travel_x_multi_source_links.php` |
 | GCS + Bridge 驅動 | 新增 tenant = Registry Config；不得修改核心同步流程（§23） |
+
+---
+
+## 17. Phase 7 — Upload-Triggered Sync（Pre-Planning）
+
+> **Status: Pre-Planning — 文件決策；非實作 Phase。**  
+> **目的：** 明確 Phase 7 主軸為 **Upload-Triggered Sync**，避免被誤解為 Cron Scheduler First。
+
+### 17.1 正式決策
+
+| 項目 | 決策 |
+|------|------|
+| **Phase 7 主軸** | **Upload-Triggered Sync** |
+| **不是** | Cron Scheduler First、定時批次同步優先 |
+| **對齊 Mode B** | 延續 §4 Mode B；以 **上傳成功事件** 觸發 BDS，**不** 以排程為主觸發 |
+
+### 17.2 正式流程（Structured Knowledge）
+
+```text
+Host A 固定上傳頁（Upload Portal）
+        ↓
+    上傳 Excel（Structured Knowledge Source Format）
+        ↓
+    Validation（Data Contract）
+        ↓
+    BDS Sync（Build JSON）
+        ↓
+    GCS Upload（Runtime Knowledge Source）
+        ↓
+    Read-back Verification
+```
+
+| 步驟 | 說明 |
+|------|------|
+| **Upload Portal** | **Structured Knowledge 唯一更新入口**（§19）；旅行社／產業維護者／平台管理者 **不得** 繞過上傳頁直接改 Runtime |
+| **Excel** | Structured Knowledge **輸入格式**；經 BDS 轉換為 GCS JSON（契約見 `BATS_DATA_CONTRACT.md`、`BATS_SHARED_KNOWLEDGE_CONTRACT.md`） |
+| **Validation** | 依 Contract Fail 策略；Fail **不** 覆蓋既有 GCS Knowledge |
+| **GCS** | **Runtime Knowledge Source**；BATS／Gemini／Future RAG **僅** 消費 GCS |
+| **Read-back** | 寫入後驗證物件存在與基本完整性（對齊 Phase 6A Safety Rule） |
+
+### 17.3 三層 Structured Knowledge 適用（同一管線）
+
+Tenant Private、Industry Shared、Global Shared **共用同一套** Upload → Validate → Build → GCS → Read-back 流程；差異僅在 **Registry 解析之目標路徑與 Contract**。
+
+| 層級 | 範例 | GCS 目標（不變） | 更新角色 |
+|------|------|------------------|----------|
+| **Tenant Private** | `travel_b` 私有知識 Excel | `tenants/{sno}/knowledge/` | 租戶／營運經上傳頁 |
+| **Industry Shared** | `travel`／`hotel`／`restaurant` 產業公有知識 Excel | `shared/{industry_code}/knowledge/` | **BBC Industry Maintainer**；**非** 單一 tenant |
+| **Global Shared** | 平台共用知識 Excel | `shared/global/knowledge/` | **BBC Platform Admin** 經上傳頁 |
+
+**禁止：**
+
+| 禁止 | 說明 |
+|------|------|
+| **tenant-specific shared folder** | Industry Shared **不** 置於 `tenants/{tenant_key}/` 下 |
+| **直接改 Runtime** | 不得直接編輯 GCS JSON、不得指望 Drive 原件即時進 BATS |
+| **Drive 作 Structured 入口** | Google Drive **不是** Structured Knowledge 更新入口（§17.4、§18） |
+
+### 17.4 SSOT 載體分工（Phase 7 不變）
+
+| 載體 | 正式角色 |
+|------|----------|
+| **Host A Upload Portal** | Structured Knowledge **唯一更新入口** |
+| **Google Sheet / Excel** | Structured Knowledge **Source Format**（輸入契約） |
+| **GCS** | **Runtime Knowledge Source** |
+| **Google Drive** | **Archive Source**（非結構化原件；Phase 6B+） |
+| **Future RAG** | **GCS Only** |
+
+### 17.5 與 Cron / Scheduler 關係
+
+| 項目 | 說明 |
+|------|------|
+| **Phase 7 MVP** | **Upload-Triggered**；上傳成功 → 立即 BDS |
+| **Cron / Scheduler** | **未來輔助機制** — 補償同步、離峰重試、營運批次 **不得** 取代 Upload Portal 為主入口 |
+| **Mode C** | 仍僅記錄於 §16.2；Phase 7 **不** 引入排程為正式主模式 |
+
+### 17.6 與 Phase 6B Drive Connector 邊界
+
+| 管線 | 職責 | Phase |
+|------|------|-------|
+| **Phase 7 Upload-Triggered Sync** | Structured Excel → Validation → GCS Knowledge JSON | Phase 7（Planning） |
+| **Phase 6B Drive Connector** | Drive **Archive** 唯讀／受控 promote；PDF／Image／Word 等 **非結構化** | Phase 6B+ |
+| **交集** | 上傳頁可將 Excel **存檔** 至 Drive Archive；**Structured 生效路徑仍為** Upload → BDS → GCS |
+| **禁止混淆** | Drive `files.list`／promote **不得** 取代 Upload Portal 作為 Structured Knowledge 主更新路徑 |
+
+**交叉引用：** `BATS_DRIVE_CONNECTOR_SCOPE.md` §2、`BATS_DATA_CONTRACT.md` §1.6、`BATS_SHARED_KNOWLEDGE_CONTRACT.md` §11.2
+
+### 17.7 明確不做（Planning 階段）
+
+| 不做 | 說明 |
+|------|------|
+| Upload Portal 程式實作 | 本節僅 SSOT |
+| Cron / Scheduler 程式 | Phase 7 **不** 實作 |
+| Shared Layer Drive 自動下發 | 須 Registry + Policy |
+| 修改 GCS Runtime 路徑 | 不變 |
 
 ---
 
@@ -1577,6 +1682,7 @@ Service Account 僅授權必要之 `tenants/{sno}/` prefix；不得授予跨 ten
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v2.0** | 2026-06-06 | Phase 7 Pre-Planning：§17 Upload-Triggered Sync；§13.2／§16 澄清非 Cron Scheduler First |
 | **v1.9** | 2026-06-06 | Phase 6B-1D：§20／§22 Drive Tree 遷移為 Industry First（`industries/{industry_code}/...`）；GCS 不變 |
 | **v1.5** | 2026-06-08 | MVP 範圍校正：1 Sheet / 5 Tabs / 5 JSON；cross-ref `BATS_DATA_CONTRACT.md`（L3 SSOT） |
 | **v1.4** | 2026-06-08 | 新增 `shared_knowledge`（Category C）、`shared/{industry}/knowledge/` GCS 結構、§12.7 Cross-Reference、`BATS_DATA_SOURCE_REGISTRY.md` 對齊 |

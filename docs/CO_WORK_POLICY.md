@@ -700,6 +700,7 @@ L2 — Design Files（如 BATS_HYBRID_DATE_POLICY …）
 | Short URL | `PRODUCT_SOURCE_SHORTURL_POLICY.md` |
 | 文件治理 | `DOCUMENTATION_GOVERNANCE_POLICY.md` |
 | BDS Source Registry / Drive Platform Layer | `BATS_DATA_SOURCE_REGISTRY.md` §6.5 |
+| BDS Sync 觸發 / Phase 7 Upload-Triggered | `BATS_DATA_SYNC_POLICY.md` §17（**非** Cron Scheduler First） |
 | 最高協作治理 | 本文件 |
 
 **禁止** 同一領域平行多份 SSOT 互相矛盾（詳 §8、`DOCUMENTATION_GOVERNANCE_POLICY.md` §2、§5.6）。
@@ -823,5 +824,6 @@ ChatGPT、Cursor、開發者皆應以本文件為協作起點；若與其他文�
 | 1.3 | 2026-06-05 | Add mandatory SSOT Check workflow. |
 | 1.4 | 2026-06-06 | Add Commit Necessity、Commit 規劃回報、中文 Commit Message、Development First 原則（Gap D-3 補強） |
 | 1.5 | 2026-06-06 | Add §9.4 標準開發節奏（Development Rhythm）；補強非主動治理回報與 §9.3 並存關係 |
+| 1.8 | 2026-06-06 | Phase 7 Pre-Planning：§15.7 BDS Upload-Triggered Sync SSOT cross-ref |
 | 1.7 | 2026-06-06 | Phase 6B-1D：§4.4／§4.5 Drive Industry First cross-ref；§15.7 BDS Drive Platform SSOT |
 | 1.6 | 2026-06-06 | Add §4.4 Architecture Before Runtime Principle、§4.5 Multi-Industry First Principle（Phase 6B 架構治理補強） |

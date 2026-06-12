@@ -16,6 +16,7 @@
 |------|------|
 | §1 | Purpose |
 | §1.5 | Structured Knowledge Input Source |
+| §1.6 | Phase 7 — Upload-Triggered Structured Knowledge |
 | §2 | Relationship |
 | §3 | Data Category |
 | §4 | Google Sheet Multi Tab Rule |
@@ -97,6 +98,42 @@ Google Sheet（Source Registry 登錄之 private_knowledge_sheet）
 | **GCS** | Runtime Knowledge Source — BATS／Gemini 消費層 |
 
 FAQ 型、表格型、條列型知識（含護照、簽證、入境規定、行李規定等）**應優先** 以 Google Sheet 維護，經 BDS 同步至 GCS，**不必等待** PDF 解析或 RAG 階段。
+
+### 1.6 Phase 7 — Upload-Triggered Structured Knowledge
+
+> **Status: Pre-Planning** — 與 `BATS_DATA_SYNC_POLICY.md` §17 對齊；**本文件不實作** Upload Portal。
+
+#### 1.6.1 正式決策
+
+| 項目 | 說明 |
+|------|------|
+| **Phase 7** | **Upload-Triggered Sync** — 上傳成功觸發 BDS；**非** Cron Scheduler First |
+| **唯一更新入口** | **Host A Upload Portal** — 人類更新 Structured Knowledge 的 **唯一** 正式入口 |
+| **輸入格式** | **Google Sheet / Excel** — Structured Knowledge **Source Format**（本 Contract 定義 Tab／欄位／JSON） |
+| **Runtime** | **GCS** — BATS／Gemini／Future RAG **僅** 消費 GCS Knowledge JSON |
+| **Drive** | **Archive** — 非 Structured 更新入口；見 `BATS_DATA_SYNC_POLICY.md` §18 |
+
+#### 1.6.2 三層適用（同一 Contract 管線）
+
+| 層級 | Contract SSOT | 輸出 GCS 路徑 |
+|------|---------------|---------------|
+| **Tenant Private** | **本文件**（5 Tab / 5 JSON） | `tenants/{sno}/knowledge/` |
+| **Industry Shared** | `BATS_SHARED_KNOWLEDGE_CONTRACT.md` | `shared/{industry_code}/knowledge/` |
+| **Global Shared** | `BATS_SHARED_KNOWLEDGE_CONTRACT.md` | `shared/global/knowledge/` |
+
+三層皆走：**Upload Portal → Excel → Validation（本 Contract 或 Shared Contract）→ BDS Build → GCS → Read-back**。
+
+**Industry Shared** 由產業維護者上傳產業級 Excel；**不是** tenant-specific shared、**不是** 租戶直接改 Runtime。  
+**Global Shared** 由平台管理者上傳平台級 Excel。
+
+#### 1.6.3 與 Phase 6B 邊界
+
+| 載體 | Phase 6B Drive Connector | Phase 7 Upload-Triggered |
+|------|--------------------------|---------------------------|
+| **Excel（Structured）** | 可選 Archive 原件 | **主徑** — Contract Validation → GCS JSON |
+| **PDF / Image / Word** | Archive read／promote | **不在** 本 Contract；非 Phase 7 Structured 主徑 |
+
+---
 
 #### 1.5.3 Phase 6A 邊界
 
@@ -789,6 +826,7 @@ tenants/{sno}/knowledge/
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.4** | 2026-06-06 | Phase 7 Pre-Planning：§1.6 Upload-Triggered Structured Knowledge；三層同一 Upload 管線 |
 | **v1.3** | 2026-06-10 | §1.5 Structured Knowledge Input Source；§10.3 Shared 亦以 Sheet 治理 |
 | **v1.2** | 2026-06-09 | 新增 §2.3 BDS Data Input Cross Reference（Sheet Structured / Drive Unstructured） |
 | **v1.1** | 2026-06-08 | MVP 決策：英文欄位 only、整檔 Fail、文件邊界；cross-ref Sync / Registry |
