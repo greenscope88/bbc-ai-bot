@@ -6,7 +6,7 @@
 **相關文件：** `BATS_DATA_SOURCE_REGISTRY.md`、`BATS_DATA_SYNC_POLICY.md`、`BATS_DRIVE_METADATA_CONTRACT.md`、`BATS_DRIVE_GCS_MAPPING.md`、`BATS_TENANT_DATA_CLASSIFICATION.md`、`BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md`  
 **適用範圍：** 所有租戶及未來產業  
 **適用對象：** ChatGPT、Cursor、開發者、維運人員  
-**衝突處理：** Drive 平台層以 `BATS_DATA_SOURCE_REGISTRY.md` §6.5、§10.5 為準；data_category 以 `BATS_TENANT_DATA_CLASSIFICATION.md` 為準；**Connector In/Out Scope 以本文件為準**。
+**衝突處理：** Drive 平台層以 `BATS_DATA_SOURCE_REGISTRY.md` §6.5、§6.7、§10.5 為準；data_category 以 `BATS_TENANT_DATA_CLASSIFICATION.md` 為準；**Connector In/Out Scope 以本文件為準**。
 
 > **Status: Planned for Phase 6** — Framework only；**不實作** Drive API 於本文件階段。  
 > **不新增** `private_drive_folder_id`；**不修改** Registry Schema。
@@ -194,6 +194,8 @@ Reports / Preflight
 
 **營運帳號：** `bbcshops88@gmail.com`
 
+> **Platform 錨點：** 平台根節點 Folder ID 以 `BATS_DATA_SOURCE_REGISTRY.md` **§6.7 Platform Drive Registry** 為準（與 Tenant Registry **分離**）。Tenant Private 葉節點 ID 仍來自 Tenant Registry（§7）。
+
 ### 4.1 允許讀取路徑
 
 | 層級 | 路徑 | Phase |
@@ -209,7 +211,7 @@ Reports / Preflight
 | `tenants/{tenant_key}/02_Shared_Layer/` | Shared 不得置於租戶下 |
 | 他社 `tenants/{other_tenant_key}/` | 跨 tenant 隔離 |
 | `registrations/` 之 Knowledge promote | Category C 邊界 |
-| 未登錄 Registry 之路徑 | Registry Driven |
+| 未登錄 Registry 之路徑 | Registry Driven（Tenant §7 或 Platform §6.7） |
 
 ### 4.3 存取原則
 
@@ -274,7 +276,7 @@ Phase 6A（Sheet E2E）──→ Phase 6B（Drive Read）──→ Phase 6C（Me
 | **禁止跨 Tenant 共用 Folder** | 多租戶共用同一 Folder → Tenant Isolation 違規 |
 | **禁止跨 Tenant 存放私有資料** | 他社檔案 **不得** 置於其他 tenant 的 `01_Private_Layer/` |
 
-**SSOT 交叉引用：** `BATS_DATA_SOURCE_REGISTRY.md` §6.5、`BATS_TENANT_DRIVE_ONBOARDING_POLICY.md` §4、`BATS_DATA_OWNERSHIP_POLICY.md` §2.6
+**SSOT 交叉引用：** `BATS_DATA_SOURCE_REGISTRY.md` §6.5、§6.7、`BATS_TENANT_DRIVE_ONBOARDING_POLICY.md` §4、`BATS_DATA_OWNERSHIP_POLICY.md` §2.6
 
 ---
 
@@ -343,7 +345,7 @@ Phase 6A（Sheet E2E）──→ Phase 6B（Drive Read）──→ Phase 6C（Me
 | 文件 | 關係 |
 |------|------|
 | `BATS_DATA_SYNC_POLICY.md` §18.5 | Runtime Source Architecture SSOT |
-| `BATS_DATA_SOURCE_REGISTRY.md` §6.5、§10.5 | Drive 平台層、Framework |
+| `BATS_DATA_SOURCE_REGISTRY.md` §6.5、§6.7、§10.5 | Drive 平台層、Platform Registry、Framework |
 | `BATS_DRIVE_METADATA_CONTRACT.md` | 輸出 Metadata |
 | `BATS_DRIVE_GCS_MAPPING.md` | Archive / Metadata / Knowledge 三層對照 |
 | `BATS_TENANT_DRIVE_ONBOARDING_POLICY.md` | 新租戶 Folder |
@@ -357,6 +359,7 @@ Phase 6A（Sheet E2E）──→ Phase 6B（Drive Read）──→ Phase 6C（Me
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.4** | 2026-06-06 | Phase 6B-2C-1：§5 Platform 錨點 cross-ref §6.7 |
 | **v1.3** | 2026-06-06 | Phase 6B-1D：§5 Drive Path 對齊 Industry First（`industries/{industry_code}/...`） |
 | **v1.2** | 2026-06-10 | §2.3.1 Structured Knowledge vs Drive；Sheet = 全層 Structured Input |
 | **v1.1** | 2026-06-10 | P1 Final：Runtime Source Architecture、6A～6E 正名、One Tenant One Folder、Shared Runtime Boundary、Object Versioning |

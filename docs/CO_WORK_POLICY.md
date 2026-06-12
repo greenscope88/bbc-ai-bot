@@ -143,7 +143,7 @@
 | 前置項 | 說明 |
 |--------|------|
 | **Registry Design** | Tenant / Source Registry entry、必填欄位、Onboarding 對照 |
-| **Folder Structure** | Drive / GCS 邏輯路徑與實體 Folder ID 對照；Drive 以 `BATS_DATA_SOURCE_REGISTRY.md` §6.5（Industry First, Tenant Second）為準 |
+| **Folder Structure** | Drive / GCS 邏輯路徑與實體 Folder ID 對照；Drive 樹 §6.5、Platform Root ID §6.7、Tenant ID §7（**分離**） |
 | **Data Contract** | 輸入／輸出 JSON、Required Tabs、Validation 邊界 |
 | **Metadata Contract** | Metadata envelope、`data_category` 等（若適用） |
 | **SSOT Definition** | 對應領域正式 SSOT 已 Adopted 或已明確引用 |
@@ -199,7 +199,7 @@
 3. Drive Tenant Private 是否嵌於 `industries/{industry_code}/tenants/{tenant_key}/`（§6.5）？
 4. 是否仍符合 §4.4（架構／契約先確認，再 Runtime）？
 
-**交叉引用：** `BATS_DATA_SOURCE_REGISTRY.md` §4.5、§6.5、`BATS_DATA_SYNC_POLICY.md` §23（Anti Hardcode）
+**交叉引用：** `BATS_DATA_SOURCE_REGISTRY.md` §4.5、§6.5、§6.7、`BATS_DATA_SYNC_POLICY.md` §23（Anti Hardcode）
 
 ---
 
@@ -700,6 +700,7 @@ L2 — Design Files（如 BATS_HYBRID_DATE_POLICY …）
 | Short URL | `PRODUCT_SOURCE_SHORTURL_POLICY.md` |
 | 文件治理 | `DOCUMENTATION_GOVERNANCE_POLICY.md` |
 | BDS Source Registry / Drive Platform Layer | `BATS_DATA_SOURCE_REGISTRY.md` §6.5 |
+| BDS Platform Drive Registry | `BATS_DATA_SOURCE_REGISTRY.md` §6.7（與 Tenant Registry **分離**） |
 | BDS Sync 觸發 / Phase 7 Upload-Triggered | `BATS_DATA_SYNC_POLICY.md` §17（**非** Cron Scheduler First） |
 | 最高協作治理 | 本文件 |
 
@@ -824,6 +825,7 @@ ChatGPT、Cursor、開發者皆應以本文件為協作起點；若與其他文�
 | 1.3 | 2026-06-05 | Add mandatory SSOT Check workflow. |
 | 1.4 | 2026-06-06 | Add Commit Necessity、Commit 規劃回報、中文 Commit Message、Development First 原則（Gap D-3 補強） |
 | 1.5 | 2026-06-06 | Add §9.4 標準開發節奏（Development Rhythm）；補強非主動治理回報與 §9.3 並存關係 |
+| 1.9 | 2026-06-06 | Phase 6B-2C-1：§4.4／§15.7 Platform Drive Registry §6.7 cross-ref |
 | 1.8 | 2026-06-06 | Phase 7 Pre-Planning：§15.7 BDS Upload-Triggered Sync SSOT cross-ref |
 | 1.7 | 2026-06-06 | Phase 6B-1D：§4.4／§4.5 Drive Industry First cross-ref；§15.7 BDS Drive Platform SSOT |
 | 1.6 | 2026-06-06 | Add §4.4 Architecture Before Runtime Principle、§4.5 Multi-Industry First Principle（Phase 6B 架構治理補強） |

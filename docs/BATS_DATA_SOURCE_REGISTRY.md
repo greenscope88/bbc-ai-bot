@@ -30,6 +30,7 @@
 | §10.5 | Phase 6 Planning — Future Drive Source Registry |
 | §10.6 | Phase 7 Planning — Upload-Triggered Sync |
 | §6.5 | Google Drive Platform Layer Architecture |
+| §6.7 | Platform Drive Registry Contract |
 
 ---
 
@@ -618,7 +619,7 @@ industries/{industry_code}/tenants/{tenant_key}/
 | `private_knowledge_folder_id` | `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/` | Tenant Private Archive |
 | `itinerary_folder_id` | `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/`（或子路徑） | Category A Archive；**不** 獨立 Shared |
 | `customer_registration_folder_id` | `registrations/`（平台層）或受控子路徑 | Category C；見 `BATS_DATA_SYNC_POLICY.md` §21 |
-| `industry_code`（語意） | `industries/{industry_code}/shared/02_Shared_Layer/` | Industry Shared **不** 屬 Tenant；由 `industry_code` + 平台 Shared Registry / Policy 解析 |
+| `industry_code`（語意） | `industries/{industry_code}/shared/02_Shared_Layer/` | Industry Shared **不** 屬 Tenant；由 **Platform Drive Registry**（§6.7）+ `industry_code` 解析 |
 
 **Industry Shared 不登錄於 Tenant Registry 之 Drive 子欄位**；Tenant Entry 僅含 Private Layer 相關 Folder ID。
 
@@ -723,13 +724,141 @@ bbcshops88@gmail.com（Google Drive）
 | **暫時映射** | 若 Registry 仍指向 legacy ID，須標記為 **Migration Debt**；Phase 6B-2 前完成實體搬移或重新 Onboarding |
 | **禁止** | 將 legacy flat path 寫入新 SSOT 或視為正式架構 |
 
+### 6.7 Platform Drive Registry Contract
+
+> **Status: Adopted（Phase 6B-2C-1）** — Platform 層 Drive Folder ID 契約；與 **Tenant Registry（§7）完全分離**。  
+> **營運帳號：** `bbcshops88@gmail.com`  
+> **邏輯樹 SSOT：** §6.5；**本節為實體 Folder ID 與治理契約。**
+
+#### 6.7.1 定位與邊界
+
+| Registry | 職責 | 儲存（規劃） | 禁止 |
+|----------|------|--------------|------|
+| **Tenant Registry（§7）** | 單一租戶：`sno`、`tenant_key`、`industry_code`、Sheet、GCS、**Tenant Private** Drive Folder ID | `config/bds_source_registry.php`（現行） | 不得含 Platform Root ID；不得含 Industry Shared Folder ID |
+| **Platform Drive Registry（本節）** | 平台層：`industries/`、`global/`、`registrations/` 根節點；產業 Shared 子節點（可選） | `config/bds_platform_drive_registry.php`（Phase 6B-2C-2 規劃） | **不得** 併入 `config/bds_source_registry.php` 之 `tenants` |
+
+```text
+Tenant Registry          Platform Drive Registry
+     │                            │
+     ├─ private_knowledge_*       ├─ industries_root_folder_id
+     ├─ drive_root_folder_id      ├─ global_root_folder_id
+     └─ per-tenant only             ├─ registrations_root_folder_id
+                                    └─ industries.{code}.* (optional)
+```
+
+**禁止新增至任一 Registry Schema：**
+
+| 禁止欄位 | 說明 |
+|----------|------|
+| `private_drive_folder_id` | 使用 `private_knowledge_folder_id`（Tenant） |
+| `shared_drive_folder_id` | Industry Shared 由 Platform Registry + `industry_code` 解析 |
+
+#### 6.7.2 Platform Root Folder IDs（正式）
+
+下列為 **bbcshops88@gmail.com** 下已確認之 **平台根節點** Folder ID：
+
+| 欄位（語意） | Drive 邏輯路徑 | 正式 Folder ID |
+|--------------|----------------|----------------|
+| **`industries_root_folder_id`** | `industries/` | `1EWhnQONx5EQ5GYGd4dx114QoAgXHZU2P` |
+| **`global_root_folder_id`** | `global/` | `1OJHWWKkgr9X9nXhHhYfPPIN-p7dnidqh` |
+| **`registrations_root_folder_id`** | `registrations/` | `17It5q4NQGJHLK5_IXC6PM2iT0dlj0qGG` |
+
+> **注意：** 上表 ID 為 **Platform 層**；**不得** 複製至 Tenant Registry entry。  
+> **子路徑**（如 `industries/travel/tenants/travel_b/01_Private_Layer/`）由 §6.5 定義；Tenant Private 的 **葉節點 ID** 仍登錄於 Tenant Registry（如 `private_knowledge_folder_id`）。
+
+#### 6.7.3 Industry Map（可選；Phase 6B-2D+）
+
+產業子樹 Folder ID **不屬 Tenant Registry**；登錄於 Platform Drive Registry 之 `industries` map（規劃欄位）：
+
+| 欄位（語意） | Drive 邏輯路徑 | 說明 |
+|--------------|----------------|------|
+| **`industry_folder_id`** | `industries/{industry_code}/` | 產業根資料夾 |
+| **`shared_layer_folder_id`** | `industries/{industry_code}/shared/02_Shared_Layer/` | Industry Shared Archive |
+
+**Global Shared（可選）：**
+
+| 欄位 | 路徑 |
+|------|------|
+| **`global.shared_layer_folder_id`** | `global/02_Global_Shared_Layer/` |
+
+未確認之 ID 須標記 **pending** 或省略；**禁止猜測** 或填入 legacy flat folder。
+
+**YAML 概念（非 Runtime Schema 變更）：**
+
+```yaml
+schema_version: bds_platform_drive_registry.v1
+platform_roots:
+  industries_root_folder_id: "1EWhnQONx5EQ5GYGd4dx114QoAgXHZU2P"
+  global_root_folder_id: "1OJHWWKkgr9X9nXhHhYfPPIN-p7dnidqh"
+  registrations_root_folder_id: "17It5q4NQGJHLK5_IXC6PM2iT0dlj0qGG"
+industries:
+  travel:
+    industry_folder_id: null          # pending / Phase 6B-3 Scanner
+    shared_layer_folder_id: null
+  hotel:
+    industry_folder_id: null
+    shared_layer_folder_id: null
+  restaurant:
+    industry_folder_id: null
+    shared_layer_folder_id: null
+global:
+  shared_layer_folder_id: null
+```
+
+#### 6.7.4 Multi-Industry 擴充規則
+
+| 步驟 | 動作 |
+|------|------|
+| 1 | 實體 Drive：於 `industries/` 下建立 `{industry_code}/tenants/` + `shared/`（§6.5） |
+| 2 | Platform Registry：新增 `industries.{industry_code}` 條目（ID 可 pending） |
+| 3 | Tenant Registry：新增各租戶 entry（`industry_code` + `private_knowledge_folder_id`） |
+| 4 | **不修改** 三個 Platform Root ID；**不修改** Tenant Registry Schema |
+
+| 產業 | 擴充方式 |
+|------|----------|
+| `travel` | Pilot；`travel_b` 已具 `private_knowledge_folder_id` |
+| `hotel`、`restaurant` | 新增 `industries.hotel` / `industries.restaurant` + 租戶 Onboarding |
+| 未來產業 | 同上；**僅 Configuration + Registry + Onboarding**（CWP §4.5） |
+
+#### 6.7.5 Industry Shared Layer Governance
+
+| 原則 | 說明 |
+|------|------|
+| **Industry Shared ≠ Tenant** | `shared_layer_folder_id` **僅** 於 Platform Registry；**禁止** tenant-specific shared |
+| **解析順序** | `industry_code` → Platform `industries.{code}.shared_layer_folder_id`；若 null 則邏輯路徑仍為 §6.5 |
+| **Shared ≠ Public** | 須 Registry + Explicit Share Policy（§6.5.4） |
+| **GCS 不變** | Runtime 仍為 `shared/{industry_code}/knowledge/` |
+| **Tenant 不自動消費** | 須 Policy 明確啟用 Shared 可見性 |
+| **Category C** | `registrations_root_folder_id` 僅交易／報名 Archive；**不得** 進 Knowledge |
+
+#### 6.7.6 與 Phase 6B 邊界
+
+| Phase | 職責 |
+|-------|------|
+| **6B-2A** | `BdsDriveClient` 唯讀 API |
+| **6B-2B** | Tenant `private_knowledge_folder_id` → Tenant Registry |
+| **6B-2C-1（本節）** | Platform Root ID SSOT（**文件**） |
+| **6B-2C-2（規劃）** | `config/bds_platform_drive_registry.php` + Loader |
+| **6B-3（規劃）** | FolderScanner 自 `industries_root_folder_id` 驗證樹狀結構 |
+
+#### 6.7.7 明確禁止
+
+| 禁止 | 說明 |
+|------|------|
+| Platform Root ID 寫入 `tenants.{tenant_key}` | 違反分離原則 |
+| 將 `shared_drive_folder_id` 加入 Tenant Entry | §6.5.5 |
+| 以 legacy flat folder 充當 Platform Root | Migration Debt only |
+| 未修訂 SSOT 即實作 Platform Loader | 違反 Architecture Before Runtime |
+
 ---
 
 ## 7. Tenant Registry Contract
 
 ### 7.1 契約目的
 
-每個租戶於 Source Registry 至少須有一筆 **Tenant Registry Entry**；BDS 與維運工具 **僅** 透過此契約解析路徑，不得 hardcode。
+每個租戶於 Source Registry 至少須有一筆 **Tenant Registry Entry**；BDS 與維運工具 **僅** 透過此契約解析 **租戶層** 路徑，不得 hardcode。
+
+**與 Platform Drive Registry 分離：** 平台根節點與產業 Shared Folder ID 見 **§6.7**；**不得** 混入本節 Tenant Entry。
 
 ### 7.2 必填欄位
 
@@ -746,7 +875,7 @@ bbcshops88@gmail.com（Google Drive）
 | **`private_knowledge_sheet_id`** | string | BDS v1 Tenant Private Knowledge Google Sheet ID；須符合 `BATS_DATA_CONTRACT.md` 5 Tab Contract |
 | **`gcs_prefix`** | string | GCS 路徑前綴；正式值 `tenants/{sno}/` |
 
-> **Drive 邏輯路徑對照（Schema 欄位名不變）：** 見 §6.3。`private_knowledge_folder_id` 對應 `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/`。**Industry Shared** 由 `industry_code` + 平台 Shared Registry / Policy 解析 `industries/{industry_code}/shared/02_Shared_Layer/`，**不** 登錄於 Tenant Entry。**不新增** `private_drive_folder_id`、`shared_drive_folder_id`。
+> **Drive 邏輯路徑對照（Schema 欄位名不變）：** 見 §6.3、§6.7。`private_knowledge_folder_id` 對應 `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/`（Tenant Registry）。**Industry Shared** 由 Platform Drive Registry（§6.7.3）+ `industry_code` 解析，**不** 登錄於 Tenant Entry。**不新增** `private_drive_folder_id`、`shared_drive_folder_id`。
 
 ### 7.3 `industry_code` 正式定義
 
@@ -824,15 +953,16 @@ gcs_prefix: "tenants/5f99b8d665e8444d/"
 - **不** 對應 GCS `knowledge/` 路徑
 - 見 `BATS_DATA_SYNC_POLICY.md` §21
 
-### 7.9 Phase 6A Manual Sync — Registry 讀取範圍
+### 7.9 Registry 讀取範圍（Phase 6A / 6B）
 
-| 欄位 | Phase 6A |
-|------|----------|
-| `sno`、`tenant_name`、`private_knowledge_sheet_id`、`gcs_prefix`、`enabled` | ✅ 讀取 |
-| `industry_code` | 載入；**不** 觸發 Shared 同步 |
-| Drive 資料夾 ID、Shared 路徑 | ❌ **不讀取**（Phase 6B+） |
+| 欄位 | Phase 6A Manual Sync | Phase 6B+ Loader |
+|------|----------------------|------------------|
+| `sno`、`tenant_name`、`private_knowledge_sheet_id`、`gcs_prefix`、`enabled` | ✅ 消費 | ✅ normalize |
+| `industry_code` | 載入；**不** 觸發 Shared 同步 | ✅ normalize |
+| `private_knowledge_folder_id`、`drive_root_folder_id` | ❌ **不消費**（sync 管線） | ✅ normalize（6B-2B+） |
+| **Platform Drive Registry**（§6.7） | ❌ | Phase 6B-2C-2 規劃 |
 
-**SSOT：** `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §Phase 6A.5
+**SSOT：** `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §Phase 6A.5；Platform 層見 §6.7
 
 ---
 
@@ -1099,8 +1229,8 @@ GCS Knowledge Layer（受控路徑；非 Phase 5 範圍）
 | 層級 | Registry 關鍵欄位 | GCS 路徑 | Upload 觸發後 BDS 目標 |
 |------|-------------------|----------|------------------------|
 | **Tenant Private** | `sno`、`tenant_key`、`private_knowledge_sheet_id`（或上傳 Excel profile） | `tenants/{sno}/knowledge/` | 租戶私有 JSON |
-| **Industry Shared** | `industry_code` + 平台 Shared Registry／Policy | `shared/{industry_code}/knowledge/` | 產業 Shared JSON；**非** Tenant Entry 專屬欄位 |
-| **Global Shared** | 平台 Global Registry／Policy | `shared/global/knowledge/` | Global Shared JSON |
+| **Industry Shared** | `industry_code` + **Platform Drive Registry**（§6.7） | `shared/{industry_code}/knowledge/` | 產業 Shared JSON；**非** Tenant Entry 專屬欄位 |
+| **Global Shared** | **Platform Drive Registry**（§6.7） | `shared/global/knowledge/` | Global Shared JSON |
 
 三層 **共用** Upload → Validation → Build → GCS Upload → Read-back；**禁止** tenant-specific shared、**禁止** 繞過 Upload Portal 直改 GCS。
 
@@ -1138,6 +1268,7 @@ GCS Knowledge Layer（受控路徑；非 Phase 5 範圍）
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v2.2** | 2026-06-06 | Phase 6B-2C-1：§6.7 Platform Drive Registry Contract；三 Platform Root Folder ID；Tenant／Platform 分離 |
 | **v2.1** | 2026-06-06 | Phase 7 Pre-Planning：§10.6 Upload-Triggered Sync；三層 Structured Knowledge 同一管線 |
 | **v2.0** | 2026-06-06 | Phase 6B-1D：§6.5 Drive Tree SSOT 遷移為 Industry First / Tenant Second（`industries/{industry_code}/...`）；§6.5.6 Legacy Migration Note |
 | **v1.9** | 2026-06-10 | §4.4 P1-7 四層 Priority、Fallback Rule、Industry Shared First |

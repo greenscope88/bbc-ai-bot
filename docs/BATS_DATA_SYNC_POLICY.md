@@ -1425,7 +1425,7 @@ Google Drive（Archive Layer）
 
 ## 20. Google Drive 三層資料分類
 
-> **Phase 6B-1D 修正：** 平台層 Drive 樹狀結構以 `BATS_DATA_SOURCE_REGISTRY.md` §6.5 為準（**Industry First, Tenant Second**）。**Shared Layer 不屬於單一旅行社**；租戶 Drive 僅含 `01_Private_Layer/`。下列 §20.2～§20.4 為 **data_category 語意**；GCS 路徑（§20.5）**不變**。
+> **Phase 6B-1D 修正：** 平台層 Drive 樹狀結構以 `BATS_DATA_SOURCE_REGISTRY.md` §6.5 為準（**Industry First, Tenant Second**）。**Platform Root Folder ID** 見同文件 **§6.7**（與 Tenant Registry 分離）。**Shared Layer 不屬於單一旅行社**；租戶 Drive 僅含 `01_Private_Layer/`。下列 §20.2～§20.4 為 **data_category 語意**；GCS 路徑（§20.5）**不變**。
 
 ### 20.1 平台層 Drive 結構（正式）
 
@@ -1682,6 +1682,7 @@ Service Account 僅授權必要之 `tenants/{sno}/` prefix；不得授予跨 ten
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v2.1** | 2026-06-06 | Phase 6B-2C-1：§20.1 cross-ref Platform Drive Registry §6.7 |
 | **v2.0** | 2026-06-06 | Phase 7 Pre-Planning：§17 Upload-Triggered Sync；§13.2／§16 澄清非 Cron Scheduler First |
 | **v1.9** | 2026-06-06 | Phase 6B-1D：§20／§22 Drive Tree 遷移為 Industry First（`industries/{industry_code}/...`）；GCS 不變 |
 | **v1.5** | 2026-06-08 | MVP 範圍校正：1 Sheet / 5 Tabs / 5 JSON；cross-ref `BATS_DATA_CONTRACT.md`（L3 SSOT） |

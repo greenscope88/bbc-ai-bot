@@ -6,7 +6,7 @@
 **相關文件：** `BATS_DATA_SOURCE_REGISTRY.md`、`BATS_DATA_OWNERSHIP_POLICY.md`、`BATS_TENANT_DATA_CLASSIFICATION.md`、`BATS_DRIVE_CONNECTOR_SCOPE.md`、`BATS_DATA_SYNC_RUNBOOK.md`  
 **適用範圍：** 新旅行社上架及未來產業租戶（`travel`、`hotel`、`restaurant` 等）  
 **適用對象：** BBC Admin、維運人員、開發者  
-**衝突處理：** Drive 平台層架構以 `BATS_DATA_SOURCE_REGISTRY.md` §6.5 為準；Registry 契約以 §7 為準；**Onboarding 流程與檢查以本文件為準**。
+**衝突處理：** Drive 平台層架構以 `BATS_DATA_SOURCE_REGISTRY.md` §6.5、§6.7 為準；Tenant Registry 契約以 §7 為準；**Onboarding 流程與檢查以本文件為準**。
 
 > **Status: Planned for Phase 6** — 流程治理；**不修改** Registry JSON Schema；**不新增** `private_drive_folder_id`。
 
@@ -230,7 +230,7 @@ Onboarding 完成前建議確認（對照 §4 步驟 4～6）：
 | 原則 | 說明 |
 |------|------|
 | **產業代碼** | 每 Tenant 必填 `industry_code`（如 `travel`、`hotel`） |
-| **Shared 資料夾** | 產業層 `industries/{industry_code}/shared/02_Shared_Layer/` 由 **平台** 維護；**非** 每租戶 Onboarding 建立 |
+| **Shared 資料夾** | 產業層 `industries/{industry_code}/shared/02_Shared_Layer/` 由 **Platform Drive Registry**（§6.7）維護；**非** 每租戶 Onboarding 建立 |
 | **同架構** | 新產業僅擴充 `industry_code` + Shared 路徑；Tenant Onboarding **流程不變** |
 | **可擴充** | 未來 Onboarding Wizard 可實作本流程；**不改** 核心規則 |
 
@@ -271,7 +271,7 @@ Onboarding 完成前建議確認（對照 §4 步驟 4～6）：
 
 | 文件 | 關係 |
 |------|------|
-| `BATS_DATA_SOURCE_REGISTRY.md` §6.5、§7 | 路徑與 Registry |
+| `BATS_DATA_SOURCE_REGISTRY.md` §6.5、§6.7、§7 | 路徑、Platform／Tenant Registry |
 | `BATS_DATA_OWNERSHIP_POLICY.md` §2.6、§2.7 | Folder 治理 |
 | `BATS_DRIVE_CONNECTOR_SCOPE.md` §7～§8 | Phase 6A～6E、One Tenant One Folder |
 | `BATS_DATA_SYNC_RUNBOOK.md` §12.8 | 維運 Onboarding 對照 |
@@ -283,6 +283,7 @@ Onboarding 完成前建議確認（對照 §4 步驟 4～6）：
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.3** | 2026-06-06 | Phase 6B-2C-1：Platform Drive Registry cross-ref §6.7 |
 | **v1.2** | 2026-06-06 | Phase 6B-1D：Industry First Drive 路徑；§11.1 Legacy Migration Note |
 | **v1.1** | 2026-06-10 | P1 Final：6 步驟正式流程、2～200 Tenant、One Tenant One Folder |
 | **v1.0** | 2026-06-10 | Phase 6 P1：Tenant Drive Onboarding 政策（Planned） |
