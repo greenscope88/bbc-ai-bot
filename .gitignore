@@ -19,6 +19,9 @@ debug/
 runtime-logs/
 *.log
 
+# BDS Runtime Working Directory
+var/bds/
+
 # =========================
 # 💾 Backups
 # =========================
