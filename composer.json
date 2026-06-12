@@ -19,6 +19,7 @@
   },
   "extra": {
     "google/apiclient-services": [
+      "Drive",
       "Sheets"
     ]
   }
