@@ -199,6 +199,36 @@ final class BdsDriveClient
     return $total;
   }
 
+  /**
+   * Download binary file content (alt=media). Phase 6D-1b archive promote only.
+   *
+   * @throws \Google\Service\Exception
+   */
+  public function downloadFileBytes(string $fileId): string
+  {
+    $fileId = trim($fileId);
+    if ($fileId === '') {
+      throw new \InvalidArgumentException('file_id is required.');
+    }
+
+    $response = $this->executeWithRetry(function () use ($fileId) {
+      return $this->driveService->files->get($fileId, [
+        'alt' => 'media',
+        'supportsAllDrives' => true,
+      ]);
+    });
+
+    if ($response instanceof \Psr\Http\Message\ResponseInterface) {
+      return $response->getBody()->getContents();
+    }
+
+    if (is_string($response)) {
+      return $response;
+    }
+
+    throw new \RuntimeException('Unexpected Drive media download response type.');
+  }
+
   private function buildChildrenQuery(string $folderId): string
   {
     $escapedId = str_replace("'", "\\'", $folderId);
