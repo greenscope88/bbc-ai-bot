@@ -766,22 +766,46 @@ Tenant Registry          Platform Drive Registry
 > **注意：** 上表 ID 為 **Platform 層**；**不得** 複製至 Tenant Registry entry。  
 > **子路徑**（如 `industries/travel/tenants/travel_b/01_Private_Layer/`）由 §6.5 定義；Tenant Private 的 **葉節點 ID** 仍登錄於 Tenant Registry（如 `private_knowledge_folder_id`）。
 
-#### 6.7.3 Industry Map（可選；Phase 6B-2D+）
+#### 6.7.3 Industry Map（Phase 6E-1 正式定案）
 
-產業子樹 Folder ID **不屬 Tenant Registry**；登錄於 Platform Drive Registry 之 `industries` map（規劃欄位）：
+產業子樹 Folder ID **不屬 Tenant Registry**；**必須** 登錄於 Platform Drive Registry 之 `industries` map。Phase **6E** Shared Archive promote **依賴** 本節欄位。
 
-| 欄位（語意） | Drive 邏輯路徑 | 說明 |
-|--------------|----------------|------|
-| **`industry_folder_id`** | `industries/{industry_code}/` | 產業根資料夾 |
-| **`shared_layer_folder_id`** | `industries/{industry_code}/shared/02_Shared_Layer/` | Industry Shared Archive |
+| 欄位（語意） | JSON 路徑 | Drive 邏輯路徑 | 說明 |
+|--------------|-----------|----------------|------|
+| **`industry_folder_id`** | `industries.{industry_code}.industry_folder_id` | `industries/{industry_code}/` | 產業根資料夾；Scanner 驗證用 |
+| **`shared_layer_folder_id`** | `industries.{industry_code}.shared_layer_folder_id` | `industries/{industry_code}/shared/02_Shared_Layer/` | Industry Shared Archive **掃描起點**；6E promote **必填**（非 null） |
 
-**Global Shared（可選）：**
+**Global Shared：**
 
-| 欄位 | 路徑 |
-|------|------|
-| **`global.shared_layer_folder_id`** | `global/02_Global_Shared_Layer/` |
+| 欄位 | JSON 路徑 | Drive 邏輯路徑 |
+|------|-----------|----------------|
+| **`shared_layer_folder_id`** | `global.shared_layer_folder_id` | `global/02_Global_Shared_Layer/` |
 
-未確認之 ID 須標記 **pending** 或省略；**禁止猜測** 或填入 legacy flat folder。
+##### 6.7.3.1 落地規則（Phase 6E-2 前須遵守）
+
+| # | 規則 |
+|---|------|
+| 1 | 上述欄位 **僅** 存在於 `config/bds_platform_drive_registry.php`（或 GCS 權威副本） |
+| 2 | **禁止** 複製至 `config/bds_source_registry.php` 之任何 `tenants.{tenant_key}` entry |
+| 3 | **禁止** 新增 `shared_drive_folder_id` 至 Tenant Registry Schema |
+| 4 | `shared_layer_folder_id: null` → 6E Runtime **零 promote**（`gate=policy` 或 `gate=scope`） |
+| 5 | 未確認之 ID 標記 **null** 或省略；**禁止猜測** legacy flat folder |
+| 6 | 新增產業：僅新增 `industries.{new_code}` 條目；**不修改** 三個 Platform Root ID |
+
+##### 6.7.3.2 解析順序（6E Runtime）
+
+```text
+1. 掃描起點 role = industry_shared | global_shared
+2. industry_code（industry 時）← scan context 或 CLI 參數
+3. folder_id ← PlatformRegistry.industries.{code}.shared_layer_folder_id
+              或 PlatformRegistry.global.shared_layer_folder_id
+4. Gate 1：envelope.owner_scope ↔ scan role 一致
+5. Gate 1b：folder_id 與 Registry 欄位完全一致（非 null）
+6. Policy Gate：§6.7.8 / BATS_DRIVE_GCS_MAPPING.md §18
+7. GCS 路徑：shared/{industry_code}/archive/... 或 shared/global/archive/...
+```
+
+未確認之 ID 須標記 **pending**（`null`）或省略；**禁止猜測** 或填入 legacy flat folder。
 
 **YAML 概念（非 Runtime Schema 變更）：**
 
@@ -802,8 +826,44 @@ industries:
     industry_folder_id: null
     shared_layer_folder_id: null
 global:
-  shared_layer_folder_id: null
+  shared_layer_folder_id: null      # 6E Global pilot 前須填入正式 ID
 ```
+
+> **現行 config 狀態（Phase 6E-1）：** `config/bds_platform_drive_registry.php` 僅含 `platform_roots`；`industries` map 與 `global.shared_layer_folder_id` **待 Phase 6E-2** 擴充。在 map 落地前，Shared Archive promote **維持 zero promote**。
+
+#### 6.7.8 Platform Registry Mapping Contract（Phase 6E-1）
+
+| Registry | 欄位 | 禁止放入 |
+|----------|------|----------|
+| **Tenant Registry** | `sno`、`tenant_key`、`industry_code`、`private_knowledge_folder_id`、Sheet ID | `industries_root_folder_id`、`shared_layer_folder_id`、`global.shared_layer_folder_id` |
+| **Platform Registry** | `platform_roots.*`、`industries.{code}.industry_folder_id`、`industries.{code}.shared_layer_folder_id`、`global.shared_layer_folder_id` | 任何 per-tenant 欄位 |
+
+```text
+Tenant Registry                    Platform Drive Registry
+─────────────────                  ─────────────────────────
+tenants.travel_b.sno               platform_roots.industries_root_folder_id
+tenants.travel_b.industry_code     industries.travel.industry_folder_id
+tenants.travel_b.private_*         industries.travel.shared_layer_folder_id
+                                   global.shared_layer_folder_id
+        ✗ 禁止交叉寫入 ✗
+```
+
+| 對照 | Tenant Private | Industry Shared | Global Shared |
+|------|----------------|-----------------|---------------|
+| **Drive 掃描 ID 來源** | Tenant Registry `private_knowledge_folder_id` | Platform `industries.{code}.shared_layer_folder_id` | Platform `global.shared_layer_folder_id` |
+| **Drive 邏輯路徑** | `industries/{code}/tenants/{key}/01_Private_Layer/` | `industries/{code}/shared/02_Shared_Layer/` | `global/02_Global_Shared_Layer/` |
+| **GCS Archive** | `tenants/{sno}/archive/` | `shared/{industry_code}/archive/` | `shared/global/archive/` |
+| **GCS Knowledge** | `tenants/{sno}/knowledge/` | `shared/{industry_code}/knowledge/` | `shared/global/knowledge/` |
+
+#### 6.7.9 Shared Archive Policy Cross-Reference
+
+Shared Archive promote 之 **顯式啟用契約** 見 `BATS_DRIVE_GCS_MAPPING.md` §18（`bds_shared_archive_policy.v1`）。
+
+| 條件 | 結果 |
+|------|------|
+| Policy `archive_promote_enabled: false` | **零 promote** |
+| Registry `shared_layer_folder_id: null` | **零 promote** |
+| Policy ON + Registry ID 已填 | 可進入 Archive Promote Gate 評估（仍須 Gate 0～7） |
 
 #### 6.7.4 Multi-Industry 擴充規則
 
@@ -1268,6 +1328,7 @@ GCS Knowledge Layer（受控路徑；非 Phase 5 範圍）
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v2.3** | 2026-06-12 | Phase 6E-1：§6.7.3 Industry Map 正式定案；§6.7.8 Platform Registry Mapping Contract；§6.7.9 Shared Archive Policy cross-ref |
 | **v2.2** | 2026-06-06 | Phase 6B-2C-1：§6.7 Platform Drive Registry Contract；三 Platform Root Folder ID；Tenant／Platform 分離 |
 | **v2.1** | 2026-06-06 | Phase 7 Pre-Planning：§10.6 Upload-Triggered Sync；三層 Structured Knowledge 同一管線 |
 | **v2.0** | 2026-06-06 | Phase 6B-1D：§6.5 Drive Tree SSOT 遷移為 Industry First / Tenant Second（`industries/{industry_code}/...`）；§6.5.6 Legacy Migration Note |

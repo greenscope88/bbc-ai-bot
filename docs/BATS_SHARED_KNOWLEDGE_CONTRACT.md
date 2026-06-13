@@ -3,7 +3,7 @@
 **專案：** BBC AI SaaS / BATS / BDS / Travel Data Center  
 **定位：** L1 架構政策層 — Shared Knowledge Layer Data Contract 正式 SSOT  
 **上層文件：** `CO_WORK_POLICY.md`、`DOCUMENTATION_GOVERNANCE_POLICY.md`  
-**相關文件：** `BATS_DATA_SYNC_POLICY.md`、`BATS_DATA_SOURCE_REGISTRY.md`、`BATS_DATA_CONTRACT.md`、`BATS_SHARED_KNOWLEDGE_SHEET_CONTRACT.md`、`BATS_DATA_OWNERSHIP_POLICY.md`、`BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md`  
+**相關文件：** `BATS_DATA_SYNC_POLICY.md`、`BATS_DATA_SOURCE_REGISTRY.md`、`BATS_DATA_CONTRACT.md`、`BATS_SHARED_KNOWLEDGE_SHEET_CONTRACT.md`、`BATS_DATA_OWNERSHIP_POLICY.md`、`BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md`、`BATS_DRIVE_GCS_MAPPING.md`  
 **適用範圍：** `shared/{industry_code}/knowledge/`、`shared/global/knowledge/`；支援 **travel、hotel、restaurant、beauty、auto、retail、education、medical** 及未來新增產業  
 **適用對象：** ChatGPT、Cursor、開發者、維運人員、BBC Industry Maintainer、BBC Platform Admin  
 **衝突處理：** 同步原則以 `BATS_DATA_SYNC_POLICY.md` 為準；Registry 與 Knowledge Resolution Order 以 `BATS_DATA_SOURCE_REGISTRY.md` 為準；Tenant Private Knowledge 格式以 `BATS_DATA_CONTRACT.md` 為準；歸屬與覆蓋以 `BATS_DATA_OWNERSHIP_POLICY.md` 為準；**Shared Knowledge 資料格式以本文件為準**。
@@ -233,31 +233,64 @@ Knowledge Layer（Category B）
 
 #### 3.5 Google Drive Platform Layer（Shared Archive）
 
-> **Phase 6 Pre-Governance：** Shared Layer **不屬於單一旅行社**；位於營運 Google Drive 平台層。
+> **Phase 6 Pre-Governance：** Shared Layer **不屬於單一旅行社**；位於營運 Google Drive 平台層。  
+> **Drive 邏輯樹 SSOT：** `BATS_DATA_SOURCE_REGISTRY.md` §6.5（Industry First, Tenant Second）。**本節舊式 `shared/{industry}/02_Shared_Layer/` 路徑已廢止。**
 
 **營運帳號：** `bbcshops88@gmail.com`
 
-| 層級 | Drive Archive 路徑 | GCS 路徑（不變） |
-|------|-------------------|------------------|
-| **Industry Shared** | `shared/{industry_code}/02_Shared_Layer/` | `shared/{industry_code}/knowledge/` |
-| **Global Shared** | `shared/global/02_Global_Shared_Layer/` | `shared/global/knowledge/` |
+##### 3.5.1 Shared Knowledge JSON ≠ Shared Archive（正式分離）
+
+| 載體 | 角色 | GCS 目標 | BATS Runtime 消費 |
+|------|------|----------|-------------------|
+| **Google Sheet** | Structured Knowledge **Input** | `shared/{industry_code}/knowledge/*.json`、`shared/global/knowledge/*.json` | ✅ fallback 讀取（須 Policy） |
+| **Google Drive** | 非結構化 **Archive Source** | `shared/{industry_code}/archive/`、`shared/global/archive/` | ❌ **否**（僅稽核／回溯） |
+| **GCS `knowledge/`** | Structured Runtime 輸出 | 同上 | ✅ |
+| **GCS `archive/`** | 非結構化原件保存 | 同上 | ❌ |
 
 ```text
-shared/
-├── travel/02_Shared_Layer/
-├── hotel/02_Shared_Layer/
-├── restaurant/02_Shared_Layer/
-└── global/02_Global_Shared_Layer/
+Shared Knowledge JSON（Structured）     Shared Archive（Unstructured）
+        │                                        │
+Google Sheet ──→ GCS knowledge/*.json    Google Drive 02_Shared_Layer ──→ GCS archive/
+        │                                        │
+   BATS / Gemini 可消費                    僅稽核／回溯；不作答案來源
+```
+
+> **禁止混淆：** Drive promote **不得** 將 PDF／Image 寫入 `knowledge/`；Sheet 同步 **不得** 將 JSON 寫入 `archive/`。Promote Gate 見 `BATS_DRIVE_GCS_MAPPING.md` §8.1。
+
+##### 3.5.2 Drive 邏輯路徑（正式 — Industry First）
+
+| 層級 | Drive Archive 邏輯路徑 | GCS Knowledge（Structured） | GCS Archive（原件） |
+|------|------------------------|----------------------------|---------------------|
+| **Industry Shared** | `industries/{industry_code}/shared/02_Shared_Layer/` | `shared/{industry_code}/knowledge/` | `shared/{industry_code}/archive/` |
+| **Global Shared** | `global/02_Global_Shared_Layer/` | `shared/global/knowledge/` | `shared/global/archive/` |
+
+```text
+bbcshops88@gmail.com（Google Drive — 邏輯樹）
+├── industries/
+│   ├── travel/
+│   │   ├── tenants/
+│   │   │   └── {tenant_key}/01_Private_Layer/     ← Tenant Private（6D）
+│   │   └── shared/02_Shared_Layer/                ← Industry Shared Archive（6E）
+│   ├── hotel/
+│   │   ├── tenants/...
+│   │   └── shared/02_Shared_Layer/
+│   └── restaurant/
+│       ├── tenants/...
+│       └── shared/02_Shared_Layer/
+├── global/
+│   └── 02_Global_Shared_Layer/                    ← Global Shared Archive（6E）
+└── registrations/                                   ← Platform（6E+ defer）
 ```
 
 | 原則 | 說明 |
 |------|------|
-| **禁止租戶下 Shared** | 不得使用 `tenants/{tenant_key}/02_Shared_Layer/` |
+| **禁止租戶下 Shared** | 不得使用 `tenants/{tenant_key}/02_Shared_Layer/` 或 `industries/{code}/tenants/{key}/02_Shared_Layer/` |
 | **Default Private** | Shared Drive 資料夾預設 Private |
-| **Explicit 啟用** | Tenant 不自動消費 Shared；須 Registry + Policy |
-| **產業可擴展** | `travel` 為首個產業；未來產業適用同架構 |
+| **Explicit 啟用** | Archive promote 須 **Platform Registry + Shared Archive Policy** 顯式啟用（見 `BATS_DRIVE_GCS_MAPPING.md` §18） |
+| **產業可擴展** | 新增 `industry_code` → 新增 `industries/{code}/shared/02_Shared_Layer/`（Drive）與對應 GCS prefix |
+| **Folder ID 歸屬** | `shared_layer_folder_id` **僅** 登錄於 Platform Drive Registry（§6.7）；**禁止** 放入 Tenant Registry |
 
-**禁止新增** `private_drive_folder_id` 至 Registry Schema。詳見 `BATS_DATA_SOURCE_REGISTRY.md` §6.5。
+**禁止新增** `private_drive_folder_id` 至 Registry Schema。Drive 實體 Folder ID 見 `BATS_DATA_SOURCE_REGISTRY.md` §6.7。
 
 #### 3.4.6 Explicit Share Policy
 
@@ -290,6 +323,8 @@ Explicit Share Policy 啟用（受控對象／角色）
 | Resolution Order | `BATS_DATA_SOURCE_REGISTRY.md` §4.4 |
 | Shared JSON 格式 | 本文件 §6 |
 | Structured Knowledge = Google Sheet | 本文件 §3.6 |
+| Shared Archive promote、物件路徑、Policy Gate | `BATS_DRIVE_GCS_MAPPING.md` §6.1、§18 |
+| Platform Registry industry map | `BATS_DATA_SOURCE_REGISTRY.md` §6.7 |
 
 #### 3.6 Structured Knowledge Input Source（Google Sheet）
 
@@ -329,8 +364,9 @@ Gemini / BATS Search（Runtime）
 | 載體 | Shared Layer 角色 |
 |------|-------------------|
 | **Google Sheet** | Structured Knowledge **Input** |
-| **Google Drive** `02_Shared_Layer/` | Archive 原件（PDF、DM 等）；**不是** Structured 輸入 |
-| **GCS** | Runtime Knowledge Source |
+| **Google Drive** `industries/{industry_code}/shared/02_Shared_Layer/`、`global/02_Global_Shared_Layer/` | Archive 原件（PDF、DM 等）；**不是** Structured 輸入 |
+| **GCS `knowledge/`** | Structured Runtime Knowledge Source |
+| **GCS `archive/`** | 非結構化原件保存；**不是** BATS 答案來源 |
 
 ##### 3.6.4 治理邊界（不變）
 
@@ -902,6 +938,7 @@ L2 規劃 / 維運
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.6** | 2026-06-12 | Phase 6E-1：§3.5 Drive 路徑對齊 Industry First（`industries/{industry_code}/shared/02_Shared_Layer/`）；§3.5.1 Knowledge JSON ≠ Archive 分離 |
 | **v1.5** | 2026-06-06 | Phase 7 Pre-Planning：§11.2 Upload-Triggered Sync；§9.4 三層同步邊界 |
 | **v1.4** | 2026-06-10 | §8 P1-7 四層 Priority + Human Service；§8.5 Industry Shared First；§8.6 Sheet Contract cross-ref |
 | **v1.3** | 2026-06-10 | §3.6 Structured Knowledge Input Source（Industry/Global Shared = Google Sheet） |

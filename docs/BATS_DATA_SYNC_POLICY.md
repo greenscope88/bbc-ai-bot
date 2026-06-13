@@ -27,6 +27,7 @@
 | §11 | GCS Structure |
 | §11.6 | Tenant Prefix 三層分離（knowledge / archive / meta） |
 | §11.7 | Archive Prefix 正式定案 |
+| §11.8 | Shared Archive 與 Tenant Archive 一致性（Phase 6E-1） |
 | §12 | BDS Data Category |
 | §13 | Sync Trigger |
 | §14 | Error Handling |
@@ -623,7 +624,43 @@ gs://{bucket}/
 
 **禁止別名（不得出現於實作、文件範例或新路徑）：** `uploads/`、`uploads_archive/`、`raw_uploads/` 及任何 `tenants/{sno}/uploads*` 變體。
 
-**SSOT 交叉引用：** 物件路徑模板、Promote Gate、6D-1 Pilot 邊界見 `BATS_DRIVE_GCS_MAPPING.md` §6.1、§8.1、§17。
+**SSOT 交叉引用：** 物件路徑模板、Promote Gate、6D-1 Pilot 邊界見 `BATS_DRIVE_GCS_MAPPING.md` §6.1、§8.1、§17；Shared Archive Policy 見 §18。
+
+### 11.8 Shared Archive 與 Tenant Archive 一致性（Phase 6E-1）
+
+三層 `archive/` prefix **共用同一套語意**；差異在 **歸屬（owner_scope）** 與 **Policy Gate**，非路徑別名或管線分叉。
+
+| 維度 | Tenant Private | Industry Shared | Global Shared |
+|------|----------------|-----------------|---------------|
+| **GCS prefix** | `tenants/{sno}/archive/` | `shared/{industry_code}/archive/` | `shared/global/archive/` |
+| **物件路徑模板** | `.../archive/{data_category}/{drive_file_id}/{file_name}` | 同上 | 同上 |
+| **Drive 邏輯來源** | `industries/{code}/tenants/{key}/01_Private_Layer/` | `industries/{code}/shared/02_Shared_Layer/` | `global/02_Global_Shared_Layer/` |
+| **`owner_scope`** | `tenant` | `industry` | `global` |
+| **Promote Phase** | **6D** | **6E** | **6E** |
+| **Policy 要求** | env 開關（6D） | Shared Archive Policy **ON** | Global Policy **ON** |
+| **Registry** | Tenant Registry | Platform Registry §6.7 | Platform Registry §6.7 |
+| **BATS Runtime 消費** | ❌ | ❌ | ❌ |
+| **預設狀態** | pilot 受控 | **zero promote** | **zero promote** |
+
+| 一致性規則 | 說明 |
+|------------|------|
+| **同一 `archive/` 語意** | 三層皆保存非結構化原件；**不是** Knowledge JSON |
+| **同一 Gate 框架** | Gate 0～7 適用；Shared 額外疊加 Policy Gate（Mapping §18.4） |
+| **同一 checksum 方法** | promote 時 `sha256_content`（6D 已定） |
+| **同一 read-back 原則** | 僅驗證 **current** object（Recovery SSOT） |
+| **禁止交叉寫入** | Tenant job 不得寫 `shared/`；Shared job 不得寫 `tenants/` |
+| **不得自動下發** | Shared／Global promote **不** 等同於對所有 tenant 自動開放 |
+
+```text
+Drive（各層 Archive Source）
+        ↓ 各自 owner_scope + Policy
+GCS archive/（三層平行 prefix）
+        ↓
+稽核／回溯 only — 不作 BATS 答案來源
+
+（平行、獨立）
+Sheet/Upload ──→ GCS knowledge/ ──→ BATS Runtime fallback 鏈
+```
 
 ---
 
@@ -1744,6 +1781,7 @@ Service Account 僅授權必要之 `tenants/{sno}/` prefix；不得授予跨 ten
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v2.3** | 2026-06-12 | Phase 6E-1：§11.8 Shared Archive 與 Tenant Archive 一致性 |
 | **v2.2** | 2026-06-12 | Phase 6D-0：§11 納入 `archive/`；§11.6～§11.7 knowledge／archive／meta 分離與 prefix 定案 |
 | **v2.1** | 2026-06-06 | Phase 6B-2C-1：§20.1 cross-ref Platform Drive Registry §6.7 |
 | **v2.0** | 2026-06-06 | Phase 7 Pre-Planning：§17 Upload-Triggered Sync；§13.2／§16 澄清非 Cron Scheduler First |

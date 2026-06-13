@@ -92,7 +92,7 @@ BDS Knowledge Layer 分為 **三層**；每層有明確 **Owner** 與 **Steward*
 | **層級名稱** | Tenant Layer |
 | **data_category** | `tenant_private_knowledge` |
 | **GCS 路徑** | `tenants/{sno}/knowledge/` |
-| **Drive 對應** | `tenants/{tenant_key}/01_Private_Layer/`（Archive；見 §2.7） |
+| **Drive 對應** | `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/`（Archive；見 §2.7） |
 
 #### Owner（歸屬主體）
 
@@ -121,7 +121,8 @@ BDS Knowledge Layer 分為 **三層**；每層有明確 **Owner** 與 **Steward*
 | **層級名稱** | Industry Shared Layer |
 | **data_category** | `shared_knowledge` |
 | **GCS 路徑** | `shared/{industry_code}/knowledge/` |
-| **`industry_code` 來源** | Tenant Registry（見 `BATS_DATA_SOURCE_REGISTRY.md` §7.3） |
+| **Drive 對應（Archive）** | `industries/{industry_code}/shared/02_Shared_Layer/` |
+| **`industry_code` 來源** | Tenant Registry（見 `BATS_DATA_SOURCE_REGISTRY.md` §7.3）；Platform Registry 解析 Shared folder ID（§6.7） |
 
 #### Owner（歸屬主體）
 
@@ -158,6 +159,7 @@ BDS Knowledge Layer 分為 **三層**；每層有明確 **Owner** 與 **Steward*
 | **層級名稱** | Global Shared Layer |
 | **data_category** | `shared_knowledge` |
 | **GCS 路徑** | `shared/global/knowledge/` |
+| **Drive 對應（Archive）** | `global/02_Global_Shared_Layer/` |
 
 > **注意：** `global` 為 Layer 3 專用路徑，**不作** `industry_code` 填入 Layer 2（見 `BATS_DATA_SOURCE_REGISTRY.md` §4.3）。
 
@@ -199,7 +201,7 @@ BDS Knowledge Layer 分為 **三層**；每層有明確 **Owner** 與 **Steward*
 | 項目 | 規則 |
 |------|------|
 | **預設** | **Default = Private** — 未經明確政策前，**不得** 視為對外公開或跨租戶可讀 |
-| **適用範圍** | 租戶 `tenants/{tenant_key}/01_Private_Layer/`、平台層 `shared/{industry_code}/`、BDS 協作用 Sheet 來源資料夾 |
+| **適用範圍** | 租戶 `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/`、產業 `industries/{industry_code}/shared/02_Shared_Layer/`、全球 `global/02_Global_Shared_Layer/`、BDS 協作用 Sheet 來源資料夾 |
 | **≠ Public** | Private 指 **存取控制預設**；與 Knowledge 語意之「Shared Layer」**不同概念**（見 `BATS_TENANT_DATA_CLASSIFICATION.md` §1.6.2） |
 
 #### 2.5.2 Google Drive Folder 預設
@@ -214,9 +216,9 @@ Default = Private（僅 Owner / 明確授權角色可存取）
 
 | 資料夾類型 | Layer | 預設存取 |
 |------------|-------|----------|
-| `tenants/{tenant_key}/01_Private_Layer/` | Tenant Private Layer | **Private** |
-| `shared/{industry_code}/02_Shared_Layer/` | Industry Shared Layer（**平台層**） | **Private** |
-| `shared/global/02_Global_Shared_Layer/` | Global Shared Layer（**平台層**） | **Private** |
+| `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/` | Tenant Private Layer | **Private** |
+| `industries/{industry_code}/shared/02_Shared_Layer/` | Industry Shared Layer（**產業層**） | **Private** |
+| `global/02_Global_Shared_Layer/` | Global Shared Layer（**平台層**） | **Private** |
 | `registrations/` | Category C（平台層 Archive） | **Private**（含 PII 管控） |
 
 #### 2.5.3 啟用共享之唯一路徑
@@ -299,43 +301,51 @@ Tenant B ──→ Drive Folder B（Private）
 **營運帳號：** `bbcshops88@gmail.com`  
 **交叉引用：** `BATS_DATA_SOURCE_REGISTRY.md` §6.5
 
-#### 2.7.2 正式平台層樹狀結構
+#### 2.7.2 正式平台層樹狀結構（Industry First）
 
 ```text
 bbcshops88@gmail.com（Google Drive）
-├── tenants/
-│   ├── travel_a/01_Private_Layer/
-│   ├── travel_b/01_Private_Layer/
-│   └── travel_c/01_Private_Layer/
-├── shared/
-│   ├── travel/02_Shared_Layer/
-│   ├── hotel/02_Shared_Layer/
-│   ├── restaurant/02_Shared_Layer/
-│   └── global/02_Global_Shared_Layer/
+├── industries/
+│   ├── travel/
+│   │   ├── tenants/
+│   │   │   ├── travel_a/01_Private_Layer/
+│   │   │   ├── travel_b/01_Private_Layer/
+│   │   │   └── travel_c/01_Private_Layer/
+│   │   └── shared/02_Shared_Layer/
+│   ├── hotel/
+│   │   ├── tenants/...
+│   │   └── shared/02_Shared_Layer/
+│   └── restaurant/
+│       ├── tenants/...
+│       └── shared/02_Shared_Layer/
+├── global/
+│   └── 02_Global_Shared_Layer/
 └── registrations/
 ```
+
+> **廢止路徑：** 根目錄下扁平 `tenants/{tenant_key}/`、`shared/{industry_code}/02_Shared_Layer/` **不作** 長期 SSOT。見 `BATS_DATA_SOURCE_REGISTRY.md` §6.5.6 Legacy Migration Note。
 
 #### 2.7.3 治理原則摘要
 
 | # | 原則 |
 |---|------|
-| 1 | Tenant Private = `tenants/{tenant_key}/01_Private_Layer/`（單一租戶） |
-| 2 | Industry Shared = `shared/{industry_code}/02_Shared_Layer/`（產業層；非 Tenant） |
-| 3 | Global Shared = `shared/global/02_Global_Shared_Layer/`（平台層） |
+| 1 | Tenant Private = `industries/{industry_code}/tenants/{tenant_key}/01_Private_Layer/`（單一租戶） |
+| 2 | Industry Shared = `industries/{industry_code}/shared/02_Shared_Layer/`（產業層；**非** Tenant） |
+| 3 | Global Shared = `global/02_Global_Shared_Layer/`（平台層） |
 | 4 | Shared Layer ≠ Public Layer |
 | 5 | Shared Layer Default Private |
 | 6 | Tenant **不會自動** 使用 Shared；須 Registry + Policy 啟用 |
 | 7 | `travel` 為首個產業；`hotel`、`restaurant`、`beauty`、`education`、`medical` 等適用同架構 |
 | 8 | **Shared 預設不進入 Runtime** | 未 Policy 啟用前 **不** 進 GCS Metadata / Knowledge / Future RAG |
-| 9 | **不得自動同步至所有 Tenant** | Shared 須逐 tenant Policy 啟用 |
+| 9 | **不得自動同步至所有 Tenant** | Shared 須逐項 Policy 啟用；Archive promote ≠ 自動下發 |
 
-#### 2.7.4 與 GCS 邊界（不變）
+#### 2.7.4 與 GCS 邊界（Knowledge + Archive）
 
-| Drive（Archive） | GCS（Knowledge） |
-|------------------|------------------|
-| `tenants/{tenant_key}/01_Private_Layer/` | `tenants/{sno}/knowledge/` |
-| `shared/{industry}/02_Shared_Layer/` | `shared/{industry_code}/knowledge/` |
-| `shared/global/02_Global_Shared_Layer/` | `shared/global/knowledge/` |
+| Drive（Archive 邏輯路徑） | GCS Knowledge（Structured） | GCS Archive（原件） |
+|---------------------------|----------------------------|---------------------|
+| `industries/{code}/tenants/{key}/01_Private_Layer/` | `tenants/{sno}/knowledge/` | `tenants/{sno}/archive/` |
+| `industries/{code}/shared/02_Shared_Layer/` | `shared/{industry_code}/knowledge/` | `shared/{industry_code}/archive/` |
+| `global/02_Global_Shared_Layer/` | `shared/global/knowledge/` | `shared/global/archive/` |
 
 **禁止修改 GCS Path；** Drive 與 GCS 透過 Registry `sno` ↔ `tenant_key` 對照。
 
@@ -424,6 +434,77 @@ shared/global/knowledge/
 | **反向注入** | Shared 內容不得寫回 `tenants/{sno}/knowledge/` |
 | **未授權跨 tenant** | A 社資料不得寫入 B 社路徑（見 `BATS_DATA_SYNC_POLICY.md` §10） |
 | **customer_registration 混入** | 報名資料不得寫入任何 Knowledge 路徑（§21） |
+| **Archive 寫入 `knowledge/`** | 任何層級之非結構化原件 **不得** promote 至 `knowledge/` |
+| **Knowledge JSON 寫入 `archive/`** | Structured JSON **不得** 寫入 `archive/` |
+
+### 3.6 Archive Layer 寫入邊界（Phase 6E-1）
+
+> **SSOT 交叉引用：** 物件路徑模板見 `BATS_DRIVE_GCS_MAPPING.md` §6.1；Policy Gate 見 §18；Platform Registry 見 `BATS_DATA_SOURCE_REGISTRY.md` §6.7。
+
+#### 3.6.1 Tenant Private Archive
+
+```text
+Tenant / BBC Admin（維護 Drive 原件）
+        ↓ BDS Promote（6D；須 Gate 0～7）
+只能寫入
+        ↓
+tenants/{sno}/archive/{data_category}/{drive_file_id}/{file_name}
+```
+
+| 項目 | 規則 |
+|------|------|
+| **誰可維護 Drive 原件** | Tenant（自家 `01_Private_Layer`）、BBC Admin（代管） |
+| **誰可 promote** | BDS `BdsDriveArchivePromoter`（`owner_scope=tenant`；須 env 開關） |
+| **允許 `data_category`** | `itinerary_data`、`archive`（6D-1b 現行）；見 Mapping §17 |
+| **禁止** | 寫入 `shared/`；寫入 `knowledge/`；跨 `sno` |
+
+#### 3.6.2 Industry Shared Archive
+
+```text
+BBC Industry Maintainer / BBC Admin（維護 Drive 原件）
+        ↓ BDS Promote（6E；須 Policy ON + Platform Registry）
+只能寫入
+        ↓
+shared/{industry_code}/archive/{data_category}/{drive_file_id}/{file_name}
+```
+
+| 項目 | 規則 |
+|------|------|
+| **誰可維護 Drive 原件** | BBC Industry Maintainer、BBC Admin |
+| **誰可 promote** | BDS Promoter（`owner_scope=industry`；**僅** Policy `archive_promote_enabled: true`） |
+| **允許 `data_category`** | **僅** `shared_knowledge` |
+| **Registry** | `industries.{code}.shared_layer_folder_id`（Platform Registry） |
+| **禁止** | 含特定 `sno` PII；寫入 `tenants/`；寫入 `knowledge/`；**tenant-specific shared** |
+| **不得自動下發** | promote 至 GCS **不** 代表所有同產業 tenant 自動獲得檔案存取 |
+
+#### 3.6.3 Global Shared Archive
+
+```text
+BBC Platform Admin（維護 Drive 原件）
+        ↓ BDS Promote（6E；須 Global Policy ON）
+只能寫入
+        ↓
+shared/global/archive/{data_category}/{drive_file_id}/{file_name}
+```
+
+| 項目 | 規則 |
+|------|------|
+| **誰可維護 Drive 原件** | BBC Platform Admin、BBC Admin |
+| **誰可 promote** | BDS Promoter（`owner_scope=global`；**僅** `global.archive_promote_enabled: true`） |
+| **允許 `data_category`** | **僅** `shared_knowledge` |
+| **Registry** | `global.shared_layer_folder_id`（Platform Registry） |
+| **禁止** | 產業專屬內容（應放 Industry Shared）；寫入 `tenants/`；寫入 `knowledge/` |
+| **不得自動下發** | Global Archive promote **不** 自動對所有 tenant／產業開放 |
+
+#### 3.6.4 Archive 三層一致性
+
+| 原則 | 說明 |
+|------|------|
+| **prefix 唯一** | 各層 **僅** 使用 `archive/`；禁止 `uploads*` 別名 |
+| **與 knowledge 分離** | 三層皆 **不得** 將非結構化原件寫入 `knowledge/` |
+| **單次 job 單層** | 一次 promote job **不得** 混合 tenant + industry + global 寫入 |
+| **Policy default OFF** | Shared 兩層預設 **零 promote** |
+| **BATS 不消費 archive** | 三層 `archive/` 皆 **不是** Runtime 答案來源 |
 
 ---
 
@@ -688,6 +769,7 @@ L2+ 實作文件、程式
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.4** | 2026-06-12 | Phase 6E-1：§2.7 Industry First Drive 樹；§3.6 Archive Layer 寫入邊界（三層） |
 | **v1.3** | 2026-06-10 | 新增 §2.7 Google Drive Platform Layer Architecture；Shared 移出租戶資料夾 |
 | **v1.3** | 2026-06-10 | §2.7 Shared Runtime Boundary、Object Versioning、Runtime Source cross-ref |
 | **v1.2** | 2026-06-09 | 新增 §2.6 Google Drive Folder Governance（One Tenant One Folder；Phase 6 對齊） |

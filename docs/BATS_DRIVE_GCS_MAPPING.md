@@ -8,7 +8,7 @@
 **適用對象：** ChatGPT、Cursor、開發者、維運人員  
 **衝突處理：** GCS 正式結構以 `BATS_DATA_SYNC_POLICY.md` §11 為準；GCS Recovery／Versioning 以 `BDS_RUNTIME_STORAGE_POLICY.md` §9～§10 為準；寫入邊界以 `BATS_DATA_OWNERSHIP_POLICY.md` §3 為準；**Drive → GCS 對照、Archive Promote Gate、6D-1 Pilot 邊界以本文件為準**。
 
-> **Status: Adopted — Phase 6D-0 SSOT Hardening** — Archive Promote 契約已定案；**不修改** 既有 GCS Knowledge 五 JSON 路徑。  
+> **Status: Adopted — Phase 6E-1 SSOT Hardening** — Archive Promote 契約已定案；Shared Archive Policy 與物件路徑模板已定案；**不修改** 既有 GCS Knowledge 五 JSON 路徑。  
 > **Structured Sheet → GCS** 仍由 Phase 4～5 管線處理；本文件涵蓋 **Unstructured Drive → GCS `archive/`**。
 
 ---
@@ -34,7 +34,8 @@
 | §14 | Multi-Tenant & Multi-Industry |
 | §15 | Explicit Exclusions |
 | §16 | Cross References |
-| §17 | Archive Promote Boundary（Phase 6D-1） |
+| §17 | Archive Promote Boundary（Phase 6D-1 / 6E） |
+| §18 | Shared Archive Policy Contract（Phase 6E-1） |
 
 ---
 
@@ -183,6 +184,46 @@ tenants/{sno}/archive/{data_category}/{drive_file_id}/{file_name}
 | `{drive_file_id}` | Google Drive file id（穩定鍵） |
 | `{file_name}` | 原始檔名；須通過 Gate 6 Path Safety |
 
+#### 物件路徑模板（Industry Shared — Phase 6E）
+
+```text
+shared/{industry_code}/archive/{data_category}/{drive_file_id}/{file_name}
+```
+
+| 片段 | 說明 |
+|------|------|
+| `{industry_code}` | 實際產業代碼（`travel`、`hotel`、`restaurant` 等）；**禁止** 使用 `tenant_key` |
+| `{data_category}` | Phase **6E**：**僅** `shared_knowledge`（`owner_scope=industry`） |
+| `{drive_file_id}` | Google Drive file id（穩定鍵） |
+| `{file_name}` | 原始檔名；須通過 Gate 6 Path Safety |
+
+**Drive 來源（邏輯）：** `industries/{industry_code}/shared/02_Shared_Layer/`（見 `BATS_DATA_SOURCE_REGISTRY.md` §6.5）。
+
+#### 物件路徑模板（Global Shared — Phase 6E）
+
+```text
+shared/global/archive/{data_category}/{drive_file_id}/{file_name}
+```
+
+| 片段 | 說明 |
+|------|------|
+| `{data_category}` | Phase **6E**：**僅** `shared_knowledge`（`owner_scope=global`） |
+| `{drive_file_id}` | Google Drive file id（穩定鍵） |
+| `{file_name}` | 原始檔名；須通過 Gate 6 Path Safety |
+
+**Drive 來源（邏輯）：** `global/02_Global_Shared_Layer/`。
+
+#### Phase 6E `owner_scope` Promote 邊界
+
+| `owner_scope` | GCS Archive prefix | 允許 Phase | 前置條件 |
+|---------------|-------------------|------------|----------|
+| `tenant` | `tenants/{sno}/archive/` | **6D**（pilot） | `BDS_ARCHIVE_PROMOTE_ENABLED` + tenant scope |
+| `industry` | `shared/{industry_code}/archive/` | **6E** | Shared Archive Policy **顯式啟用** + Platform Registry `shared_layer_folder_id` |
+| `global` | `shared/global/archive/` | **6E** | Global Shared Archive Policy **顯式啟用** + `global.shared_layer_folder_id` |
+| `platform` | 受控 registration prefix | **6E+** defer | 非 6E 範圍 |
+
+> **6D 現行 Runtime：** `owner_scope=industry`／`global` **一律禁止 promote**（Gate 1 `gate=scope`），直至 6E-2+ Runtime 實作並通過 Policy Gate。
+
 #### 禁止之 Archive 別名
 
 | 禁止 | 說明 |
@@ -254,10 +295,11 @@ tenants/{sno}/archive/{data_category}/{drive_file_id}/{file_name}
 
 | 檢查 | 通過條件 | 失敗處理 |
 |------|----------|----------|
-| `owner_scope` | Phase **6D-1**：**僅** `tenant` | SKIP；`gate=scope` |
+| `owner_scope` | Phase **6D-1**：**僅** `tenant`；Phase **6E**：`industry`／`global` **僅** 在 Shared Archive Policy 啟用時允許 | SKIP；`gate=scope` |
 | Pilot tenant | Phase **6D-1**：**僅** `travel_b`（`sno=5f99b8d665e8444d`） | SKIP；`gate=scope` |
-| Drive root | 檔案位於該 tenant `01_Private_Layer`（Platform Registry 驗證） | FAIL |
-| Shared／Platform | `industry`、`global`、`platform` promote | **禁止**（留 **6E**） |
+| Drive root | Tenant：`01_Private_Layer`；Industry：`shared_layer_folder_id`；Global：`global.shared_layer_folder_id` | FAIL |
+| Shared Policy | `owner_scope=industry`／`global` 時須通過 §18 Policy Gate | SKIP；`gate=policy` |
+| Shared／Platform（未啟用） | Policy **OFF** 或 Registry folder ID **null** | **零 promote** |
 
 #### Gate 2 — Metadata Validation
 
@@ -461,18 +503,19 @@ tenants/{sno}/archive/{data_category}/{drive_file_id}/{file_name}
 | `customer_registration` | ❌ 禁止（Drive only） |
 | `archive`（泛用） | ✅ 允許（若 Metadata Contract 登錄） |
 
-### 17.2 禁止範圍（留待 6E 或後續）
+### 17.2 禁止範圍（6D 現行；6E 前）
 
-| 維度 | 狀態 | 目標 Phase |
-|------|------|------------|
-| **`owner_scope = industry`** | **禁止** | **6E** |
-| **`owner_scope = global`** | **禁止** | **6E** |
-| **`owner_scope = platform`** | **禁止** | **6E** |
+| 維度 | 6D 現行狀態 | 6E 目標 |
+|------|-------------|---------|
+| **`owner_scope = industry`** | **禁止** promote | **6E** 允許（須 §18 Policy ON） |
+| **`owner_scope = global`** | **禁止** promote | **6E** 允許（須 §18 Policy ON） |
+| **`owner_scope = platform`** | **禁止** | **6E+** defer |
 | **`shared/{industry_code}/archive/`** | **禁止** | **6E** + Policy |
 | **`shared/global/archive/`** | **禁止** | **6E** + Policy |
 | **多租戶批次 promote** | **禁止** | 6D-2+ |
 | **Google Workspace Export** | **禁止** | **6D-2+** |
 | **寫入 `knowledge/*.json`** | **禁止** | 永遠 — Sheet 管線 |
+| **tenant-specific shared** | **禁止** | 永遠 |
 
 ### 17.3 6D-1 實作類別邊界（文件化）
 
@@ -486,10 +529,104 @@ tenants/{sno}/archive/{data_category}/{drive_file_id}/{file_name}
 
 ---
 
+## 18. Shared Archive Policy Contract（Phase 6E-1）
+
+### 18.1 定位
+
+定義 **Industry／Global Shared Archive** promote 之 **顯式啟用契約**。與 Tenant Registry **分離**；與 Platform Drive Registry **搭配** 使用。
+
+| 議題 | SSOT |
+|------|------|
+| Policy 契約（本節） | **本文件** §18 |
+| Platform Folder ID | `BATS_DATA_SOURCE_REGISTRY.md` §6.7 |
+| Archive 寫入邊界 | `BATS_DATA_OWNERSHIP_POLICY.md` §3.6 |
+| GCS 物件路徑 | 本文件 §6.1 |
+
+**儲存（規劃）：** `config/bds_shared_archive_policy.php`（Phase 6E-2；**本階段僅文件定案**）。
+
+### 18.2 核心原則
+
+| # | 原則 |
+|---|------|
+| 1 | **Policy default = OFF** — 所有 Shared Archive promote **預設禁止** |
+| 2 | **顯式啟用** — Industry／Global 各須 **獨立** `archive_promote_enabled: true` |
+| 3 | **per-industry allow list** — 僅 Policy 中啟用之 `industry_code` 可 promote |
+| 4 | **禁止 tenant-specific shared** — 不得於 Tenant Registry 或租戶資料夾下啟用 Shared promote |
+| 5 | **未啟用 = zero promote** — Policy OFF 或 Registry folder ID 為 null → **零 GCS 寫入** |
+| 6 | **不得自動下發** — Shared Archive promote **不** 代表自動對所有 tenant 開放讀取 |
+| 7 | **不得混入 knowledge/** | Archive promote **僅** 目標 `shared/.../archive/` |
+
+### 18.3 正式 Schema（概念）
+
+```yaml
+schema_version: bds_shared_archive_policy.v1
+
+defaults:
+  promote_requires_explicit_enable: true
+
+industries:
+  travel:
+    archive_promote_enabled: false
+    maintainer_role: industry_maintainer
+  hotel:
+    archive_promote_enabled: false
+    maintainer_role: industry_maintainer
+  restaurant:
+    archive_promote_enabled: false
+    maintainer_role: industry_maintainer
+
+global:
+  archive_promote_enabled: false
+  maintainer_role: platform_admin
+```
+
+| 欄位 | 說明 |
+|------|------|
+| `promote_requires_explicit_enable` | 固定 `true`；禁止隱式啟用 |
+| `industries.{code}.archive_promote_enabled` | `false` = **零 promote**；`true` = 允許進入 Gate 評估（仍須通過 Gate 0～7） |
+| `industries.{code}.maintainer_role` | 治理角色標記（`industry_maintainer`）；**不** 寫入 Tenant Registry |
+| `global.archive_promote_enabled` | Global 層獨立開關 |
+| `global.maintainer_role` | `platform_admin` |
+
+### 18.4 Policy Gate（6E Runtime — 疊加於 §8.1）
+
+| 檢查 | `owner_scope=industry` | `owner_scope=global` |
+|------|------------------------|----------------------|
+| Policy entry exists | `industries.{industry_code}` 存在 | `global` 存在 |
+| `archive_promote_enabled` | **必須** `true` | **必須** `true` |
+| Registry folder ID | `industries.{code}.shared_layer_folder_id` **非 null** | `global.shared_layer_folder_id` **非 null** |
+| Scan folder match | 掃描起點 ID = Registry 欄位 | 同上 |
+| Allow list | `industry_code` 在 Policy `industries` map 內 | N/A（global 單一項） |
+| 失敗處理 | SKIP；`gate=policy`；**零 GCS 寫入** | 同上 |
+
+### 18.5 建議環境變數（6E-2 對照）
+
+| 環境變數 | 用途 |
+|----------|------|
+| `BDS_ARCHIVE_PROMOTE_ENABLED` | 總開關（6D 已有） |
+| `BDS_INDUSTRY_SHARED_ARCHIVE_ENABLED` | Industry 層總開關（預設 `false`） |
+| `BDS_GLOBAL_SHARED_ARCHIVE_ENABLED` | Global 層總開關（預設 `false`） |
+| `BDS_SHARED_ARCHIVE_INDUSTRIES` | Allow list，例 `travel,hotel` |
+
+> Env 與 config **不得** 繞過 `promote_requires_explicit_enable`；未列於 allow list 之產業 **一律 zero promote**。
+
+### 18.6 明確禁止
+
+| 禁止 | 說明 |
+|------|------|
+| Policy OFF 時 promote | 違反 default OFF |
+| 將 `shared_layer_folder_id` 寫入 Tenant Entry | 違反雙 Registry 分離 |
+| 租戶資料夾下 Shared promote | tenant-specific shared |
+| promote 至 `shared/.../knowledge/` | 違反 Archive ≠ Knowledge |
+| 單次 job 混合 tenant + shared promote | 違反 Ownership §3.5 |
+
+---
+
 ## 版本紀錄
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.5** | 2026-06-12 | Phase 6E-1：§6.1 Shared Archive 物件路徑模板；§8.1 Gate 1 Policy；§17.2 6E 邊界；§18 Shared Archive Policy Contract |
 | **v1.4** | 2026-06-12 | Phase 6D-0：§6.1 archive 定案；§8.1 Promote Gate；§8.2 Google Workspace SKIP；§12 Versioning 對齊；§17 6D-1 boundary |
 | **v1.3** | 2026-06-06 | Phase 6B-1D：§5 Drive Path 對齊 Industry First（`industries/{industry_code}/...`） |
 | **v1.2** | 2026-06-10 | Pipeline A1/A2/A3 Structured Sheet 三層；Structured Knowledge = Google Sheet |
@@ -502,6 +639,6 @@ tenants/{sno}/archive/{data_category}/{drive_file_id}/{file_name}
 
 | 項目 | 狀態 |
 |------|------|
-| **文件狀態** | **Adopted — Phase 6D-0** |
+| **文件狀態** | **Adopted — Phase 6E-1** |
 | **GCS Knowledge 五 JSON** | **不變** |
-| **實作狀態** | 6D-1 Runtime **可開始**（依 §8.1、§17） |
+| **實作狀態** | 6D-1 **Complete**（pilot）；6E-2 Runtime **可開始**（依 §6.1、§18） |
