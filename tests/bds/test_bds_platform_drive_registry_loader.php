@@ -75,6 +75,8 @@ test_assert(
     'schema_version matches SSOT'
 );
 test_assert(isset($loaded['platform_roots']) && is_array($loaded['platform_roots']), 'load() includes platform_roots');
+test_assert(isset($loaded['industries']) && is_array($loaded['industries']), 'load() includes industries map');
+test_assert(array_key_exists('global_shared_layer_folder_id', $loaded), 'load() includes global_shared_layer_folder_id');
 
 $roots = BdsPlatformDriveRegistryLoader::getPlatformRoots();
 test_assert(
@@ -100,6 +102,73 @@ test_assert(
 test_assert(
     BdsPlatformDriveRegistryLoader::getRegistrationsRootFolderId() === EXPECTED_REGISTRATIONS_ROOT,
     'getRegistrationsRootFolderId() matches'
+);
+
+foreach (['travel', 'hotel', 'restaurant'] as $industryCode) {
+    $entry = BdsPlatformDriveRegistryLoader::getIndustryEntry($industryCode);
+    test_assert(is_array($entry), "getIndustryEntry({$industryCode}) returns array");
+    if (is_array($entry)) {
+        test_assert($entry['industry_code'] === $industryCode, "{$industryCode} industry_code matches");
+        test_assert($entry['industry_folder_id'] === null, "{$industryCode} industry_folder_id is null (pending)");
+        test_assert($entry['shared_layer_folder_id'] === null, "{$industryCode} shared_layer_folder_id is null (pending)");
+    }
+    test_assert(
+        BdsPlatformDriveRegistryLoader::getIndustryFolderId($industryCode) === null,
+        "getIndustryFolderId({$industryCode}) is null"
+    );
+    test_assert(
+        BdsPlatformDriveRegistryLoader::getSharedLayerFolderId($industryCode) === null,
+        "getSharedLayerFolderId({$industryCode}) is null"
+    );
+    test_assert(
+        BdsPlatformDriveRegistryLoader::hasSharedLayerFolder($industryCode) === false,
+        "hasSharedLayerFolder({$industryCode}) is false when null"
+    );
+}
+
+test_assert(
+    BdsPlatformDriveRegistryLoader::getGlobalSharedLayerFolderId() === null,
+    'getGlobalSharedLayerFolderId() is null (pending)'
+);
+test_assert(
+    BdsPlatformDriveRegistryLoader::getIndustryEntry('beauty') === null,
+    'unknown industry getIndustryEntry returns null'
+);
+test_assert(
+    BdsPlatformDriveRegistryLoader::getIndustryEntry('') === null,
+    'empty industry code getIndustryEntry returns null'
+);
+
+$allIndustries = BdsPlatformDriveRegistryLoader::getAllIndustryEntries();
+test_assert(count($allIndustries) === 3, 'getAllIndustryEntries returns three industries');
+test_assert(isset($allIndustries['travel'], $allIndustries['hotel'], $allIndustries['restaurant']), 'expected industry keys present');
+
+with_temp_platform_registry_config(
+    "<?php return [
+        'schema_version' => 'bds_platform_drive_registry.v1',
+        'platform_roots' => [],
+        'industries' => [
+            'travel' => [
+                'industry_folder_id' => 'ind_root_travel',
+                'shared_layer_folder_id' => 'shared_travel_001',
+            ],
+        ],
+        'global' => ['shared_layer_folder_id' => 'global_shared_001'],
+    ];",
+    function (): void {
+        test_assert(
+            BdsPlatformDriveRegistryLoader::getSharedLayerFolderId('travel') === 'shared_travel_001',
+            'non-null shared_layer_folder_id resolves'
+        );
+        test_assert(
+            BdsPlatformDriveRegistryLoader::hasSharedLayerFolder('travel') === true,
+            'hasSharedLayerFolder true when folder id set'
+        );
+        test_assert(
+            BdsPlatformDriveRegistryLoader::getGlobalSharedLayerFolderId() === 'global_shared_001',
+            'global shared_layer_folder_id resolves'
+        );
+    }
 );
 
 with_temp_platform_registry_config(
@@ -197,8 +266,10 @@ if (is_array($tenantConfig) && isset($tenantConfig['tenants']['travel_b']) && is
 $platformConfigPath = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'bds_platform_drive_registry.php';
 $platformConfig = is_file($platformConfigPath) ? require $platformConfigPath : [];
 test_assert(is_array($platformConfig), 'platform config loads');
-test_assert(!isset($platformConfig['tenants']), 'platform config has no tenants key');
 test_assert(isset($platformConfig['platform_roots']) && is_array($platformConfig['platform_roots']), 'platform config has platform_roots only scope');
+test_assert(isset($platformConfig['industries']) && is_array($platformConfig['industries']), 'platform config has industries map');
+test_assert(isset($platformConfig['global']) && is_array($platformConfig['global']), 'platform config has global section');
+test_assert(!isset($platformConfig['tenants']), 'platform config still has no tenants key');
 
 if ($failures > 0) {
     fwrite(STDERR, "FAILED: {$failures} assertion(s)\n");
