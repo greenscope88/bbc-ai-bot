@@ -6,10 +6,10 @@
 **相關文件：** `BATS_DATA_SOURCE_REGISTRY.md`、`BATS_DATA_SYNC_POLICY.md`、`BATS_DRIVE_METADATA_CONTRACT.md`、`BATS_TENANT_DATA_CLASSIFICATION.md`、`BATS_DATA_OWNERSHIP_POLICY.md`、`BATS_DATA_CONTRACT.md`  
 **適用範圍：** 所有租戶及未來產業（`travel`、`hotel`、`restaurant`、`beauty`、`education`、`medical` 等）  
 **適用對象：** ChatGPT、Cursor、開發者、維運人員  
-**衝突處理：** GCS 正式結構以 `BATS_DATA_SYNC_POLICY.md` §11 為準；寫入邊界以 `BATS_DATA_OWNERSHIP_POLICY.md` §3 為準；**Drive → GCS 對照與 promote 方向以本文件為準**。
+**衝突處理：** GCS 正式結構以 `BATS_DATA_SYNC_POLICY.md` §11 為準；GCS Recovery／Versioning 以 `BDS_RUNTIME_STORAGE_POLICY.md` §9～§10 為準；寫入邊界以 `BATS_DATA_OWNERSHIP_POLICY.md` §3 為準；**Drive → GCS 對照、Archive Promote Gate、6D-1 Pilot 邊界以本文件為準**。
 
-> **Status: Planned for Phase 6** — 治理方向；**不修改** 既有 GCS Knowledge 五 JSON 路徑。  
-> **Structured Sheet → GCS** 仍由 Phase 4～5 管線處理；本文件僅涵蓋 **Unstructured Drive**。
+> **Status: Adopted — Phase 6D-0 SSOT Hardening** — Archive Promote 契約已定案；**不修改** 既有 GCS Knowledge 五 JSON 路徑。  
+> **Structured Sheet → GCS** 仍由 Phase 4～5 管線處理；本文件涵蓋 **Unstructured Drive → GCS `archive/`**。
 
 ---
 
@@ -24,7 +24,8 @@
 | §5 | Drive Platform Paths |
 | §6 | GCS Target Paths（不變區） |
 | §7 | Drive → GCS Archive Mapping |
-| §8 | Promote Rules |
+| §8 | Promote Rules & Archive Promote Gate |
+| §8.2 | Google Workspace Native Files（Phase 6D-1） |
 | §9 | Archive-Only Rules |
 | §10 | One Tenant One Folder |
 | §11 | Shared Layer Runtime Boundary |
@@ -33,6 +34,7 @@
 | §14 | Multi-Tenant & Multi-Industry |
 | §15 | Explicit Exclusions |
 | §16 | Cross References |
+| §17 | Archive Promote Boundary（Phase 6D-1） |
 
 ---
 
@@ -158,17 +160,39 @@ bbcshops88@gmail.com
 | **Industry Shared Knowledge** | `shared/{industry_code}/knowledge/` | Shared JSON；規劃中 |
 | **Global Shared Knowledge** | `shared/global/knowledge/` | Shared JSON；規劃中 |
 
-### 6.1 Drive Archive Object 路徑（Phase 6 建議方向）
+### 6.1 Drive Archive Object 路徑（Phase 6D-0 正式定案）
 
-非結構化檔案 promote 至 GCS 時，建議採 **Archive 專用 prefix**（與 Knowledge JSON **分離**）：
+非結構化檔案 promote 至 GCS 時，**唯一正式 prefix** 為 **`archive/`**（與 Knowledge JSON **分離**）。完整 GCS 樹見 `BATS_DATA_SYNC_POLICY.md` §11。
 
-| 層級 | 建議 GCS Archive 路徑（概念） |
-|------|------------------------------|
-| **Tenant Private** | `tenants/{sno}/archive/` 或 `tenants/{sno}/uploads/`（Phase 6 實作前定案） |
-| **Industry Shared** | `shared/{industry_code}/archive/` |
-| **Global Shared** | `shared/global/archive/` |
+| 層級 | 正式 GCS Archive prefix | Phase |
+|------|-------------------------|-------|
+| **Tenant Private** | `tenants/{sno}/archive/` | **6D-1**（pilot） |
+| **Industry Shared** | `shared/{industry_code}/archive/` | **6E**（須 Policy） |
+| **Global Shared** | `shared/global/archive/` | **6E**（須 Policy） |
 
-> 正式 prefix 於 Phase 6D 實作前須修訂 `BATS_DATA_SYNC_POLICY.md` §11；**本文件僅標示治理方向**。
+#### 物件路徑模板（Tenant Private — 6D-1）
+
+```text
+tenants/{sno}/archive/{data_category}/{drive_file_id}/{file_name}
+```
+
+| 片段 | 說明 |
+|------|------|
+| `{sno}` | Tenant Registry `sno`；**禁止** 使用 `tenant_key` |
+| `{data_category}` | `BATS_DRIVE_METADATA_CONTRACT.md` 允許之 category（6D-1 見 §17） |
+| `{drive_file_id}` | Google Drive file id（穩定鍵） |
+| `{file_name}` | 原始檔名；須通過 Gate 6 Path Safety |
+
+#### 禁止之 Archive 別名
+
+| 禁止 | 說明 |
+|------|------|
+| `uploads/` | **禁止** — 非正式名稱 |
+| `uploads_archive/` | **禁止** |
+| `raw_uploads/` | **禁止** |
+| `tenants/{sno}/uploads/` | **禁止** |
+
+> SSOT：`BATS_DATA_SYNC_POLICY.md` §11.7。
 
 ---
 
@@ -199,17 +223,112 @@ bbcshops88@gmail.com
 
 ---
 
-## 8. Promote Rules
+## 8. Promote Rules & Archive Promote Gate
+
+### 8.0 總則
 
 | 規則 | 說明 |
 |------|------|
-| **雙重門禁** | 參照 Phase 5：`BDS_DRY_RUN` + `BDS_GCS_WRITE_ENABLED` + 目標 `sno` 一致 |
+| **雙重門禁** | `BDS_DRY_RUN` + `BDS_GCS_WRITE_ENABLED` + 目標 `sno` 一致 |
 | **Metadata 必備** | 須符合 `BATS_DRIVE_METADATA_CONTRACT.md` 必填語意 |
-| **Validation Gate** | Metadata / 路徑 / category 驗證失敗 → **不 promote** |
-| **單次受控** | Phase 6 初版建議單 tenant、單次作業；不批次多租戶 |
-| **冪等方向** | 相同 `content_hash` 可視為已同步；細節於實作 Phase 定案 |
+| **Safety Rule** | 任一 Gate 失敗 → **零 GCS 寫入**；既有 GCS 物件 **不變** |
+| **單次受控** | Phase 6D-1：單 tenant pilot；不批次多租戶 |
+| **冪等方向** | 相同 `content_hash` + 相同目標路徑 → 可 SKIP（實作細節於 6D-1） |
+
+**Recovery SSOT：** GCS Object Versioning 政策以 `BDS_RUNTIME_STORAGE_POLICY.md` §9～§10 為準。Archive Promote **不得假設** Versioning OFF；亦 **不得依賴** noncurrent 版做 read-back。
+
+### 8.1 Archive Promote Gate（正式 SSOT）
+
+每一筆 Drive 檔案進入 GCS `archive/` 前，**依序** 通過下列 Gate。任一失敗 → **不 promote**；記錄於 `drive_sync_report.json`（見 Metadata Contract §17）。
+
+#### Gate 0 — Environment
+
+| 檢查 | 通過條件 | 失敗處理 |
+|------|----------|----------|
+| Runtime flags | `BDS_GCS_WRITE_ENABLED=true` 且目標 `sno` 與 CLI／env 一致 | SKIP；`gate=environment` |
+| Dry run | `BDS_DRY_RUN=false`（實際寫入時） | PLAN only；零 GCS 寫入 |
+| Credentials | GCS SA 可寫目標 bucket | FAIL；`gate=environment` |
+| Bucket | 與 `BDS_RUNTIME_STORAGE_POLICY.md` §10.2 一致 | FAIL |
+
+#### Gate 1 — Scope
+
+| 檢查 | 通過條件 | 失敗處理 |
+|------|----------|----------|
+| `owner_scope` | Phase **6D-1**：**僅** `tenant` | SKIP；`gate=scope` |
+| Pilot tenant | Phase **6D-1**：**僅** `travel_b`（`sno=5f99b8d665e8444d`） | SKIP；`gate=scope` |
+| Drive root | 檔案位於該 tenant `01_Private_Layer`（Platform Registry 驗證） | FAIL |
+| Shared／Platform | `industry`、`global`、`platform` promote | **禁止**（留 **6E**） |
+
+#### Gate 2 — Metadata Validation
+
+| 檢查 | 通過條件 | 失敗處理 |
+|------|----------|----------|
+| Envelope | `BdsDriveMetadataValidator` 通過 | FAIL；`gate=metadata` |
+| 必填欄位 | `tenant_sno`、`drive_file_id`、`source_path`、`content_hash`、`mime_type`、`owner_scope` 等 | FAIL |
+| Registry | `tenant_key` ↔ `sno` 可解析 | FAIL |
+
+#### Gate 3 — Category Allow List
+
+| 檢查 | 通過條件 | 失敗處理 |
+|------|----------|----------|
+| `data_category` | 屬 6D-1 allow list（見 §17） | SKIP；`gate=category` |
+| Knowledge 路徑 | **禁止** 寫入 `knowledge/` | FAIL（Safety） |
+| `customer_registration` | **禁止** promote 至 GCS（Drive only） | SKIP |
+
+#### Gate 4 — Content Type
+
+| 檢查 | 通過條件 | 失敗處理 |
+|------|----------|----------|
+| MIME | 已登錄之 binary MIME（PDF、Image、Office binary…） | SKIP；`gate=content_type` |
+| Google Workspace 原生 | `google-apps.spreadsheet`、`google-apps.document`、`google-apps.presentation` | **SKIP + Warning**（見 §8.2） |
+| 未知 MIME | 未登錄 | SKIP；`gate=content_type` |
+
+#### Gate 5 — Checksum
+
+| 檢查 | 通過條件 | 失敗處理 |
+|------|----------|----------|
+| `content_hash` | 非空；算法與 Metadata Contract §15 一致 | FAIL |
+| 冪等 | 目標路徑已存在且 hash 相同 | SKIP（idempotent） |
+| 衝突 | 同 `drive_file_id` 路徑但 hash 不同 | FAIL 或需人工決策（6D-1 預設 FAIL） |
+
+#### Gate 6 — Path Safety
+
+| 檢查 | 通過條件 | 失敗處理 |
+|------|----------|----------|
+| Prefix | 僅 `tenants/{sno}/archive/`（6D-1） | FAIL |
+| Traversal | 檔名不含 `..`、`/`、`\`、控制字元 | FAIL |
+| Cross-tenant | 目標 `sno` 與 envelope 一致 | FAIL |
+| 禁止別名 | 不得使用 `uploads*` prefix | FAIL |
+
+#### Gate 7 — Failure Handling
+
+| 情境 | 行為 |
+|------|------|
+| Gate 失敗 | **不寫入** GCS；**不刪除** Drive；**不覆蓋** 既有 GCS current 物件 |
+| Report | 每檔一筆：`status`、`gate`、`reason`、`drive_file_id` |
+| Partial batch | 單檔失敗 **不** 中止整批掃描（6D-1）；彙總於 report |
+| Read-back | 僅對 **成功寫入** 之物件驗證 **current** 版（見 §12） |
+| Rollback | 不以 delete 為預設；必要時依 `BDS_RUNTIME_STORAGE_POLICY.md` Recovery |
+
+### 8.2 Google Workspace Native Files（Phase 6D-1）
+
+下列 Google Workspace **原生** MIME（非 binary export）於 Phase **6D-1** 正式定案：
+
+| MIME | 6D-1 行為 |
+|------|-----------|
+| `google-apps.spreadsheet` | **SKIP + Warning** |
+| `google-apps.document` | **SKIP + Warning** |
+| `google-apps.presentation` | **SKIP + Warning** |
+
+| 原則 | 說明 |
+|------|------|
+| **不做自動 Export** | 6D-1 **不** 呼叫 Drive Export API |
+| **Structured 走 Pipeline A** | 若為 Structured Knowledge，應走 **Google Sheet** 管線至 `knowledge/` |
+| **Export 留後續** | Workspace → binary export promote 流程留 **Phase 6D-2 或後續** |
+| **Report** | `status=skipped`、`reason=google_apps_native`、`gate=content_type` |
 
 ---
+
 
 ## 9. Archive-Only Rules
 
@@ -221,7 +340,8 @@ bbcshops88@gmail.com
 | **Validation Fail** | Safety Rule |
 | **未啟用 Shared Policy** | Shared 檔案不得 promote 至他 tenant 可讀路徑 |
 | **dry_run / flag 關閉** | 零 GCS 寫入 |
-| **未知 MIME / 未登錄類型** | 拒絕或僅記錄於 report（實作 Phase 定案） |
+| **未知 MIME / 未登錄類型** | SKIP；`gate=content_type` |
+| **Google Workspace 原生** | `google-apps.spreadsheet` / `document` / `presentation` → **SKIP + Warning**（§8.2） |
 
 ---
 
@@ -250,11 +370,21 @@ bbcshops88@gmail.com
 
 ## 12. Object Versioning Boundary
 
+> **Recovery SSOT：** `BDS_RUNTIME_STORAGE_POLICY.md` §9～§10。本節為 Archive Promote **相容性** 邊界。
+
 | 項目 | 規則 |
 |------|------|
-| **GCS Object Versioning** | MVP **維持 OFF** |
-| **Phase 6** | promote / rollback **不得依賴** Object Versioning |
-| **再評估時機** | 自動同步、排程同步、AI JSON 更新、正式 SaaS 多租戶營運 |
+| **GCS Object Versioning** | **Primary Recovery Architecture**（bucket-level；見 Runtime Storage Policy） |
+| **Archive Promote** | **不得假設** Versioning OFF；overwrite 時舊版成為 noncurrent |
+| **Read-back Verification** | **僅驗證 current object** — 不比對 noncurrent generation |
+| **Rollback** | 不以 delete current 為預設；必要時還原至指定 generation |
+| **Lifecycle** | noncurrent 保留 30 天；不影響 current read-back |
+
+| 禁止 | 說明 |
+|------|------|
+| 以 Versioning 取代 Validation Gate | Safety Rule 仍須遵守 |
+| Read-back 讀取 noncurrent 版作為成功判準 | 僅 current |
+| 假設「無 versioning 故可覆寫無虞」 | 與 Recovery SSOT 衝突 |
 
 ---
 
@@ -301,7 +431,58 @@ bbcshops88@gmail.com
 | `BATS_DRIVE_METADATA_CONTRACT.md` §5 | Metadata ≠ Knowledge |
 | `BATS_DRIVE_CONNECTOR_SCOPE.md` | 檔案類型範圍 |
 | `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §3.1 | Phase 6A～6E |
-| `BATS_DATA_SYNC_POLICY.md` §11、§18.5 | GCS 結構、Runtime Source |
+| `BATS_DATA_SYNC_POLICY.md` §11、§11.6～§11.7、§18.5 | GCS 結構、archive prefix、Runtime Source |
+| `BDS_RUNTIME_STORAGE_POLICY.md` §9～§10 | Recovery、Versioning、read-back current |
+| `BATS_DRIVE_METADATA_CONTRACT.md` §15～§17 | checksum、GCS mapping、report |
+
+---
+
+
+## 17. Archive Promote Boundary（Phase 6D-1）
+
+### 17.1 允許範圍（6D-1 Runtime）
+
+| 維度 | 6D-1 正式邊界 |
+|------|---------------|
+| **`owner_scope`** | **僅** `tenant` |
+| **Pilot** | **僅** `travel_b`（`tenant_key=travel_b`，`sno=5f99b8d665e8444d`） |
+| **Drive 來源** | `industries/travel/tenants/travel_b/01_Private_Layer/` |
+| **GCS 目標** | `tenants/5f99b8d665e8444d/archive/{data_category}/{drive_file_id}/{file_name}` |
+| **管線** | Drive scan → Metadata envelope → Archive Promote Gate → GCS write → read-back（current） |
+| **報告** | `var/bds/tenants/{sno}/meta/drive_sync_report.json` |
+
+#### 6D-1 `data_category` Allow List（Tenant Private binary）
+
+| `data_category` | 6D-1 |
+|-----------------|------|
+| `itinerary_data` | ✅ 允許（binary 原件） |
+| `tenant_private_knowledge` | ✅ 允許（binary 附件；非 Sheet JSON） |
+| `shared_knowledge` | ❌ 禁止（6E） |
+| `customer_registration` | ❌ 禁止（Drive only） |
+| `archive`（泛用） | ✅ 允許（若 Metadata Contract 登錄） |
+
+### 17.2 禁止範圍（留待 6E 或後續）
+
+| 維度 | 狀態 | 目標 Phase |
+|------|------|------------|
+| **`owner_scope = industry`** | **禁止** | **6E** |
+| **`owner_scope = global`** | **禁止** | **6E** |
+| **`owner_scope = platform`** | **禁止** | **6E** |
+| **`shared/{industry_code}/archive/`** | **禁止** | **6E** + Policy |
+| **`shared/global/archive/`** | **禁止** | **6E** + Policy |
+| **多租戶批次 promote** | **禁止** | 6D-2+ |
+| **Google Workspace Export** | **禁止** | **6D-2+** |
+| **寫入 `knowledge/*.json`** | **禁止** | 永遠 — Sheet 管線 |
+
+### 17.3 6D-1 實作類別邊界（文件化）
+
+| 元件 | 職責 |
+|------|------|
+| `BdsDriveFolderScanner` | Drive 樹掃描（已有） |
+| `BdsDriveMetadataEnvelopeBuilder` / `Validator` | Gate 2（已有） |
+| `BdsDriveMetadataReportWriter` | 本地 report（已有） |
+| **`BdsDriveArchivePromoter`**（6D-1 新增） | Gate 0～7 + GCS archive 寫入 + read-back |
+| `BdsGcsUploader` | **僅** `knowledge/` JSON — **不** 用於 archive |
 
 ---
 
@@ -309,6 +490,7 @@ bbcshops88@gmail.com
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.4** | 2026-06-12 | Phase 6D-0：§6.1 archive 定案；§8.1 Promote Gate；§8.2 Google Workspace SKIP；§12 Versioning 對齊；§17 6D-1 boundary |
 | **v1.3** | 2026-06-06 | Phase 6B-1D：§5 Drive Path 對齊 Industry First（`industries/{industry_code}/...`） |
 | **v1.2** | 2026-06-10 | Pipeline A1/A2/A3 Structured Sheet 三層；Structured Knowledge = Google Sheet |
 | **v1.1** | 2026-06-10 | P1 Final：三層分離、Drive→GCS Mapping、Runtime Source、One Tenant One Folder、Shared Boundary、Object Versioning |
@@ -320,6 +502,6 @@ bbcshops88@gmail.com
 
 | 項目 | 狀態 |
 |------|------|
-| **文件狀態** | Draft — Planned for Phase 6 |
+| **文件狀態** | **Adopted — Phase 6D-0** |
 | **GCS Knowledge 五 JSON** | **不變** |
-| **實作狀態** | 未開始 |
+| **實作狀態** | 6D-1 Runtime **可開始**（依 §8.1、§17） |

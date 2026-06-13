@@ -323,6 +323,7 @@ var/
 |------|--------------|
 | Validation Fail | Safety Rule — GCS **不變**；無需還原 |
 | GCS Upload 部分失敗 | 檢查 `write_report.json`；必要時從 **GCS Object Version** 或 `rollback_backup` 還原 |
+| Archive Promote 寫入後 hash 不符 | Read-back 比對 **current** 版；失敗則 report `gate=read_back`；**不**讀 noncurrent |
 | 寫入後發現內容錯誤 | **GCS Object Versioning** 還原至前一 noncurrent 版 |
 | Host A 磁碟遺失 `var/bds/` | 從 Sheet 重新 sync；GCS current 版不受影響 |
 | 需要歷史版本（≤30 天） | GCS Object Versioning |
@@ -352,7 +353,7 @@ GCS Object Versioning = Primary Recovery Architecture
 | 項目 | 值 |
 |------|-----|
 | **Bucket** | `bbc-ai-saas-data` |
-| **適用前綴** | `tenants/{sno}/knowledge/`（BDS v1 Knowledge JSON） |
+| **適用前綴** | `tenants/{sno}/knowledge/`（Structured JSON）、`tenants/{sno}/archive/`（Drive 原件，Phase 6D）、`shared/{industry_code}/archive/`、`shared/global/archive/`（6E） |
 | **啟用範圍** | Bucket-level versioning（建議全 bucket 啟用；Knowledge 路徑為主要受益區） |
 
 ### 10.3 行為說明
@@ -361,7 +362,7 @@ GCS Object Versioning = Primary Recovery Architecture
 |------|------|
 | **Overwrite 同一路徑** | 舊版成為 **noncurrent version**；新版為 **current** |
 | **BDS Upload** | `BdsGcsUploader` 對同 `object_path` 上傳 — 與 versioning **相容** |
-| **Read-back Verification** | 讀取 **current** 版 — 與 versioning **相容** |
+| **Read-back Verification** | 讀取 **current** 版 — 與 versioning **相容**；Archive Promote（6D）**僅**驗證 current object |
 | **listKnowledgeObjects** | 列出 **current** 物件 — 與 versioning **相容** |
 | **還原** | 將指定 generation 設為 current，或複製 noncurrent 至新路徑 |
 
@@ -396,7 +397,8 @@ Delete noncurrent object versions older than 30 days
 
 | 元件 | 影響 |
 |------|------|
-| `BdsGcsUploader` | 無 — 僅寫入 current |
+| `BdsGcsUploader` | 無 — 僅寫入 current（`knowledge/`） |
+| `BdsDriveArchivePromoter`（6D-1） | 無 — 寫入 `archive/` current；read-back 僅 current |
 | Read-back Verification | 無 — 驗證 current |
 | `rollback_backup` | 無直接依賴 — 本地過渡層獨立於 GCS lifecycle |
 | BATS Runtime 讀取 | 無 — 讀 current |
@@ -554,6 +556,7 @@ gcloud storage buckets update gs://bbc-ai-saas-data --lifecycle-file=lifecycle.j
 | `BATS_DATA_SYNC_POLICY.md` | ✅ Safety Rule、Mode B、GCS 結構一致；§14.5 已提及 versioning 策略 |
 | `BATS_DRIVE_CONNECTOR_SCOPE.md` | ✅ Sheet=Input、Drive=Archive、GCS=Runtime 一致 |
 | `BATS_DRIVE_GCS_MAPPING.md` | ✅ 路徑映射不變 |
+| `BATS_DRIVE_GCS_MAPPING.md` §8.1、§12 | Archive Promote Gate、Versioning 相容性 |
 
 ### 14.3 歷史文件演進說明（Cross-Ref Debt）
 
@@ -564,7 +567,7 @@ gcloud storage buckets update gs://bbc-ai-saas-data --lifecycle-file=lifecycle.j
 | `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §4.4、§6A.10 | 不啟用 / 不依賴 Object Versioning |
 | `BATS_DATA_SYNC_RUNBOOK.md` §Rollback | v1 不依賴 Versioning |
 | `BATS_DRIVE_CONNECTOR_SCOPE.md` §10 | MVP 維持 OFF |
-| `BATS_DRIVE_GCS_MAPPING.md` §12 | MVP 維持 OFF |
+| `BATS_DRIVE_GCS_MAPPING.md` §12 | ~~MVP 維持 OFF~~ — **Phase 6D-0 已對齊本文件 §9～§10** |
 
 **Phase 6A.1 決議：** 上述表述為 **Phase 5～6A 實作期過渡護欄**。自本文件生效起，**Recovery Architecture** 改以 **GCS Object Versioning 為 Primary**；Safety Rule 與 Validation Gate **不變**。
 
@@ -615,6 +618,7 @@ Drive Connector（Phase 6B+）promote 至 `tenants/{sno}/archive/`（**GCS** 概
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.1** | 2026-06-12 | Phase 6D-0：`archive/` versioning 適用；Archive read-back 僅 current |
 | **v1.2** | 2026-06-06 | Phase 7 Pre-Planning：§15.4 Upload-Triggered Sync 與 GCS Runtime 邊界 |
 | **v1.1** | 2026-06-06 | Phase 6B-1D：§15.3 Drive 來源路徑 cross-ref §6.5（GCS 不變） |
 | **v1.0** | 2026-06-05 | Phase 6A.1 初版：Runtime Storage Governance + GCS Object Versioning Policy |

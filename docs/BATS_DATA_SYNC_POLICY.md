@@ -25,6 +25,8 @@
 | §9 | Response Layer (Gemini) |
 | §10 | Tenant Isolation Rules |
 | §11 | GCS Structure |
+| §11.6 | Tenant Prefix 三層分離（knowledge / archive / meta） |
+| §11.7 | Archive Prefix 正式定案 |
 | §12 | BDS Data Category |
 | §13 | Sync Trigger |
 | §14 | Error Handling |
@@ -466,11 +468,18 @@ BDS v1 在 GCS 採用以下 **唯一正式頂層結構**：
 ```text
 gs://{bucket}/
 ├── shared/
+│   ├── {industry_code}/
+│   │   ├── knowledge/
+│   │   └── archive/
+│   └── global/
+│       ├── knowledge/
+│       └── archive/
 │
 └── tenants/
     └── {sno}/
         ├── config/
         ├── knowledge/
+        ├── archive/
         └── meta/
 ```
 
@@ -478,10 +487,17 @@ gs://{bucket}/
 
 | 目錄 | 定義 |
 |------|------|
-| **`shared/`** | 跨 tenant 共用設定與 **共用知識層**（`shared/{industry}/knowledge/`、`shared/global/knowledge/`；見 §11.3、§12.7） |
+| **`shared/`** | 跨 tenant 共用設定與 **產業／全球層**（`knowledge/`、`archive/`；見 §11.3、§12.7） |
+| **`shared/{industry_code}/knowledge/`** | **Industry Shared Structured Knowledge**（JSON）；Sheet／Upload 管線 |
+| **`shared/{industry_code}/archive/`** | **Industry Shared 非結構化原件**；Phase **6E** promote（須 Policy） |
+| **`shared/global/knowledge/`** | **Global Shared Structured Knowledge**（JSON） |
+| **`shared/global/archive/`** | **Global Shared 非結構化原件**；Phase **6E** promote（須 Policy） |
 | **`tenants/{sno}/config/`** | **租戶設定資料** — `product_sources.json`、tenant profile、feature config 等 |
-| **`tenants/{sno}/knowledge/`** | **租戶可讀知識資料** — `itinerary_data` 與 `tenant_private_knowledge`；路徑不得混用 |
-| **`tenants/{sno}/meta/`** | **同步資訊、版本資訊、同步紀錄** — `sync_status.json`、`last_sync_at.json`、`source_revision.json` 等 |
+| **`tenants/{sno}/knowledge/`** | **Structured Runtime Knowledge** — `tenant_private_knowledge`、`itinerary_data` JSON；**Sheet／Upload 管線** |
+| **`tenants/{sno}/archive/`** | **非結構化 Archive 原件** — Drive → GCS promote（Phase **6D**）；**不是** BATS 查詢答案來源 |
+| **`tenants/{sno}/meta/`** | **同步資訊、版本資訊、同步紀錄** — `sync_status.json`、`drive_sync_report.json`、`source_revision.json` 等 |
+
+> **三層不可混用：** `knowledge/`（Structured 內容）、`archive/`（非結構化原件）、`meta/`（同步狀態與報告）。詳見 **§11.6**。
 
 #### 暫不列入正式結構
 
@@ -490,9 +506,19 @@ gs://{bucket}/
 | 路徑 | 狀態 |
 |------|------|
 | `products/` | 暫不列入 |
-| `uploads/` | 暫不列入 |
 | `parsed/` | 暫不列入 |
 | `rag/` | 暫不列入 |
+
+#### 禁止之 Archive 別名（正式）
+
+下列名稱 **禁止** 作為 GCS Archive prefix（避免與 Phase 6D 漂移）；**唯一正式名稱** 見 **§11.7**：
+
+| 禁止路徑 | 說明 |
+|----------|------|
+| `uploads/` | **禁止** |
+| `uploads_archive/` | **禁止** |
+| `raw_uploads/` | **禁止** |
+| `tenants/{sno}/uploads/` | **禁止** |
 
 未來如需新增上述或類似路徑，**須先修訂本 SSOT 文件**（`BATS_DATA_SYNC_POLICY.md`），不得由實作端私下擴充。
 
@@ -514,20 +540,24 @@ gs://{bucket}/
 │   │   ├── group_trigger_policy.json          （可選）
 │   │   └── bds_source_registry.json           （可選）
 │   ├── travel/
-│   │   └── knowledge/                         ← shared_knowledge（旅遊業）
+│   │   ├── knowledge/                         ← shared_knowledge（旅遊業 Structured）
+│   │   └── archive/                           ← Industry Shared 原件（6E；須 Policy）
 │   ├── hotel/
-│   │   └── knowledge/                         ← shared_knowledge（飯店民宿）
+│   │   ├── knowledge/
+│   │   └── archive/
 │   ├── restaurant/
-│   │   └── knowledge/                         ← shared_knowledge（美食餐廳）
+│   │   ├── knowledge/
+│   │   └── archive/
 │   └── global/
-│       └── knowledge/                         ← shared_knowledge（跨產業 fallback）
+│       ├── knowledge/                         ← shared_knowledge（跨產業 fallback）
+│       └── archive/                           ← Global Shared 原件（6E；須 Policy）
 │
 └── tenants/
     └── {sno}/
         ├── config/
         │   ├── product_sources.json           ← 租戶設定：enabled sources
         │   └── tenant_line_profile.json       （可選）
-        ├── knowledge/
+        ├── knowledge/                         ← Structured Runtime（Sheet／Upload）
         │   ├── itinerary/                     ← Category A：行程資料（下一階段）
         │   ├── company_profile.json           ← Category B：MVP（`BATS_DATA_CONTRACT.md`）
         │   ├── service_qa.json                ← Category B：MVP
@@ -535,10 +565,13 @@ gs://{bucket}/
         │   ├── service_items.json             ← Category B：MVP
         │   ├── special_prices.json            ← Category B：MVP
         │   └── *.md / *.json                  ← 其他知識文件（須標註 data_category；須修訂 SSOT 後新增）
-        └── meta/
-            ├── last_sync_at.json              ← 同步資訊
-            ├── sync_status.json               ← 同步紀錄
-            └── source_revision.json           ← 版本資訊
+        ├── archive/                           ← Drive 非結構化原件（Phase 6D promote）
+        │   └── {data_category}/{drive_file_id}/{file_name}
+        └── meta/                              ← 同步狀態與報告（非 Runtime 內容）
+            ├── last_sync_at.json
+            ├── sync_status.json
+            ├── source_revision.json
+            └── drive_sync_report.json         ← Phase 6C（本地可 mirror；見 Metadata Contract §17）
 ```
 
 ### 11.4 與現有程式路徑對齊
@@ -550,7 +583,7 @@ gs://{bucket}/
 
 ### 11.5 物件 Metadata 建議
 
-每次 BDS 寫入應附：
+每次 BDS 寫入 GCS（**Knowledge JSON** 或 **Archive 原件**）應附：
 
 | 欄位 | 說明 |
 |------|------|
@@ -560,8 +593,37 @@ gs://{bucket}/
 | `published_at` | ISO 8601 發布時間 |
 | `schema_version` | JSON schema 版本 |
 | `bds_mode` | 固定 `B` |
-| `data_category` | `itinerary_data`、`tenant_private_knowledge` 或 `shared_knowledge`（見 §12） |
+| `data_category` | `itinerary_data`、`tenant_private_knowledge`、`shared_knowledge` 或 `archive`（見 §12） |
 | `industry_code` | `travel`、`hotel`、`restaurant`、`global`（`shared_knowledge` 時；見 `BATS_DATA_SOURCE_REGISTRY.md`） |
+
+**Archive Promote（6D）：** GCS object metadata 對照見 `BATS_DRIVE_METADATA_CONTRACT.md` §16；Promote Gate 見 `BATS_DRIVE_GCS_MAPPING.md` §8.1。
+
+### 11.6 Tenant Prefix 三層分離（knowledge / archive / meta）
+
+| Prefix | 內容性質 | 來源管線 | BATS Runtime 消費 |
+|--------|----------|----------|-------------------|
+| **`knowledge/`** | Structured JSON（Runtime Knowledge） | Sheet／Upload Portal → BDS Build | ✅ **是**（Search／Gemini） |
+| **`archive/`** | 非結構化原件（PDF、Image、Office…） | Drive → BDS Promote（6D） | ❌ **否**（僅稽核／回溯） |
+| **`meta/`** | 同步狀態、報告、修訂資訊 | BDS 管線寫入 | ❌ **否**（維運／稽核） |
+
+| 禁止 | 說明 |
+|------|------|
+| 將 Archive 原件寫入 `knowledge/` | 違反 Archive ≠ Knowledge |
+| 將 Structured JSON 寫入 `archive/` | 違反管線分離 |
+| 將 `meta/` 當 Knowledge 來源 | `meta/` 僅描述同步狀態 |
+
+### 11.7 Archive Prefix 正式定案
+
+| 項目 | 正式決議 |
+|------|----------|
+| **唯一正式名稱** | **`archive/`** |
+| **Tenant Private** | `tenants/{sno}/archive/` |
+| **Industry Shared** | `shared/{industry_code}/archive/` |
+| **Global Shared** | `shared/global/archive/` |
+
+**禁止別名（不得出現於實作、文件範例或新路徑）：** `uploads/`、`uploads_archive/`、`raw_uploads/` 及任何 `tenants/{sno}/uploads*` 變體。
+
+**SSOT 交叉引用：** 物件路徑模板、Promote Gate、6D-1 Pilot 邊界見 `BATS_DRIVE_GCS_MAPPING.md` §6.1、§8.1、§17。
 
 ---
 
@@ -1682,6 +1744,7 @@ Service Account 僅授權必要之 `tenants/{sno}/` prefix；不得授予跨 ten
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v2.2** | 2026-06-12 | Phase 6D-0：§11 納入 `archive/`；§11.6～§11.7 knowledge／archive／meta 分離與 prefix 定案 |
 | **v2.1** | 2026-06-06 | Phase 6B-2C-1：§20.1 cross-ref Platform Drive Registry §6.7 |
 | **v2.0** | 2026-06-06 | Phase 7 Pre-Planning：§17 Upload-Triggered Sync；§13.2／§16 澄清非 Cron Scheduler First |
 | **v1.9** | 2026-06-06 | Phase 6B-1D：§20／§22 Drive Tree 遷移為 Industry First（`industries/{industry_code}/...`）；GCS 不變 |
