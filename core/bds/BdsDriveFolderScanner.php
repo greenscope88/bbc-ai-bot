@@ -11,7 +11,8 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'BdsDriveFolderScanException.php';
  * No Metadata Contract, promote, GCS, Shared processing, or Runtime Knowledge.
  *
  * @see docs/BATS_DATA_SOURCE_REGISTRY.md §6.5、§6.7
- * @see docs/BATS_DRIVE_CONNECTOR_SCOPE.md Phase 6B
+ * @see docs/BATS_DRIVE_GCS_MAPPING.md §18
+ * @see docs/BATS_DRIVE_CONNECTOR_SCOPE.md Phase 6B、6E-3
  */
 final class BdsDriveFolderScanner
 {
@@ -21,7 +22,15 @@ final class BdsDriveFolderScanner
 
     public const ROOT_ROLE_REGISTRATIONS = 'registrations';
 
-    /** @var BdsDriveClient */
+    public const SCAN_SCOPE_INDUSTRY_SHARED = 'industry_shared';
+
+    public const SCAN_SCOPE_GLOBAL_SHARED = 'global_shared';
+
+    public const STATUS_OK = 'ok';
+
+    public const STATUS_MISSING = 'missing';
+
+    public const STATUS_ERROR = 'error';
     private $client;
 
     public function __construct(?BdsDriveClient $client = null, ?string $credentialsPath = null)
@@ -234,6 +243,57 @@ final class BdsDriveFolderScanner
     }
 
     /**
+     * Read-only scan of Industry Shared Layer from Platform Drive Registry.
+     *
+     * @return array<string, mixed>
+     */
+    public function scanIndustrySharedFolder(string $industryCode): array
+    {
+        require_once __DIR__ . DIRECTORY_SEPARATOR . 'BdsPlatformDriveRegistryLoader.php';
+
+        $industryCode = trim($industryCode);
+        if ($industryCode === '') {
+            throw new \InvalidArgumentException('industry_code is required.');
+        }
+
+        $entry = BdsPlatformDriveRegistryLoader::getIndustryEntry($industryCode);
+        if ($entry === null) {
+            return $this->buildSharedFolderMissingResult(
+                self::SCAN_SCOPE_INDUSTRY_SHARED,
+                $industryCode,
+                null,
+                'industries.' . $industryCode,
+                BdsDriveFolderScanException::REGISTRY_NOT_FOUND,
+                'Industry is not configured in Platform Drive Registry.'
+            );
+        }
+
+        return $this->scanConfiguredSharedFolder(
+            self::SCAN_SCOPE_INDUSTRY_SHARED,
+            $industryCode,
+            $entry['shared_layer_folder_id'] ?? null,
+            'industries.' . $industryCode . '.shared_layer_folder_id'
+        );
+    }
+
+    /**
+     * Read-only scan of Global Shared Layer from Platform Drive Registry.
+     *
+     * @return array<string, mixed>
+     */
+    public function scanGlobalSharedFolder(): array
+    {
+        require_once __DIR__ . DIRECTORY_SEPARATOR . 'BdsPlatformDriveRegistryLoader.php';
+
+        return $this->scanConfiguredSharedFolder(
+            self::SCAN_SCOPE_GLOBAL_SHARED,
+            'global',
+            BdsPlatformDriveRegistryLoader::getGlobalSharedLayerFolderId(),
+            'global.shared_layer_folder_id'
+        );
+    }
+
+    /**
      * @return array{
      *   generated_at: string,
      *   platform: array<string, mixed>,
@@ -348,6 +408,78 @@ final class BdsDriveFolderScanner
         }
 
         return $entry;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function scanConfiguredSharedFolder(
+        string $scanScope,
+        string $scopeCode,
+        ?string $folderId,
+        string $registryField
+    ): array {
+        if ($folderId === null || trim($folderId) === '') {
+            return $this->buildSharedFolderMissingResult(
+                $scanScope,
+                $scopeCode,
+                null,
+                $registryField,
+                BdsDriveFolderScanException::REGISTRY_MISSING,
+                $registryField . ' is not configured in Platform Drive Registry.'
+            );
+        }
+
+        $result = [
+            'scan_scope' => $scanScope,
+            'industry_code' => $scanScope === self::SCAN_SCOPE_GLOBAL_SHARED ? 'global' : $scopeCode,
+            'folder_id' => $folderId,
+            'registry_field' => $registryField,
+            'status' => self::STATUS_OK,
+            'error_code' => null,
+            'error' => null,
+            'folder' => null,
+            'children' => null,
+        ];
+
+        try {
+            $result['folder'] = $this->scanFolder($folderId);
+            $result['children'] = $this->scanChildren($folderId);
+        } catch (BdsDriveFolderScanException $exception) {
+            $result['status'] = self::STATUS_ERROR;
+            $result['error_code'] = $exception->getErrorCode();
+            $result['error'] = $exception->getMessage();
+        } catch (\Throwable $exception) {
+            $result['status'] = self::STATUS_ERROR;
+            $result['error_code'] = BdsDriveFolderScanException::SCAN_FAILED;
+            $result['error'] = $exception->getMessage();
+        }
+
+        return $result;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildSharedFolderMissingResult(
+        string $scanScope,
+        string $scopeCode,
+        ?string $folderId,
+        string $registryField,
+        string $errorCode,
+        string $errorMessage
+    ): array {
+        return [
+            'scan_scope' => $scanScope,
+            'industry_code' => $scanScope === self::SCAN_SCOPE_GLOBAL_SHARED ? 'global' : $scopeCode,
+            'folder_id' => $folderId,
+            'registry_field' => $registryField,
+            'status' => self::STATUS_MISSING,
+            'error_code' => $errorCode,
+            'error' => $errorMessage,
+            'folder' => null,
+            'children' => null,
+        ];
     }
 
     private function mapGoogleException(\Google\Service\Exception $exception, string $folderId): BdsDriveFolderScanException

@@ -8,6 +8,7 @@ declare(strict_types=1);
  */
 
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR . 'BdsDriveFolderScanner.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR . 'BdsPlatformDriveRegistryLoader.php';
 
 $failures = 0;
 
@@ -15,6 +16,7 @@ const EXPECTED_INDUSTRIES_ROOT = '1EWhnQONx5EQ5GYGd4dx114QoAgXHZU2P';
 const EXPECTED_GLOBAL_ROOT = '1OJHWWKkgr9X9nXhHhYfPPIN-p7dnidqh';
 const EXPECTED_REGISTRATIONS_ROOT = '17It5q4NQGJHLK5_IXC6PM2iT0dlj0qGG';
 const EXPECTED_TRAVEL_B_PRIVATE = '17wrq-rrvc7ezclhWlbvdTKxHSf_Hw8pi';
+const EXPECTED_TRAVEL_SHARED = '1i-yIs1H4pJsyOXyCO7eRLPh3eTbmSy7T';
 
 function test_assert(bool $cond, string $message): void
 {
@@ -348,6 +350,87 @@ test_assert(
     'unknown tenant error code is registry_not_found'
 );
 
+// --- Phase 6E-3: Shared folder scanner (mocked) ---
+$travelSharedFolder = 'mock_travel_shared_layer';
+$fakeMetadata[$travelSharedFolder] = [
+    'id' => $travelSharedFolder,
+    'name' => '02_Shared_Layer',
+    'mimeType' => BdsDriveClient::MIME_FOLDER,
+    'parents' => ['mock_travel_industry_root'],
+];
+$fakeChildren[$travelSharedFolder] = [
+    ['id' => 'shared_pdf_001', 'name' => 'travel_faq.pdf', 'mimeType' => 'application/pdf'],
+];
+
+$sharedRegistryBody = "<?php return [
+    'schema_version' => 'bds_platform_drive_registry.v1',
+    'platform_roots' => [],
+    'industries' => [
+        'travel' => [
+            'industry_folder_id' => null,
+            'shared_layer_folder_id' => '{$travelSharedFolder}',
+        ],
+        'hotel' => [
+            'industry_folder_id' => null,
+            'shared_layer_folder_id' => null,
+        ],
+    ],
+    'global' => ['shared_layer_folder_id' => null],
+];";
+
+$previousPlatformRegistryPath = getenv('BDS_PLATFORM_DRIVE_REGISTRY_PATH');
+$tmpRegistry = tempnam(sys_get_temp_dir(), 'bds_platform_registry_shared_');
+if ($tmpRegistry === false) {
+    throw new RuntimeException('Failed to create temp platform registry file.');
+}
+$sharedRegistryPath = $tmpRegistry . '.php';
+rename($tmpRegistry, $sharedRegistryPath);
+file_put_contents($sharedRegistryPath, $sharedRegistryBody);
+putenv('BDS_PLATFORM_DRIVE_REGISTRY_PATH=' . $sharedRegistryPath);
+
+$registryRef = new ReflectionClass(BdsPlatformDriveRegistryLoader::class);
+$registryProp = $registryRef->getProperty('registry');
+$registryProp->setAccessible(true);
+$registryProp->setValue(null);
+
+$sharedFakeService = build_fake_drive_service_for_scanner($fakeMetadata, $fakeChildren);
+$sharedScanner = new BdsDriveFolderScanner(new BdsDriveClient(null, $sharedFakeService));
+
+$travelSharedScan = $sharedScanner->scanIndustrySharedFolder('travel');
+test_assert(($travelSharedScan['status'] ?? '') === BdsDriveFolderScanner::STATUS_OK, 'mock travel shared scan ok');
+test_assert(($travelSharedScan['scan_scope'] ?? '') === BdsDriveFolderScanner::SCAN_SCOPE_INDUSTRY_SHARED, 'travel shared scan_scope');
+test_assert(($travelSharedScan['folder_id'] ?? '') === $travelSharedFolder, 'travel shared folder id from registry');
+test_assert(is_array($travelSharedScan['folder'] ?? null), 'travel shared folder metadata present');
+test_assert(is_array($travelSharedScan['children'] ?? null), 'travel shared children present');
+test_assert(count($travelSharedScan['children']['files'] ?? []) === 1, 'travel shared child count');
+
+$hotelSharedScan = $sharedScanner->scanIndustrySharedFolder('hotel');
+test_assert(($hotelSharedScan['status'] ?? '') === BdsDriveFolderScanner::STATUS_MISSING, 'hotel shared missing when folder id null');
+test_assert(($hotelSharedScan['error_code'] ?? '') === BdsDriveFolderScanException::REGISTRY_MISSING, 'hotel shared registry_missing');
+test_assert($hotelSharedScan['folder'] === null, 'hotel shared no folder metadata');
+test_assert($hotelSharedScan['children'] === null, 'hotel shared no children');
+
+$globalSharedScan = $sharedScanner->scanGlobalSharedFolder();
+test_assert(($globalSharedScan['status'] ?? '') === BdsDriveFolderScanner::STATUS_MISSING, 'global shared missing when folder id null');
+test_assert(($globalSharedScan['error_code'] ?? '') === BdsDriveFolderScanException::REGISTRY_MISSING, 'global shared registry_missing');
+
+$unknownIndustrySharedScan = $sharedScanner->scanIndustrySharedFolder('beauty');
+test_assert(($unknownIndustrySharedScan['status'] ?? '') === BdsDriveFolderScanner::STATUS_MISSING, 'unknown industry shared missing');
+test_assert(
+    ($unknownIndustrySharedScan['error_code'] ?? '') === BdsDriveFolderScanException::REGISTRY_NOT_FOUND,
+    'unknown industry shared registry_not_found'
+);
+
+if ($previousPlatformRegistryPath === false) {
+    putenv('BDS_PLATFORM_DRIVE_REGISTRY_PATH');
+} else {
+    putenv('BDS_PLATFORM_DRIVE_REGISTRY_PATH=' . $previousPlatformRegistryPath);
+}
+$registryProp->setValue(null);
+if (is_file($sharedRegistryPath)) {
+    unlink($sharedRegistryPath);
+}
+
 // --- Live Host A validation ---
 $credentialsPath = resolve_credentials_path_for_test();
 if ($credentialsPath === null) {
@@ -397,6 +480,75 @@ if ($credentialsPath === null) {
                     'travel_b childCount matches scanChildren file count'
                 );
             }
+        }
+
+        require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR . 'BdsPlatformDriveRegistryLoader.php';
+        require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR . 'BdsDriveMetadataEnvelopeBuilder.php';
+        require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR . 'BdsDriveMetadataValidator.php';
+
+        $travelShared = $liveScanner->scanIndustrySharedFolder('travel');
+        fwrite(STDOUT, "\n--- Industry Shared (travel) ---\n");
+        fwrite(STDOUT, 'status=' . ($travelShared['status'] ?? '') . ' folder_id=' . ($travelShared['folder_id'] ?? '') . "\n");
+        if (is_array($travelShared['folder'] ?? null)) {
+            $sharedFolder = $travelShared['folder'];
+            fwrite(STDOUT, sprintf(
+                "name=%s mimeType=%s childCount=%d\n",
+                $sharedFolder['name'] ?? '',
+                $sharedFolder['mimeType'] ?? '',
+                (int) ($sharedFolder['childCount'] ?? 0)
+            ));
+        }
+
+        test_assert(($travelShared['status'] ?? '') === BdsDriveFolderScanner::STATUS_OK, 'travel shared folder scans ok on Host A');
+        test_assert(($travelShared['folder_id'] ?? '') === EXPECTED_TRAVEL_SHARED, 'travel shared folder id matches registry');
+        test_assert(is_array($travelShared['folder'] ?? null), 'travel shared folder metadata readable on Host A');
+        test_assert(is_array($travelShared['children'] ?? null), 'travel shared children list present on Host A');
+        if (is_array($travelShared['folder'] ?? null) && is_array($travelShared['children'] ?? null)) {
+            test_assert(
+                $travelShared['folder']['childCount'] === count($travelShared['children']['files'] ?? []),
+                'travel shared childCount matches scanChildren file count'
+            );
+        }
+
+        $hotelSharedLive = $liveScanner->scanIndustrySharedFolder('hotel');
+        $restaurantSharedLive = $liveScanner->scanIndustrySharedFolder('restaurant');
+        $globalSharedLive = $liveScanner->scanGlobalSharedFolder();
+        test_assert(($hotelSharedLive['status'] ?? '') === BdsDriveFolderScanner::STATUS_MISSING, 'hotel shared safe missing on Host A');
+        test_assert(($restaurantSharedLive['status'] ?? '') === BdsDriveFolderScanner::STATUS_MISSING, 'restaurant shared safe missing on Host A');
+        test_assert(($globalSharedLive['status'] ?? '') === BdsDriveFolderScanner::STATUS_MISSING, 'global shared safe missing on Host A');
+        test_assert($hotelSharedLive['folder'] === null && $hotelSharedLive['children'] === null, 'hotel shared zero scan');
+        test_assert($globalSharedLive['folder'] === null && $globalSharedLive['children'] === null, 'global shared zero scan');
+
+        $envelopeBuilder = new BdsDriveMetadataEnvelopeBuilder();
+        $metadataValidator = new BdsDriveMetadataValidator();
+        $industryContext = $envelopeBuilder->buildScanContextForIndustry('travel');
+        $sharedFiles = is_array($travelShared['children']['files'] ?? null) ? $travelShared['children']['files'] : [];
+        $validatedCount = 0;
+        $envelopeCount = 0;
+        foreach ($sharedFiles as $driveFile) {
+            if (!is_array($driveFile)) {
+                continue;
+            }
+            ++$envelopeCount;
+            $envelope = $envelopeBuilder->buildFromDriveFile($driveFile, $industryContext, 'bds-drive-shared-scan-6e3');
+            test_assert(($envelope['owner_scope'] ?? '') === 'industry', 'shared child owner_scope=industry');
+            test_assert(($envelope['industry_code'] ?? '') === 'travel', 'shared child industry_code=travel');
+            test_assert(($envelope['data_category'] ?? '') === 'shared_knowledge', 'shared child data_category=shared_knowledge');
+            test_assert(
+                strpos((string) ($envelope['source_path'] ?? ''), 'industries/travel/shared/02_Shared_Layer/') === 0,
+                'shared child source_path uses logical industry shared prefix'
+            );
+            $validation = $metadataValidator->validate($envelope);
+            if (!empty($validation['ok'])) {
+                ++$validatedCount;
+            } else {
+                fwrite(STDOUT, 'shared file validation note: ' . ($driveFile['name'] ?? '') . ' errors=' . json_encode($validation['errors'] ?? []) . ' warnings=' . json_encode($validation['warnings'] ?? []) . "\n");
+            }
+        }
+        if ($envelopeCount > 0) {
+            fwrite(STDOUT, 'shared metadata envelopes validated=' . $validatedCount . ' total=' . $envelopeCount . "\n");
+        } else {
+            fwrite(STDOUT, "travel shared folder has zero children (scan ok, metadata N/A)\n");
         }
     } catch (\Throwable $e) {
         test_assert(false, 'Host A FolderScanner validation failed: ' . $e->getMessage());

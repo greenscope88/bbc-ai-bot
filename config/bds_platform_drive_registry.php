@@ -29,7 +29,7 @@ return [
     'industries' => [
         'travel' => [
             'industry_folder_id' => null,
-            'shared_layer_folder_id' => null,
+            'shared_layer_folder_id' => '1i-yIs1H4pJsyOXyCO7eRLPh3eTbmSy7T',
         ],
         'hotel' => [
             'industry_folder_id' => null,
