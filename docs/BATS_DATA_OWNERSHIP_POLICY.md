@@ -536,6 +536,20 @@ shared/global/archive/{data_category}/{drive_file_id}/{file_name}
 | **獨立 gate** | Tenant 用 `storeNo`／tenant `sno`；Shared 用 management center `sno` |
 | **單次 job 單層** | 一次上傳觸發之 BDS job **不得** 同時 promote Tenant + Shared 路徑 |
 
+### 3.8 共用 BDS Sync Core（Phase 7-1c-0 SSOT）
+
+> **長期架構原則：** 所有 Structured Knowledge 同步入口 **必須** 共用同一 BDS Sync Core。
+
+| 入口 | 規則 |
+|------|------|
+| Tenant Upload Portal（7-1） | 觸發 `bin/bds-sync.php`／BDS core；**不得** Portal 內嵌獨立 sync |
+| Shared Upload Portal（7-2） | 同上 |
+| 未來 API Trigger（若存在） | 同上 |
+
+**Safety：** 須遵守 `BATS_DATA_SYNC_POLICY.md` §14.1.1 Last Successful Version Rule。
+
+**交叉引用：** Sync Policy §17.11；MVP Plan §12.7；Implementation Plan §8.8.5
+
 ---
 
 ## 4. Override Rule
@@ -799,6 +813,7 @@ L2+ 實作文件、程式
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.6** | 2026-06-05 | Phase 7-1c-0：§3.8 共用 BDS Sync Core；Last Successful Version cross-ref |
 | **v1.5** | 2026-06-05 | Phase 7-0d：§3.7 Upload Portal Write Gates（Tenant／Shared 隔離） |
 | **v1.4** | 2026-06-12 | Phase 6E-1：§2.7 Industry First Drive 樹；§3.6 Archive Layer 寫入邊界（三層） |
 | **v1.3** | 2026-06-10 | 新增 §2.7 Google Drive Platform Layer Architecture；Shared 移出租戶資料夾 |

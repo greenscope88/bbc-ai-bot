@@ -1,10 +1,10 @@
 # BDS Upload Portal — Phase 7-1 MVP Plan
 
 **專案根目錄：** `C:\bbc-ai-bot`  
-**文件版本：** 2026-06-05（Phase 7-0c～7-0e.2 Final）  
+**文件版本：** 2026-06-05（Phase 7-0c～7-0e.2 / 7-1c-0）  
 **性質：** L2 實作規劃（SSOT First / DDD）。**不**實作程式、**不**修改 runtime。
 
-**前置審計：** Phase 7-0b Login Reuse Audit；Phase 7-0c Canonical Domain SSOT；Phase 7-0d Shared Upload Portal SSOT；Phase 7-0e UI／Field Spec SSOT；Phase 7-0e.1 UI Enhancement SSOT；Phase 7-0e.2 UI Finalization SSOT。
+**前置審計：** Phase 7-0b Login Reuse Audit；Phase 7-0c Canonical Domain SSOT；Phase 7-0d Shared Upload Portal SSOT；Phase 7-0e UI／Field Spec SSOT；Phase 7-0e.1 UI Enhancement SSOT；Phase 7-0e.2 UI Finalization SSOT；Phase 7-1c-0 Upload→BDS Sync Trigger SSOT。
 
 ---
 
@@ -245,19 +245,17 @@ Management Center (sno cff796a33d94ea31) + industry_code travel
 
 | Phase | 名稱 | 交付摘要 | 狀態 |
 |-------|------|----------|------|
-| **7-1** | **Tenant Upload Portal MVP** | `upload.php`、travel_b gate、`tenants/5f99b8d665e8444d/knowledge/`、6A BDS core | 未開始 |
+| **7-1** | **Tenant Upload Portal MVP** | `upload.php`、travel_b gate、staging、CLI→BDS、GCS read-back | **進行中**（7-1a／7-1b Done） |
 | **7-2** | **Shared Upload Portal MVP** | `shared_upload.php`、management center sno gate、`shared/travel/knowledge/`、Shared Contract | 未開始 |
 | **7-3** | **Production Hardening** | Audit log、recovery、retUrl 強化、可選 bbcshops redirect、營運 runbook | 未開始 |
 | **7-x** | Login Bridge Token | 跨域 bbcshops 操作域 | **Deferred** |
 
 ### 11.1 Phase 7-1 Scope（Tenant）
 
-| # | 交付項 |
-|---|--------|
-| 1 | `www/bds/upload.php` — session 守衛 + `storeNo=6180` gate |
-| 2 | Upload UI（§13.2 欄位規格）+ POST → BDS pipeline（6A core） |
-| 3 | GCS `tenants/5f99b8d665e8444d/knowledge/` + Read-back |
-| 4 | Audit：`accountNo`、`storeNo`、`sno`、`tenant_key` |
+| 1 | `www/bds/upload.php` — session 守衛 + `storeNo=6180` gate | **7-1a Done** |
+| 2 | Upload receive + staging（`var/bds/uploads/...`） | **7-1b Done** |
+| 3 | POST → CLI Trigger → `bin/bds-sync.php` → GCS + Read-back | **7-1c** |
+| 4 | Audit：`accountNo`、`storeNo`（**不** UI 暴露 sno） | 7-1c／7-3 |
 
 **不做：** Shared upload；global shared；bbcshops 登入域。
 
@@ -279,7 +277,86 @@ Management Center (sno cff796a33d94ea31) + industry_code travel
 | 1 | 上傳／同步 audit trail |
 | 2 | 失敗 recovery 與營運 runbook 對齊 |
 | 3 | retUrl allowlist server-side 強化 |
-| 4 | 可選：`bbcshops.com` 雙 redirect 頁 |
+| 4 | 可選：`bbcshops.com` 雙 redirect 頁（**7-1d**） |
+
+### 11.4 Phase 7-1 子階段分解（Runtime）
+
+| 子階段 | 名稱 | 狀態 | 摘要 |
+|--------|------|------|------|
+| **7-1a** | Login gate + UI shell | **Done** ✅ | `f881d12` legacy www |
+| **7-1b** | Upload receive + staging | **Done** ✅ | `0020b5f` legacy www；`var/bds/uploads/.../staging/` |
+| **7-1c** | Upload → BDS Sync Trigger（CLI） | **Next** | §12；`bin/bds-sync.php` |
+| **7-1d** | bbcshops redirect-only（可選） | 未開始 | 非 7-1c 阻塞項 |
+
+---
+
+## 12. Upload → BDS Sync Trigger Architecture（Phase 7-1c-0 SSOT）
+
+> **Status: SSOT 定案（2026-06-05）** — Phase 7-1c 架構決策；**不**另立獨立 ADR 文件（整合 L2 MVP Plan + L1 Sync Policy §17.11）。
+
+### 12.1 文件治理決策
+
+| 方案 | 決策 |
+|------|------|
+| 新增 `BATS_UPLOAD_SYNC_TRIGGER_DECISION.md` | **不採用** — 避免 L2 文件碎片化 |
+| **採用** | 本節（L2）+ `BATS_DATA_SYNC_POLICY.md` §17.11（L1）+ Implementation Plan §8.8（交付） |
+
+### 12.2 唯一正式同步方式
+
+```text
+https://kowanbo.com/bds/upload.php
+        ↓
+Upload-Triggered Sync（Mode B）
+        ↓
+bin/bds-sync.php → BDS Pipeline → GCS → Read-back → sync_report
+```
+
+### 12.3 P1 Safety Rule — Last Successful Version
+
+與 `BATS_DATA_SYNC_POLICY.md` §14.1.1 對齊：
+
+- Validation／Upload／Sync／Read-back **任一失敗** → **不得** 覆蓋 GCS 正式 `knowledge/*.json`
+- AI Runtime 永遠使用 **Last Successful Version**
+- 失敗 UI：`本次同步失敗` + `本次未更新 GCS，舊版資料仍維持可用。`
+
+### 12.4 Phase 7-1c MVP — CLI Trigger（正式採用）
+
+| 階段 | 元件 | 說明 |
+|------|------|------|
+| 1 | Portal POST | 7-1b staging 完成後觸發 sync |
+| 2 | **CLI Trigger** | 呼叫 `C:\bbc-ai-bot\bin\bds-sync.php`（參數含 staging 路徑／`upload_session_id`） |
+| 3 | BDS Pipeline | Phase 6A 已驗證 core（validation → build → GCS → read-back） |
+| 4 | 輸出 | GCS `tenants/5f99b8d665e8444d/knowledge/` + `meta/sync_report.json` |
+| 5 | Portal UI | 成功：`本次同步成功`（§13.1.7）；失敗：§14.1.1 模板 |
+
+**不做（7-1c）：** in-process BDS 重構；Core Orchestrator；Cron；Drive Watch。
+
+### 12.5 Out of Scope — 非產品主線（Not Planned）
+
+| 機制 | 狀態 |
+|------|------|
+| Auto Sync | Out of Scope |
+| Scheduled Sync | Out of Scope |
+| Cron Sync | Out of Scope |
+| Drive Watch Sync | Out of Scope |
+| Google Drive Change Trigger | Out of Scope |
+| Background Scheduled Synchronization | Out of Scope |
+
+> 不得於未來 SSOT 再列為 Phase 7 主線。
+
+### 12.6 Deferred — Core Orchestrator
+
+| 項目 | 說明 |
+|------|------|
+| **名稱** | BDS Core Orchestrator（PHP in-process 或常駐服務） |
+| **狀態** | Future Architecture Enhancement |
+| **再評估條件** | 多租戶商品化；Upload Portal 大量使用；Shared Upload 穩定 |
+
+### 12.7 共用 BDS Sync Core（長期）
+
+Tenant Portal、Shared Portal、未來 API Trigger **必須** 共用同一 BDS Sync Core；**禁止** 各入口獨立 sync 實作。
+
+**交叉引用：** `BATS_DATA_SYNC_POLICY.md` §17.11；`BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §8.8
 
 ---
 
@@ -436,7 +513,7 @@ shared/{industry_code}
 請修正 Excel 後重新上傳。
 ```
 
-`{reason}` 含 validation error 摘要（若有）。**Safety Rule：** 失敗時 **不得** 覆蓋 GCS 正式 knowledge JSON（`BATS_DATA_SYNC_POLICY.md` §14）。
+`{reason}` 含 validation error 摘要（若有）。**Safety Rule：** 失敗時 **不得** 覆蓋 GCS 正式 knowledge JSON（`BATS_DATA_SYNC_POLICY.md` §14.1.1 Last Successful Version Rule）。
 
 成功後 **必須** 更新 readonly 欄位：上一次成功同步時間、目前 AI 使用版本、目前 AI 使用資料狀態。
 
@@ -587,7 +664,7 @@ UI **必須** 建立下列 **六項** 選項；後端 **僅** 允許 Registry／
 
 | 文件 | 關係 |
 |------|------|
-| `BATS_DATA_SYNC_POLICY.md` §17.8～§17.10.6、§19.4 | L1 — Dual Portal、UI Final、Sync Version |
+| `BATS_DATA_SYNC_POLICY.md` §17.8～§17.11、§19.4 | L1 — Dual Portal、UI Final、Sync Trigger |
 | `BATS_DATA_SOURCE_REGISTRY.md` §10.6.5～§10.6.8 | L1 — Tenant pilot、Shared scope、Industry、Sync metadata |
 | `BATS_DATA_CONTRACT.md` §1.6.5 | L3 — Upload Portal Sync Metadata Contract |
 | `BATS_DATA_OWNERSHIP_POLICY.md` §3.7 | L1 — Upload Portal 寫入權限 |
@@ -601,6 +678,7 @@ UI **必須** 建立下列 **六項** 選項；後端 **僅** 允許 Registry／
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.5** | 2026-06-05 | Phase 7-1c-0：§12 Upload→BDS Sync Trigger；§11.4 子階段；7-1a／7-1b Done |
 | **v1.4** | 2026-06-05 | Phase 7-0e.2 Final：目前 AI 使用版本；Sync Version Contract；成功／失敗訊息定案；Metadata Source Priority |
 | **v1.3** | 2026-06-05 | Phase 7-0e.1：欄位順序調整；AI 使用資料狀態；Upload Hint；同步中 UX；成功／失敗訊息模板 |
 | **v1.2** | 2026-06-05 | Phase 7-0e：§13 Upload Portal UI／Field Spec；sync result 文案；industry 選項映射；last upload time 來源 |
@@ -613,8 +691,8 @@ UI **必須** 建立下列 **六項** 選項；後端 **僅** 允許 Registry／
 
 | 項目 | 狀態 |
 |------|------|
-| **文件狀態** | **SSOT 定案（Phase 7-0e.2 Final）** — Phase 7-1a 前文件閉合；待 commit |
-| **程式實作** | **未開始** |
-| **SAFE TO IMPLEMENT Phase 7-1a** | **是** — Tenant Portal **Final UI spec** 已閉合 |
+| **文件狀態** | **SSOT 定案（Phase 7-1c-0）** — 7-1c 架構已閉合；待 commit |
+| **程式實作** | **7-1a／7-1b Done**（legacy www）；**7-1c 待實作** |
+| **SAFE TO IMPLEMENT Phase 7-1c** | **是（文件層）** — CLI Trigger 架構已閉合；7-1b staging **Done** |
 | **SAFE TO IMPLEMENT Phase 7-1** | **是** — domain／auth／pilot／UI field spec 已閉合 |
 | **SAFE TO IMPLEMENT Phase 7-2** | **是（文件層）** — Shared Portal Final UI spec 已閉合；**依賴** Shared BDS 管線就緒 |

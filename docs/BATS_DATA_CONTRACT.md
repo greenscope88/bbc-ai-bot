@@ -17,7 +17,7 @@
 | §1 | Purpose |
 | §1.5 | Structured Knowledge Input Source |
 | §1.6 | Phase 7 — Upload-Triggered Structured Knowledge |
-| §1.6.5 | Upload Portal Sync Metadata Contract |
+| §1.6.6 | Upload → BDS Sync Trigger（Phase 7-1c-0） |
 | §2 | Relationship |
 | §3 | Data Category |
 | §4 | Google Sheet Multi Tab Rule |
@@ -193,6 +193,23 @@ FAQ 型、表格型、條列型知識（含護照、簽證、入境規定、行�
 | `仍為上一次成功同步版本` | 有歷史 success，session 尚未新 success promote |
 
 **交叉引用：** `BATS_DATA_SYNC_POLICY.md` §17.10.3、§17.10.6；`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §13.1、§13.6
+
+#### 1.6.6 Upload → BDS Sync Trigger（Phase 7-1c-0 SSOT）
+
+> **Status: SSOT 定案（2026-06-05）** — Upload Portal 觸發同步之架構邊界；**不**定義 CLI 參數實作細節（見 Implementation Plan §8.8）。
+
+| 項目 | 規格 |
+|------|------|
+| **唯一正式入口** | Upload Portal Upload-Triggered Sync（Mode B） |
+| **Phase 7-1c MVP** | Portal → **CLI Trigger** → `bin/bds-sync.php` |
+| **輸入載體** | staging 目錄內 `.xlsx` + `upload_session.json` |
+| **成功產出** | GCS knowledge JSON + `sync_report.json`（含 `sync_id`） |
+| **Safety** | Last Successful Version Rule（`BATS_DATA_SYNC_POLICY.md` §14.1.1） |
+| **禁止** | 失敗時覆蓋正式 `knowledge/*.json`；`sync_id` 回退 |
+
+**Out of Scope：** Auto／Scheduled／Cron／Drive Watch Sync — Not Planned。
+
+**交叉引用：** `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §12；`BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §8.8
 
 ---
 
@@ -887,6 +904,7 @@ tenants/{sno}/knowledge/
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.8** | 2026-06-05 | Phase 7-1c-0：§1.6.6 Upload→BDS Sync Trigger；Last Successful Version cross-ref |
 | **v1.7** | 2026-06-05 | Phase 7-0e.2 Final：§1.6.5 Upload Portal Sync Metadata Contract（sync_id、來源優先序） |
 | **v1.6** | 2026-06-05 | Phase 7-0d：§1.6.4 雙 Upload Portal URL（Tenant／Shared） |
 | **v1.5** | 2026-06-05 | Phase 7-0c：§1.6.4 Upload Portal canonical URL（kowanbo）；cross-ref MVP Plan |

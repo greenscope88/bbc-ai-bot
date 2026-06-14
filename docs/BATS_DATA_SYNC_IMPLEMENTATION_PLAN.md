@@ -1029,8 +1029,8 @@ L3 實作（未來）
 
 ## 8. Phase 7 — Upload Portal（7-1 / 7-2 / 7-3）
 
-> **Status:** SSOT 定案（Phase 7-0e.2 Final）；**程式未開始**。  
-> **詳細規劃：** `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md`（本節為摘要與交付順序）。**7-1a 前文件已閉合。**
+> **Status:** SSOT 定案（Phase 7-1c-0）；7-1a／7-1b **Runtime Done**（legacy www）；**7-1c 待實作**。  
+> **詳細規劃：** `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §12（Sync Trigger）；本節為交付順序。
 
 ### 8.1 目標總覽
 
@@ -1052,9 +1052,10 @@ L3 實作（未來）
 | **7-0e** | Upload Portal UI／Field Spec SSOT | **Done** ✅ |
 | **7-0e.1** | Upload Portal UI Enhancement（欄位順序、狀態、UX 文案） | **Done** ✅ |
 | **7-0e.2** | Upload Portal UI Finalization（Sync Version、訊息定案、Metadata Priority） | **Done** ✅ |
-| **7-1a** | `www/bds/upload.php` + travel_b gate + retUrl allowlist | 未開始 |
-| **7-1b** | Tenant Upload UI（§13.2 欄位）+ POST → BDS pipeline（6A core） | 未開始 |
-| **7-1c** | `bbcshops.com/bds/upload.php` redirect-only（可選） | 未開始 |
+| **7-1a** | `www/bds/upload.php` + travel_b gate + retUrl allowlist | **Done** ✅ |
+| **7-1b** | Upload receive + staging（`var/bds/uploads/...`） | **Done** ✅ |
+| **7-1c** | Upload → BDS Sync Trigger（CLI → `bin/bds-sync.php`） | **Next** |
+| **7-1d** | `bbcshops.com/bds/upload.php` redirect-only（可選） | 未開始 |
 | **7-2a** | `www/bds/shared_upload.php` + management center sno gate | 未開始 |
 | **7-2b** | Shared UI（§13.3 欄位、§13.4 industry select）+ Shared Contract → `shared/travel/knowledge/` | 未開始 |
 | **7-2c** | `bbcshops.com/bds/shared_upload.php` redirect-only（可選） | 未開始 |
@@ -1121,12 +1122,60 @@ L3 實作（未來）
 | 成功訊息 | Tenant：`{tenant_key}` + `{sync_id}`；Shared：`shared/{industry_code}` + `{sync_id}` |
 | Industry 六項 | travel enabled；其餘 disabled；未來 Registry／Policy 控制 |
 
+### 8.8 Phase 7-1c — Upload → BDS Sync Trigger（Phase 7-1c-0 SSOT）
+
+> **Status: SSOT 定案（2026-06-05）** — L1：`BATS_DATA_SYNC_POLICY.md` §17.11；L2：`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §12。
+
+#### 8.8.1 架構決策（CLI Trigger MVP）
+
+```text
+upload.php（staging 完成）
+    ↓
+CLI Trigger（exec / proc_open）
+    ↓
+bin/bds-sync.php（Phase 6A）
+    ↓
+Validation → Build → GCS → Read-back → sync_report.json
+```
+
+| 項目 | 規格 |
+|------|------|
+| **輸入** | `var/bds/uploads/tenants/{sno}/staging/{upload_session_id}/` |
+| **Pilot sno** | `5f99b8d665e8444d`（`travel_b`） |
+| **輸出** | `tenants/{sno}/knowledge/` + `tenants/{sno}/meta/sync_report.json` |
+| **Safety** | §14.1.1 Last Successful Version — 失敗不覆蓋正式 JSON |
+
+#### 8.8.2 Phase 7-1c 退出準則
+
+- [ ] 7-1b staging 成功後 Portal 觸發 `bin/bds-sync.php`
+- [ ] 成功：GCS knowledge 更新 + read-back PASS + `sync_report` `status=success` + UI `本次同步成功`
+- [ ] 失敗：GCS 正式 JSON **不變** + UI 失敗模板（§14.1.1）
+- [ ] `sync_id` 僅於 **成功** promote 後更新；失敗不得回退或部分覆蓋
+- [ ] **不** 實作 Cron／Drive Watch／Auto Sync
+- [ ] **不** 實作 Core Orchestrator（Deferred）
+
+#### 8.8.3 Out of Scope（Not Planned）
+
+Auto Sync、Scheduled Sync、Cron Sync、Drive Watch、Google Drive Change Trigger、Background Scheduled Sync — **均不納入 Phase 7 主線**。
+
+#### 8.8.4 Deferred
+
+| 項目 | 觸發再評估 |
+|------|------------|
+| **Core Orchestrator** | 多租戶商品化；Portal 大量使用；Shared Upload 穩定 |
+| **bbcshops redirect** | 7-1d（可選） |
+
+#### 8.8.5 共用 BDS Sync Core
+
+7-2 Shared Portal、未來 API Trigger **必須** 重用同一 `bin/bds-sync.php`／BDS core；禁止各入口獨立 sync 邏輯。
+
 ---
 
 ## 版本紀錄
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v2.4** | 2026-06-05 | Phase 7-1c-0：§8.8 Upload→BDS CLI Trigger；7-1a／7-1b Done；7-1c 重新定義 |
 | **v2.3** | 2026-06-05 | Phase 7-0e.2 Final：§8.7 Sync Version；7-0e.2 done；7-1a 前退出準則閉合 |
 | **v2.2** | 2026-06-05 | Phase 7-0e.1：§8.7 UI Enhancement；7-0e.1 done；7-1／7-2 退出準則增補狀態欄位與 UX |
 | **v2.1** | 2026-06-05 | Phase 7-0e：§8.7 UI Field Spec；7-0e done；7-1／7-2 退出準則 UI 項 |

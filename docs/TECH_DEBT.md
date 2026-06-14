@@ -140,6 +140,95 @@
 
 ---
 
+## BDS Technical Debt
+
+BDS / Drive Connector 相關 P2 技術債登錄區。不阻塞 Phase 6 Core Architecture 關閉與 Phase 7 主線。
+
+### P2-TD-6D2
+
+| 欄位 | 內容 |
+|------|------|
+| **ID** | P2-TD-6D2 |
+| **Level** | P2 |
+| **Title** | Google Workspace Export（Phase 6D-2） |
+| **Source / Context** | Phase 6 Drive Connector MVP（6D Tenant Private Archive + 6E Industry Shared Archive）已 **CONDITIONAL CLOSED**；`application/vnd.google-apps.*` 原生檔尚未實作 Export → Archive promote 管線。Phase 6E-6 Close-out 將本項列為 P1 候選，經治理審查 **降級為 P2 Deferred**，不納入目前主線。 |
+| **Related SSOT** | `docs/BATS_DRIVE_GCS_MAPPING.md` §8.2、`docs/BATS_DRIVE_CONNECTOR_SCOPE.md` §6、`docs/BATS_DRIVE_METADATA_CONTRACT.md`、`core/bds/BdsDriveArchivePromoter.php`、`core/bds/BdsSharedArchivePromoter.php` |
+| **Status** | **Deferred** |
+| **Blocking** | 否（Non-blocking） |
+| **Suggested Timing** | Phase 7 完成後；Multi-Tenant MVP 初期 |
+| **Notes** | **不列為目前主線。** |
+
+### P2-TD-7C0
+
+| 欄位 | 內容 |
+|------|------|
+| **ID** | P2-TD-7C0 |
+| **Level** | P2 |
+| **Title** | BDS Core Orchestrator（in-process 編排服務） |
+| **Source / Context** | Phase 7-1c-0 架構決策：MVP 採 **CLI Trigger** → `bin/bds-sync.php`；不重構 BDS Core。 |
+| **Related SSOT** | `BATS_DATA_SYNC_POLICY.md` §17.11.4；`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §12.6 |
+| **Status** | **Deferred** — Future Architecture Enhancement |
+| **Blocking** | 否（Non-blocking for Phase 7-1c） |
+| **Suggested Timing** | 多租戶正式商品化；大量 Upload Portal 使用；Shared Upload 穩定後 |
+| **Notes** | Portal／API 入口仍須共用同一 BDS Sync Core，Orchestrator 僅改 **觸發與編排方式**，不改 Safety Rule。 |
+
+#### Classification
+
+| 分類 | 說明 |
+|------|------|
+| **P2 Technical Debt** | 不阻塞主線；登錄於本文件 |
+| **Non-blocking** | 不影響 Phase 7、travel_b 上線、Multi-Tenant MVP |
+| **Governance / Archive Completeness Improvement** | 補齊 Workspace 原生檔 Archive 覆蓋率與歷史快照能力 |
+
+#### 目前行為（Runtime）
+
+下列 Google Workspace **原生** MIME 在 Archive Promote Planner / Promoter 一律 **SKIP**：
+
+| MIME | 處置 |
+|------|------|
+| `application/vnd.google-apps.spreadsheet` | SKIP |
+| `application/vnd.google-apps.document` | SKIP |
+| `application/vnd.google-apps.presentation` | SKIP |
+
+- **reason：** `W_GOOGLE_WORKSPACE_EXPORT_REQUIRED`
+- 已匯出之 binary 格式（如 `.xlsx`、`.pdf`）**不受本項限制**，依既有 Gate 4 判定。
+
+#### 不影響（Non-Blocking）
+
+| 範圍 | 說明 |
+|------|------|
+| Phase 7 Upload Triggered BDS Sync | Sheet → Knowledge 管線獨立於 Drive Export |
+| `travel_b` 正式上線 | Tenant Private Knowledge（Sheet）與 binary Archive 已驗證 |
+| Multi-Tenant MVP | 不阻塞多租戶 Sheet 同步主線 |
+| BDS Knowledge Pipeline | Structured Knowledge 仍以 Google Sheet 為 SSOT |
+| Gemini Runtime | Runtime 讀取 GCS，不依賴 Workspace Export |
+
+#### 影響（若維持 Deferred）
+
+| 影響 | 說明 |
+|------|------|
+| Google Workspace Native Files 無法進入 `archive/` | 原生 Sheet / Doc / Slides 不寫入 GCS `archive/` |
+| Workspace 歷史快照無法保存 | 無 Export 即無不可變快照 |
+| Archive Coverage 非 100% | Drive 資料夾若含原生 Workspace 檔，覆蓋率缺口可預期 |
+| Workspace 檔案無 Read-back 驗證 | 無 promote 即無 `sha256_content` read-back |
+
+#### 建議啟動條件（Trigger）
+
+| Trigger | 條件 |
+|---------|------|
+| **Trigger A** | Google Workspace Native Files 成為主要資料來源之一 |
+| **Trigger B** | 旅行社提出歷史版本追溯需求 |
+| **Trigger C** | 至少 2 家旅行社正式使用 BDS |
+| **Trigger D** | Phase 7 Upload Triggered BDS Sync 已完成並穩定運作 |
+
+#### 預估執行時機
+
+- **Phase 7 完成後**
+- **Multi-Tenant MVP 初期**
+- 須同時滿足上述 Trigger 至少一項，並經 CWP Git Safe 獨立 PR 交付
+
+---
+
 ## 5. P3 / Roadmap Items
 
 ### P3-RM-001
@@ -190,3 +279,4 @@
 | 2026-06-05 | 技術債與 Roadmap 條目中文化（Title、Risk、Notes、Suggested Timing 等以中文為主）。 |
 | 2026-06-06 | 新增 P2-TD-006：BBCTravel Departure Mapping 規格漂移（null→tpetsa vs null→all） |
 | 2026-06-06 | 移除 P2-TD-006：已轉為 Phase C-1 主線工作（C-1A 文件、C-1B 程式），不屬技術債 |
+| 2026-06-13 | 新增 **BDS Technical Debt** 區段；登錄 P2-TD-6D2：Google Workspace Export（Phase 6D-2）— Status: Deferred |

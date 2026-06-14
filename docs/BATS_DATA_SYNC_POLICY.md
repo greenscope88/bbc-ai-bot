@@ -986,7 +986,7 @@ BDS Safety Rule（§14.1）之 Validation 步驟 **須依 `data_category` 選用
 | **Upload Portal 觸發** | 上傳 Excel 成功 → 立即 BDS（Mode B） | **Phase 7 MVP 主軸** |
 | **手動觸發（CLI）** | Phase 6A `bds-sync` 等營運命令 | 過渡／驗收用 |
 | **Webhook** | 上傳頁或後端事件通知 BDS | 未來輔助 |
-| **Cron / Scheduler** | 定時批次 | **未來輔助**；**非** Phase 7 主軸（§17.5、§16.2 Mode C） |
+| **Cron / Scheduler** | 定時批次 | **Out of Scope / Not Planned**（§17.5）；Mode C 僅歷史記錄 |
 | **CI 觸發** | 設定檔 PR merge 後觸發 | 僅限 Git-managed config，非 Structured 主徑 |
 
 ### 13.3 BATS Query Flow 不得觸發同步（正式規則）
@@ -1066,6 +1066,42 @@ Source（Sheet / Drive / Upload）
 | **記錄錯誤資訊** | 寫入 `meta/sync_status.json`、`meta/` 錯誤紀錄；可選保留 tmp 供除錯（非正式路徑） |
 
 > **禁止：** 先寫入正式路徑再驗證；或驗證失敗仍覆蓋 `knowledge/`、`config/` 下既有正式檔案。
+
+#### 14.1.1 Last Successful Version Rule（P1 Safety Rule — Phase 7-1c-0）
+
+> **Status: SSOT 定案（2026-06-05）** — AI Runtime 與 Upload Portal 同步之最高優先安全規則。
+
+**AI Runtime 永遠使用 Last Successful Version（最後一次成功同步版本）。**
+
+下列任一失敗 **均不得** 覆蓋目前正式版本：
+
+| 失敗類型 | 說明 |
+|----------|------|
+| Validation Fail | Contract／schema 驗證未通過 |
+| Upload Fail | 上傳接收或 staging 失敗 |
+| Sync Fail | BDS job 執行失敗 |
+| Read-back Fail | GCS read-back 驗證未通過 |
+
+**禁止結果：**
+
+| 禁止 | 說明 |
+|------|------|
+| `knowledge/*.json` 消失 | 正式 JSON 不得被刪除或清空 |
+| 部分覆蓋 | 不得僅更新部分正式 JSON（整檔 atomic promote） |
+| metadata 不一致 | `sync_report`／knowledge metadata 不得與未成功 promote 之內容不一致 |
+| `sync_id` 回退 | 失敗不得使 UI 顯示之版本低於上一版成功 `sync_id` |
+| AI 使用未完成版本 | BATS／Upload Portal **不得** 將失敗批次標示為「已同步版本」 |
+
+**Upload Portal 失敗文案（必須）：**
+
+```text
+本次同步失敗
+
+本次未更新 GCS，
+舊版資料仍維持可用。
+```
+
+**交叉引用：** `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §12.3；`BATS_DATA_CONTRACT.md` §1.6.6；Implementation Plan §8.8
 
 ### 14.2 錯誤分類
 
@@ -1223,7 +1259,7 @@ tenants/5f99b8d665e8444d/knowledge/
 | **啟用條件** | 須另開 SSOT 修訂；不得與 Mode B 並存為「雙正式模式」 |
 
 > **正式決議不變：** 第一版 BDS 僅 **Mode B**。Mode C 僅作為未來可能方向記錄於本節，**不得** 在實作 Phase 中提前引入。  
-> **Phase 7 澄清：** Phase 7 **不是** Cron Scheduler First；Cron／排程僅能作為 **Upload-Triggered Sync 之後** 的輔助機制（見 §17.5）。
+> **Phase 7 澄清：** Phase 7 **不是** Cron Scheduler First。Cron／排程／Auto Sync **均為 Out of Scope / Not Planned**（§17.5）；**不得** 於未來 SSOT 再列為產品主線。
 
 ### 16.3 長期願景（20～200 家旅行社）
 
@@ -1302,12 +1338,24 @@ Tenant Private、Industry Shared、Global Shared **共用同一套** Upload → 
 | **Google Drive** | **Archive Source**（非結構化原件；Phase 6B+） |
 | **Future RAG** | **GCS Only** |
 
-### 17.5 與 Cron / Scheduler 關係
+### 17.5 與 Cron / Scheduler 關係 — **Out of Scope（Not Planned）**
 
-| 項目 | 說明 |
+| 項目 | 狀態 |
 |------|------|
-| **Phase 7 MVP** | **Upload-Triggered**；上傳成功 → 立即 BDS |
-| **Cron / Scheduler** | **未來輔助機制** — 補償同步、離峰重試、營運批次 **不得** 取代 Upload Portal 為主入口 |
+| **Phase 7 MVP 主軸** | **Upload-Triggered** — 上傳成功 → 立即 BDS（Mode B） |
+| **Auto Sync** | **Out of Scope / Not Planned / Not Required** |
+| **Scheduled Sync** | **Out of Scope / Not Planned / Not Required** |
+| **Cron Sync** | **Out of Scope / Not Planned / Not Required** |
+| **Drive Watch Sync** | **Out of Scope / Not Planned / Not Required** |
+| **Google Drive Change Trigger** | **Out of Scope / Not Planned / Not Required** |
+| **Background Scheduled Synchronization** | **Out of Scope / Not Planned / Not Required** |
+
+> **治理決策（Phase 7-1c-0）：** 以上機制 **不得** 於未來文件再次列為產品主線或 Phase 7 MVP 規劃項。若需補償／離峰重試，須另開 SSOT 修訂且 **不得** 取代 Upload Portal 為 Structured Knowledge 唯一正式入口。
+
+| 允許（過渡／營運） | 說明 |
+|--------------------|------|
+| **CLI 手動觸發** | `bin/bds-sync.php` — Phase 6A 驗證管線；Phase 7-1c Portal 透過 CLI 觸發 |
+| **Upload Portal 觸發** | **唯一正式產品同步入口**（§17.11） |
 | **Mode C** | 仍僅記錄於 §16.2；Phase 7 **不** 引入排程為正式主模式 |
 
 ### 17.6 與 Phase 6B Drive Connector 邊界
@@ -1551,6 +1599,62 @@ shared/{industry_code}
 | 用途 | 客服確認、Tenant 驗證、Read-back 驗證、問題追蹤、Versioning 對照 |
 
 **交叉引用：** `BATS_DATA_CONTRACT.md` §1.6.5；`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §13.6
+
+### 17.11 Upload → BDS Sync Trigger Architecture（Phase 7-1c-0 SSOT）
+
+> **Status: SSOT 定案（2026-06-05）** — Upload Portal 觸發 BDS 之架構決策；L2 細節：`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §12。
+
+#### 17.11.1 唯一正式同步方式
+
+```text
+Upload Portal（固定網頁上傳）
+        ↓
+立即同步（Upload-Triggered / Mode B）
+        ↓
+更新 GCS Knowledge（+ sync_report）
+```
+
+**不得** 以 Cron、Drive Watch、背景排程或各 Portal 內嵌獨立同步邏輯取代上列主徑。
+
+#### 17.11.2 Phase 7-1c MVP — CLI Trigger（正式採用）
+
+| 步驟 | 元件 |
+|------|------|
+| 1 | Tenant Upload Portal `upload.php`（7-1a／7-1b 已完成 gate + staging） |
+| 2 | **CLI Trigger** — `exec`／`proc_open` 呼叫 `bin/bds-sync.php`（Host A） |
+| 3 | 既有 BDS Pipeline（Phase 6A core） |
+| 4 | GCS `tenants/{sno}/knowledge/` |
+| 5 | Read-back |
+| 6 | `sync_report.json` |
+
+**採用理由：**
+
+1. 重用 Phase 6A 已驗證管線  
+2. 最低風險  
+3. 最快完成 Upload → Sync 商業閉環  
+4. 避免 Phase 7-1c 提前重構 BDS Core  
+
+**輸入：** staging 路徑 `var/bds/uploads/tenants/{sno}/staging/{upload_session_id}/`（7-1b 產出）。
+
+#### 17.11.3 共用 BDS Sync Core（長期原則）
+
+| 入口 | 必須 |
+|------|------|
+| Tenant Upload Portal | 共用 **同一套** BDS Sync Core |
+| Shared Upload Portal（7-2） | 同上 |
+| 未來 API Trigger（若存在） | 同上 |
+
+**禁止：** 各入口各自實作 validation／build／GCS write／read-back 邏輯。
+
+#### 17.11.4 Deferred — Core Orchestrator
+
+| 項目 | 說明 |
+|------|------|
+| **名稱** | BDS Core Orchestrator（in-process 編排服務） |
+| **狀態** | **Future Architecture Enhancement** — **不屬於 Phase 7-1c** |
+| **觸發再評估** | 多租戶正式商品化；大量 Upload Portal 使用；Shared Upload 穩定後 |
+
+**交叉引用：** `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §8.8；`TECH_DEBT.md` P2-TD-7C0
 
 ---
 
@@ -2021,6 +2125,7 @@ Service Account 僅授權必要之 `tenants/{sno}/` prefix；不得授予跨 ten
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v2.9** | 2026-06-05 | Phase 7-1c-0：§14.1.1 Last Successful Version Rule；§17.5 Out of Scope 定案；§17.11 Upload→BDS CLI Trigger |
 | **v2.8** | 2026-06-05 | Phase 7-0e.2 Final：§17.10.6 Sync Version；目前 AI 使用版本；成功訊息定案；Metadata Source Priority |
 | **v2.7** | 2026-06-05 | Phase 7-0e.1：§17.10 欄位順序；AI 使用資料狀態；Upload Hint；同步中 UX；成功／失敗訊息模板 |
 | **v2.6** | 2026-06-05 | Phase 7-0e：§17.10 Upload Portal UI／Field Spec；sync result 文案；last upload time 來源 |
