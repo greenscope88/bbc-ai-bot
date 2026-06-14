@@ -5,7 +5,7 @@ declare(strict_types=1);
 /**
  * BDS Phase 6A — Manual Sync Command.
  *
- * Tenant Registry → Google Sheet Reader → Parser → Validator
+ * Tenant Registry → Google Sheet Reader **or** Upload Staging (Xlsx) → Parser → Validator
  * → Knowledge Builder → JSON Writer → GCS Upload → Read-back Verification → Console Result
  *
  * @see docs/BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md §Phase 6A
@@ -20,15 +20,25 @@ require_once $projectRoot . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR .
 require_once $projectRoot . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR . 'BdsValidator.php';
 require_once $projectRoot . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR . 'BdsKnowledgeDocumentBuilder.php';
 require_once $projectRoot . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR . 'BdsJsonWriter.php';
+require_once $projectRoot . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR . 'BdsUploadStagingResolver.php';
+require_once $projectRoot . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR . 'BdsXlsxReader.php';
+
 require_once $projectRoot . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR . 'BdsGcsUploader.php';
 
 /**
- * @return array{tenant_key: string, sno: string, dry_run: bool, write_gcs: bool}
+ * @return array{
+ *   tenant_key: string,
+ *   sno: string,
+ *   upload_session_id: string,
+ *   dry_run: bool,
+ *   write_gcs: bool
+ * }
  */
 function parse_cli_args(array $argv): array
 {
     $tenantKey = '';
     $sno = '';
+    $uploadSessionId = '';
     $dryRun = true;
     $writeGcs = false;
 
@@ -44,6 +54,10 @@ function parse_cli_args(array $argv): array
         }
         if (strpos($arg, '--sno=') === 0) {
             $sno = substr($arg, 6);
+            continue;
+        }
+        if (strpos($arg, '--upload-session-id=') === 0) {
+            $uploadSessionId = substr($arg, 20);
             continue;
         }
         if (strpos($arg, '--dry-run=') === 0) {
@@ -70,6 +84,7 @@ function parse_cli_args(array $argv): array
     return [
         'tenant_key' => trim($tenantKey),
         'sno' => trim($sno),
+        'upload_session_id' => trim($uploadSessionId),
         'dry_run' => $dryRun,
         'write_gcs' => $writeGcs,
     ];
@@ -81,7 +96,20 @@ function print_usage(): void
     fwrite(STDERR, "  php bin/bds-sync.php <tenant_key>\n");
     fwrite(STDERR, "  php bin/bds-sync.php --tenant=<tenant_key>\n");
     fwrite(STDERR, "  php bin/bds-sync.php --sno=<tenant_sno>\n");
+    fwrite(STDERR, "  php bin/bds-sync.php --tenant=travel_b --upload-session-id=UPLOAD-YYYYMMDD-HHMMSS-abcdef --dry-run\n");
     fwrite(STDERR, "  php bin/bds-sync.php --tenant=travel_b --dry-run=false --write-gcs\n");
+}
+
+/**
+ * @return array<string, string>
+ */
+function build_upload_source_metadata(string $uploadSessionId, string $storedFilename): array
+{
+    return [
+        'source_type' => 'upload_portal',
+        'upload_session_id' => $uploadSessionId,
+        'stored_filename' => $storedFilename,
+    ];
 }
 
 function env_string(string $name): string
@@ -221,8 +249,11 @@ if ($entry === null) {
 $tenantKey = (string) $entry['tenant_key'];
 $tenantSno = (string) $entry['sno'];
 $sheetId = (string) $entry['private_knowledge_sheet_id'];
+$uploadSessionId = $args['upload_session_id'];
+$isUploadMode = $uploadSessionId !== '';
 
 fwrite(STDOUT, 'Tenant: ' . $tenantKey . PHP_EOL);
+fwrite(STDOUT, 'Input Mode: ' . ($isUploadMode ? 'upload' : 'sheet') . PHP_EOL);
 
 if ($entry['enabled'] !== true) {
     print_step('Registry', 'FAIL');
@@ -231,39 +262,84 @@ if ($entry['enabled'] !== true) {
     exit(1);
 }
 
-if ($tenantSno === '' || $sheetId === '') {
+if ($tenantSno === '') {
     print_step('Registry', 'FAIL');
-    fwrite(STDERR, "ERROR: registry missing sno or private_knowledge_sheet_id\n");
+    fwrite(STDERR, "ERROR: registry missing sno\n");
+    write_registry_error_report($outputRoot, $entry, 'BDS_REGISTRY_INCOMPLETE', 'missing required registry fields');
+    exit(1);
+}
+
+if (!$isUploadMode && $sheetId === '') {
+    print_step('Registry', 'FAIL');
+    fwrite(STDERR, "ERROR: registry missing private_knowledge_sheet_id\n");
     write_registry_error_report($outputRoot, $entry, 'BDS_REGISTRY_INCOMPLETE', 'missing required registry fields');
     exit(1);
 }
 
 print_step('Registry', 'PASS');
 
-$credentialsPath = env_string('BDS_GOOGLE_APPLICATION_CREDENTIALS');
-$credentialsPath = $credentialsPath !== '' ? $credentialsPath : null;
-
-try {
-    $reader = new BdsGoogleSheetReader($credentialsPath);
-    $tabs = $reader->readSheet($sheetId);
-} catch (Throwable $e) {
-    print_step('Google Sheet', 'FAIL');
-    fwrite(STDERR, 'ERROR: sheet read failed: ' . $e->getMessage() . PHP_EOL);
-    write_registry_error_report($outputRoot, $entry, 'BDS_SHEET_READ_FAILED', $e->getMessage());
-    exit(1);
-}
-
-print_step('Google Sheet', 'PASS');
-
 $parser = new BdsMockSheetParser();
 $validator = new BdsValidator();
+$writer = new BdsJsonWriter($parser, $validator, $outputRoot);
+$sourceSheetId = null;
+$uploadSource = null;
+$tabs = [];
+
+if ($isUploadMode) {
+    print_step('Google Sheet', 'SKIP (upload mode)');
+
+    $uploadsRoot = $projectRoot . DIRECTORY_SEPARATOR . 'var' . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR . 'uploads';
+    $resolver = new BdsUploadStagingResolver($uploadsRoot);
+    $staging = $resolver->resolve($tenantKey, $tenantSno, $uploadSessionId);
+
+    if (($staging['ok'] ?? false) !== true) {
+        print_step('Upload Staging', 'FAIL');
+        $reason = isset($staging['reason']) ? (string) $staging['reason'] : 'staging resolve failed';
+        fwrite(STDERR, 'ERROR: upload staging resolve failed: ' . $reason . PHP_EOL);
+        write_registry_error_report($outputRoot, $entry, 'BDS_UPLOAD_STAGING_FAILED', $reason);
+        exit(1);
+    }
+
+    print_step('Upload Staging', 'PASS');
+
+    try {
+        $xlsxReader = new BdsXlsxReader();
+        $tabs = $xlsxReader->readFile((string) $staging['xlsx_path']);
+    } catch (Throwable $e) {
+        print_step('Upload Excel', 'FAIL');
+        fwrite(STDERR, 'ERROR: upload excel read failed: ' . $e->getMessage() . PHP_EOL);
+        write_registry_error_report($outputRoot, $entry, 'BDS_UPLOAD_XLSX_READ_FAILED', $e->getMessage());
+        exit(1);
+    }
+
+    print_step('Upload Excel', 'PASS');
+    $uploadSource = build_upload_source_metadata(
+        $uploadSessionId,
+        (string) ($staging['stored_filename'] ?? '')
+    );
+} else {
+    $credentialsPath = env_string('BDS_GOOGLE_APPLICATION_CREDENTIALS');
+    $credentialsPath = $credentialsPath !== '' ? $credentialsPath : null;
+
+    try {
+        $reader = new BdsGoogleSheetReader($credentialsPath);
+        $tabs = $reader->readSheet($sheetId);
+    } catch (Throwable $e) {
+        print_step('Google Sheet', 'FAIL');
+        fwrite(STDERR, 'ERROR: sheet read failed: ' . $e->getMessage() . PHP_EOL);
+        write_registry_error_report($outputRoot, $entry, 'BDS_SHEET_READ_FAILED', $e->getMessage());
+        exit(1);
+    }
+
+    print_step('Google Sheet', 'PASS');
+    $sourceSheetId = $sheetId;
+}
+
 $normalized = $parser->parse($tenantSno, $tabs);
 $validation = $validator->validate($normalized);
 
-$writer = new BdsJsonWriter($parser, $validator, $outputRoot);
-
 if (($validation['ok'] ?? false) !== true) {
-    $writer->writeDryRun($tenantSno, $normalized, $validation, $sheetId);
+    $writer->writeDryRun($tenantSno, $normalized, $validation, $sourceSheetId, $uploadSource);
     print_step('Validation', 'FAIL');
     print_step('Knowledge Build', 'SKIP');
     print_step('GCS Upload', 'SKIP');
@@ -274,7 +350,7 @@ if (($validation['ok'] ?? false) !== true) {
 
 print_step('Validation', 'PASS');
 
-$knowledgeJson = BdsKnowledgeDocumentBuilder::fromNormalized($tenantSno, $normalized, $sheetId);
+$knowledgeJson = BdsKnowledgeDocumentBuilder::fromNormalized($tenantSno, $normalized, $sourceSheetId);
 if (count($knowledgeJson) !== 5) {
     print_step('Knowledge Build', 'FAIL');
     print_step('GCS Upload', 'SKIP');
@@ -285,7 +361,7 @@ if (count($knowledgeJson) !== 5) {
 
 print_step('Knowledge Build', 'PASS');
 
-$dryRunResult = $writer->writeDryRun($tenantSno, $normalized, $validation, $sheetId);
+$dryRunResult = $writer->writeDryRun($tenantSno, $normalized, $validation, $sourceSheetId, $uploadSource);
 if (($dryRunResult['ok'] ?? false) !== true) {
     print_step('GCS Upload', 'SKIP');
     print_step('Read-back Verification', 'SKIP');
@@ -310,6 +386,8 @@ if (!$writeGcs || $dryRun) {
     exit(0);
 }
 
+$credentialsPath = env_string('BDS_GOOGLE_APPLICATION_CREDENTIALS');
+$credentialsPath = $credentialsPath !== '' ? $credentialsPath : null;
 putenv('BDS_DRY_RUN=false');
 putenv('BDS_GCS_WRITE_ENABLED=true');
 putenv('BDS_TARGET_SNO=' . $tenantSno);
@@ -325,7 +403,7 @@ if ($gate['open'] !== true) {
 $bucket = env_string('BDS_GCS_BUCKET');
 $bucket = $bucket !== '' ? $bucket : null;
 $uploader = new BdsGcsUploader($bucket, $credentialsPath, $outputRoot);
-$uploadResult = $uploader->uploadKnowledge($tenantSno, $knowledgeJson, $validation, $sheetId);
+$uploadResult = $uploader->uploadKnowledge($tenantSno, $knowledgeJson, $validation, $sourceSheetId);
 
 if (($uploadResult['ok'] ?? false) !== true) {
     print_step('GCS Upload', 'FAIL');

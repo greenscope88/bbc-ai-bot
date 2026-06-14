@@ -57,10 +57,16 @@ final class BdsJsonWriter
   /**
    * @param array<string, mixed> $normalized
    * @param array<string, mixed> $validation
+   * @param array<string, string>|null $uploadSource source_type, upload_session_id, stored_filename
    * @return array<string, mixed>
    */
-  public function writeDryRun(string $tenantSno, array $normalized, array $validation, ?string $sourceSheetId = null): array
-  {
+  public function writeDryRun(
+    string $tenantSno,
+    array $normalized,
+    array $validation,
+    ?string $sourceSheetId = null,
+    ?array $uploadSource = null
+  ): array {
     $startedAt = gmdate('Y-m-d\TH:i:s\Z');
     $validationOk = isset($validation['ok']) && $validation['ok'] === true;
     $errors = isset($validation['errors']) && is_array($validation['errors']) ? $validation['errors'] : [];
@@ -77,7 +83,7 @@ final class BdsJsonWriter
       $this->clearKnowledgeJsonFiles($knowledgeDir);
       $this->ensureDirectory($knowledgeDir);
       $publishedAt = gmdate('Y-m-d\TH:i:s\Z');
-      $generatedFiles = $this->writeKnowledgeJsonFiles($tenantSno, $normalized, $knowledgeDir, $publishedAt, $sourceSheetId);
+      $generatedFiles = $this->writeKnowledgeJsonFiles($tenantSno, $normalized, $knowledgeDir, $publishedAt, $sourceSheetId, $uploadSource);
       $status = 'dry_run_success';
       $this->removeFileIfExists($reportsDir . DIRECTORY_SEPARATOR . 'error_report.json');
     } else {
@@ -93,7 +99,8 @@ final class BdsJsonWriter
       $startedAt,
       $finishedAt,
       $generatedFiles,
-      $status
+      $status,
+      $uploadSource
     );
 
     $validationReportPath = $this->writeValidationReport(
@@ -155,11 +162,12 @@ final class BdsJsonWriter
     array $normalized,
     string $knowledgeDir,
     string $publishedAt,
-    ?string $sourceSheetId
+    ?string $sourceSheetId,
+    ?array $uploadSource = null
   ): array {
     $paths = [];
 
-    $companyProfile = $this->buildCompanyProfileDocument($tenantSno, $normalized, $publishedAt, $sourceSheetId);
+    $companyProfile = $this->buildCompanyProfileDocument($tenantSno, $normalized, $publishedAt, $sourceSheetId, $uploadSource);
     $paths[] = $this->writeJsonFile($knowledgeDir . DIRECTORY_SEPARATOR . self::TAB_OUTPUT_FILES['company_profile'], $companyProfile);
 
     $itemTabs = [
@@ -170,7 +178,7 @@ final class BdsJsonWriter
     ];
 
     foreach ($itemTabs as $tab => $items) {
-      $document = $this->buildItemsDocument($tenantSno, $tab, $items, $publishedAt, $sourceSheetId);
+      $document = $this->buildItemsDocument($tenantSno, $tab, $items, $publishedAt, $sourceSheetId, $uploadSource);
       $paths[] = $this->writeJsonFile($knowledgeDir . DIRECTORY_SEPARATOR . self::TAB_OUTPUT_FILES[$tab], $document);
     }
 
@@ -185,7 +193,8 @@ final class BdsJsonWriter
     string $tenantSno,
     array $normalized,
     string $publishedAt,
-    ?string $sourceSheetId
+    ?string $sourceSheetId,
+    ?array $uploadSource = null
   ): array {
     $profile = isset($normalized['company_profile']) && is_array($normalized['company_profile'])
       ? $normalized['company_profile']
@@ -203,6 +212,7 @@ final class BdsJsonWriter
     if ($sourceSheetId !== null && $sourceSheetId !== '') {
       $document['source_sheet_id'] = $sourceSheetId;
     }
+    $this->applyUploadSourceMetadata($document, $uploadSource);
 
     return $document;
   }
@@ -216,7 +226,8 @@ final class BdsJsonWriter
     string $sourceTab,
     array $items,
     string $publishedAt,
-    ?string $sourceSheetId
+    ?string $sourceSheetId,
+    ?array $uploadSource = null
   ): array {
     $document = [
       'schema_version' => self::SCHEMA_VERSION,
@@ -230,12 +241,35 @@ final class BdsJsonWriter
     if ($sourceSheetId !== null && $sourceSheetId !== '') {
       $document['source_sheet_id'] = $sourceSheetId;
     }
+    $this->applyUploadSourceMetadata($document, $uploadSource);
 
     return $document;
   }
 
   /**
+   * @param array<string, mixed> $document
+   * @param array<string, string>|null $uploadSource
+   */
+  private function applyUploadSourceMetadata(array &$document, ?array $uploadSource): void
+  {
+    if ($uploadSource === null) {
+      return;
+    }
+
+    if (!empty($uploadSource['source_type'])) {
+      $document['source_type'] = (string) $uploadSource['source_type'];
+    }
+    if (!empty($uploadSource['upload_session_id'])) {
+      $document['upload_session_id'] = (string) $uploadSource['upload_session_id'];
+    }
+    if (!empty($uploadSource['stored_filename'])) {
+      $document['stored_filename'] = (string) $uploadSource['stored_filename'];
+    }
+  }
+
+  /**
    * @param list<string> $generatedFiles
+   * @param array<string, string>|null $uploadSource
    */
   private function writeSyncReport(
     string $reportsDir,
@@ -243,7 +277,8 @@ final class BdsJsonWriter
     string $startedAt,
     string $finishedAt,
     array $generatedFiles,
-    string $status
+    string $status,
+    ?array $uploadSource = null
   ): string {
     $payload = [
       'tenant_sno' => $tenantSno,
@@ -257,6 +292,18 @@ final class BdsJsonWriter
         return basename($path);
       }, $generatedFiles),
     ];
+
+    if ($uploadSource !== null) {
+      if (!empty($uploadSource['source_type'])) {
+        $payload['source_type'] = (string) $uploadSource['source_type'];
+      }
+      if (!empty($uploadSource['upload_session_id'])) {
+        $payload['upload_session_id'] = (string) $uploadSource['upload_session_id'];
+      }
+      if (!empty($uploadSource['stored_filename'])) {
+        $payload['stored_filename'] = (string) $uploadSource['stored_filename'];
+      }
+    }
 
     $path = $reportsDir . DIRECTORY_SEPARATOR . 'sync_report.json';
     $this->writeJsonFile($path, $payload);
