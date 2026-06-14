@@ -1029,7 +1029,7 @@ L3 實作（未來）
 
 ## 8. Phase 7 — Upload Portal（7-1 / 7-2 / 7-3）
 
-> **Status:** SSOT 定案（Phase 7-1c-0）；7-1a／7-1b **Runtime Done**（legacy www）；**7-1c 待實作**。  
+> **Status:** SSOT 定案（Phase 7-1c-1b）；7-1a／7-1b／7-1c-1 **Runtime Done**（legacy www）；**7-1c-2a 待實作**（bbc-ai-bot）。  
 > **詳細規劃：** `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §12（Sync Trigger）；本節為交付順序。
 
 ### 8.1 目標總覽
@@ -1054,7 +1054,11 @@ L3 實作（未來）
 | **7-0e.2** | Upload Portal UI Finalization（Sync Version、訊息定案、Metadata Priority） | **Done** ✅ |
 | **7-1a** | `www/bds/upload.php` + travel_b gate + retUrl allowlist | **Done** ✅ |
 | **7-1b** | Upload receive + staging（`var/bds/uploads/...`） | **Done** ✅ |
-| **7-1c** | Upload → BDS Sync Trigger（CLI → `bin/bds-sync.php`） | **Next** |
+| **7-1c-1** | CLI Command Wrapper（dry-run build only） | **Done** ✅ |
+| **7-1c-1b** | Upload CLI Input Contract SSOT | **Done** ✅ |
+| **7-1c-2a** | bbc-ai-bot：`BdsUploadStagingResolver`、`BdsXlsxReader`、upload mode | **Next** |
+| **7-1c-2b** | legacy www：CLI execution + `--upload-session-id` | 未開始 |
+| **7-1c** | Upload → BDS Sync Trigger（端到端） | **進行中** |
 | **7-1d** | `bbcshops.com/bds/upload.php` redirect-only（可選） | 未開始 |
 | **7-2a** | `www/bds/shared_upload.php` + management center sno gate | 未開始 |
 | **7-2b** | Shared UI（§13.3 欄位、§13.4 industry select）+ Shared Contract → `shared/travel/knowledge/` | 未開始 |
@@ -1140,10 +1144,12 @@ Validation → Build → GCS → Read-back → sync_report.json
 
 | 項目 | 規格 |
 |------|------|
-| **輸入** | `var/bds/uploads/tenants/{sno}/staging/{upload_session_id}/` |
+| **輸入（upload mode）** | `--upload-session-id` + `--tenant`／`--sno` → `var/bds/uploads/tenants/{sno}/staging/{upload_session_id}/` |
+| **輸入（sheet mode）** | 無 `--upload-session-id` → Registry → Google Sheet（Phase 6A legacy） |
 | **Pilot sno** | `5f99b8d665e8444d`（`travel_b`） |
 | **輸出** | `tenants/{sno}/knowledge/` + `tenants/{sno}/meta/sync_report.json` |
 | **Safety** | §14.1.1 Last Successful Version — 失敗不覆蓋正式 JSON |
+| **CLI 契約 SSOT** | `BATS_DATA_CONTRACT.md` §1.6.7；`BATS_DATA_SYNC_POLICY.md` §17.11.2.1 |
 
 #### 8.8.2 Phase 7-1c 退出準則
 
@@ -1169,12 +1175,70 @@ Auto Sync、Scheduled Sync、Cron Sync、Drive Watch、Google Drive Change Trigg
 
 7-2 Shared Portal、未來 API Trigger **必須** 重用同一 `bin/bds-sync.php`／BDS core；禁止各入口獨立 sync 邏輯。
 
+#### 8.8.6 CLI Staging Input Contract（Phase 7-1c-1b SSOT）
+
+> **Status: SSOT 定案（2026-06-05）** — Upload Portal staging → BDS CLI 正式輸入契約；L3 契約：`BATS_DATA_CONTRACT.md` §1.6.7。
+
+##### 8.8.6.1 架構決策
+
+| 項目 | 決策 |
+|------|------|
+| **Upload Mode 正式參數** | `--upload-session-id={id}` |
+| **不採用（Portal 正式）** | `--input-xlsx` |
+| **模式切換** | 有 `--upload-session-id` → upload mode；無 → sheet mode（6A legacy） |
+
+##### 8.8.6.2 Phase 7-1c-2a — bbc-ai-bot（阻塞項）
+
+| # | 交付項 | 說明 |
+|---|--------|------|
+| 1 | `parse_cli_args()` 擴充 | 新增 `--upload-session-id`；可選 `--scope=tenant\|shared`（Shared 7-2） |
+| 2 | **`BdsUploadStagingResolver`** | 解析 `var/bds/uploads/.../staging/{id}/`；載入 `upload_session.json`；tenant／sno 雙重驗證 |
+| 3 | **`BdsXlsxReader`** | staging `.xlsx` → 五 Required Tabs（Contract §4～§8） |
+| 4 | **`bds-sync.php` upload mode** | 有 session id 時跳過 `BdsGoogleSheetReader`；接入 XlsxReader → 既有 Parser 鏈 |
+| 5 | **Source metadata** | `source_type=upload_portal`；記錄 `upload_session_id` 於 sync_report |
+| 6 | **Safety** | Validation／Sync／Read-back Fail → 不寫 GCS 正式 JSON（§14.1.1） |
+
+**7-1c-2a 退出準則：**
+
+- [ ] `bin/bds-sync.php --tenant=travel_b --upload-session-id={id} --dry-run` 可讀 staging xlsx 並完成 validation dry-run
+- [ ] session／sno 不一致 → exit 非 0；GCS **不變**
+- [ ] 無 `--upload-session-id` 時 sheet mode 行為 **不變**（6A 向後相容）
+- [ ] **不** 實作 Core Orchestrator（P2-TD-7C0 Deferred）
+- [ ] **不** 引入 Cron／Auto／Drive Watch
+
+##### 8.8.6.3 Phase 7-1c-2b — legacy www
+
+| # | 交付項 | 說明 |
+|---|--------|------|
+| 1 | 更新 `bdsBuildCliSyncCommand()` | 指令含 `--upload-session-id={upload_session_id}` |
+| 2 | CLI 執行 | `proc_open`／`exec` 執行 `bin/bds-sync.php`（先 `--dry-run` 驗證 exit code） |
+| 3 | UI | 解析 stdout／exit code；失敗模板 §14.1.1 |
+| 4 | **禁止** | Portal 觸發 sheet mode；**禁止** `--input-xlsx` |
+
+**7-1c-2b 退出準則：**
+
+- [ ] staging 成功後 Portal 觸發 upload mode CLI
+- [ ] 7-1c-2a upload mode **Done** 為前置條件
+- [ ] 失敗時 GCS 正式 JSON 不變；`sync_triggered` 僅 success 後更新
+
+##### 8.8.6.4 Staging Path Contract（摘要）
+
+| Scope | 路徑 |
+|-------|------|
+| **Tenant** | `var/bds/uploads/tenants/{sno}/staging/{upload_session_id}/` |
+| **Shared（7-2）** | `var/bds/uploads/shared/{industry_code}/staging/{upload_session_id}/` |
+
+**檔案：** `knowledge_{upload_session_id}.xlsx`（或 `stored_filename`）、`upload_session.json`。
+
+**交叉引用：** `BATS_DATA_SYNC_POLICY.md` §17.11.2.1；`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §12.4
+
 ---
 
 ## 版本紀錄
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v2.5** | 2026-06-05 | Phase 7-1c-1b：§8.8.6 CLI Staging Input Contract；7-1c-2a／7-1c-2b 分解 |
 | **v2.4** | 2026-06-05 | Phase 7-1c-0：§8.8 Upload→BDS CLI Trigger；7-1a／7-1b Done；7-1c 重新定義 |
 | **v2.3** | 2026-06-05 | Phase 7-0e.2 Final：§8.7 Sync Version；7-0e.2 done；7-1a 前退出準則閉合 |
 | **v2.2** | 2026-06-05 | Phase 7-0e.1：§8.7 UI Enhancement；7-0e.1 done；7-1／7-2 退出準則增補狀態欄位與 UX |

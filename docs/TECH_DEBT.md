@@ -166,11 +166,11 @@ BDS / Drive Connector 相關 P2 技術債登錄區。不阻塞 Phase 6 Core Arch
 | **Level** | P2 |
 | **Title** | BDS Core Orchestrator（in-process 編排服務） |
 | **Source / Context** | Phase 7-1c-0 架構決策：MVP 採 **CLI Trigger** → `bin/bds-sync.php`；不重構 BDS Core。 |
-| **Related SSOT** | `BATS_DATA_SYNC_POLICY.md` §17.11.4；`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §12.6 |
+| **Related SSOT** | `BATS_DATA_SYNC_POLICY.md` §17.11.4；`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §12.6；`BATS_DATA_CONTRACT.md` §1.6.7 |
 | **Status** | **Deferred** — Future Architecture Enhancement |
-| **Blocking** | 否（Non-blocking for Phase 7-1c） |
+| **Blocking** | 否（Non-blocking for Phase 7-1c-2a／7-1c-2b） |
 | **Suggested Timing** | 多租戶正式商品化；大量 Upload Portal 使用；Shared Upload 穩定後 |
-| **Notes** | Portal／API 入口仍須共用同一 BDS Sync Core，Orchestrator 僅改 **觸發與編排方式**，不改 Safety Rule。 |
+| **Notes** | Portal／API 入口仍須共用同一 BDS Sync Core，Orchestrator 僅改 **觸發與編排方式**，不改 Safety Rule。Phase 7-1c-1b 定案 `--upload-session-id` upload mode；**不** 因本契約新增 Orchestrator 或 BDS Core 重構工作。 |
 
 #### Classification
 
@@ -279,4 +279,4 @@ BDS / Drive Connector 相關 P2 技術債登錄區。不阻塞 Phase 6 Core Arch
 | 2026-06-05 | 技術債與 Roadmap 條目中文化（Title、Risk、Notes、Suggested Timing 等以中文為主）。 |
 | 2026-06-06 | 新增 P2-TD-006：BBCTravel Departure Mapping 規格漂移（null→tpetsa vs null→all） |
 | 2026-06-06 | 移除 P2-TD-006：已轉為 Phase C-1 主線工作（C-1A 文件、C-1B 程式），不屬技術債 |
-| 2026-06-13 | 新增 **BDS Technical Debt** 區段；登錄 P2-TD-6D2：Google Workspace Export（Phase 6D-2）— Status: Deferred |
+| 2026-06-05 | Phase 7-1c-1b：確認 P2-TD-7C0 Core Orchestrator 仍 Deferred；upload mode 採 `--upload-session-id`，不新增 Orchestrator 工作 |

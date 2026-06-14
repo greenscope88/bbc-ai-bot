@@ -1634,7 +1634,64 @@ Upload Portal（固定網頁上傳）
 3. 最快完成 Upload → Sync 商業閉環  
 4. 避免 Phase 7-1c 提前重構 BDS Core  
 
-**輸入：** staging 路徑 `var/bds/uploads/tenants/{sno}/staging/{upload_session_id}/`（7-1b 產出）。
+**輸入：** staging 路徑 `var/bds/uploads/tenants/{sno}/staging/{upload_session_id}/`（7-1b 產出）；CLI 正式參數 `--upload-session-id`（§17.11.2.1、Contract §1.6.7）。
+
+#### 17.11.2.1 CLI Input Modes（Phase 7-1c-1b SSOT）
+
+> **Status: SSOT 定案（2026-06-05）** — `bin/bds-sync.php` 輸入模式；Upload Portal **必須** 使用 **upload mode**。
+
+##### Mode A — Sheet Mode（Phase 6A Legacy）
+
+| 項目 | 規格 |
+|------|------|
+| **觸發** | CLI **無** `--upload-session-id` |
+| **輸入鏈** | Registry → `private_knowledge_sheet_id` → **Google Sheet**（`BdsGoogleSheetReader`） |
+| **用途** | 營運手動驗收、Phase 6A 過渡、開發除錯 |
+| **產品定位** | **非** Upload-Triggered 正式產品路徑 |
+
+##### Mode B — Upload Mode（Phase 7 正式）
+
+| 項目 | 規格 |
+|------|------|
+| **觸發** | CLI 含 `--upload-session-id={id}` + `--tenant`／`--sno` |
+| **輸入鏈** | Upload Portal → staging → `upload_session.json` + `.xlsx` → `BdsUploadStagingResolver` → `BdsXlsxReader` |
+| **跳過** | `BdsGoogleSheetReader`；**不得** 以 Sheet 作為本次資料來源 |
+| **產品定位** | **Upload-Triggered Sync 唯一正式產品同步資料路徑** |
+
+```text
+Upload Portal（固定網頁上傳）
+        ↓
+staging + upload_session_id
+        ↓
+bin/bds-sync.php --upload-session-id=...
+        ↓
+BDS Sync Pipeline → GCS Knowledge
+```
+
+##### 正式產品同步入口（重申）
+
+| 規則 | 說明 |
+|------|------|
+| **唯一正式入口** | **Upload Portal** Upload-Triggered Sync |
+| **Portal 禁止** | 直接觸發 **sheet mode** 同步 Google Sheet 作為產品更新路徑 |
+| **禁止新增** | Cron Sync、Scheduled Sync、Auto Sync、Drive Watch Sync、Google Drive Change Trigger |
+
+##### 參數決策（不採用 `--input-xlsx` 為 Portal 正式模式）
+
+| 採用 | 不採用（Portal 正式） |
+|------|----------------------|
+| `--upload-session-id` | `--input-xlsx` — Portal 不暴露實體路徑；Resolver 集中管理 staging |
+
+**理由：** SaaS 架構一致、Shared Upload 可重用、Registry + Session 雙重驗證、維護成本較低。
+
+##### Safety — Last Successful Version Rule
+
+upload mode 與 sheet mode **均須** 遵守 §14.1.1：
+
+- Upload Fail、Validation Fail、Sync Fail、Read-back Fail → **不得** 覆蓋目前 AI 使用之成功版本
+- 失敗時 GCS 正式 `knowledge/*.json`、`sync_id`、metadata **維持不變**
+
+**交叉引用：** `BATS_DATA_CONTRACT.md` §1.6.7；`BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §8.8.6
 
 #### 17.11.3 共用 BDS Sync Core（長期原則）
 
@@ -2125,6 +2182,7 @@ Service Account 僅授權必要之 `tenants/{sno}/` prefix；不得授予跨 ten
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v2.10** | 2026-06-05 | Phase 7-1c-1b：§17.11.2.1 CLI Input Modes（sheet／upload）；`--upload-session-id` 定案 |
 | **v2.9** | 2026-06-05 | Phase 7-1c-0：§14.1.1 Last Successful Version Rule；§17.5 Out of Scope 定案；§17.11 Upload→BDS CLI Trigger |
 | **v2.8** | 2026-06-05 | Phase 7-0e.2 Final：§17.10.6 Sync Version；目前 AI 使用版本；成功訊息定案；Metadata Source Priority |
 | **v2.7** | 2026-06-05 | Phase 7-0e.1：§17.10 欄位順序；AI 使用資料狀態；Upload Hint；同步中 UX；成功／失敗訊息模板 |

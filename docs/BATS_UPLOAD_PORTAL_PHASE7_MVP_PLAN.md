@@ -1,10 +1,10 @@
 # BDS Upload Portal — Phase 7-1 MVP Plan
 
 **專案根目錄：** `C:\bbc-ai-bot`  
-**文件版本：** 2026-06-05（Phase 7-0c～7-0e.2 / 7-1c-0）  
+**文件版本：** 2026-06-05（Phase 7-0c～7-0e.2 / 7-1c-0 / 7-1c-1b）  
 **性質：** L2 實作規劃（SSOT First / DDD）。**不**實作程式、**不**修改 runtime。
 
-**前置審計：** Phase 7-0b Login Reuse Audit；Phase 7-0c Canonical Domain SSOT；Phase 7-0d Shared Upload Portal SSOT；Phase 7-0e UI／Field Spec SSOT；Phase 7-0e.1 UI Enhancement SSOT；Phase 7-0e.2 UI Finalization SSOT；Phase 7-1c-0 Upload→BDS Sync Trigger SSOT。
+**前置審計：** Phase 7-0b Login Reuse Audit；Phase 7-0c Canonical Domain SSOT；Phase 7-0d Shared Upload Portal SSOT；Phase 7-0e UI／Field Spec SSOT；Phase 7-0e.1 UI Enhancement SSOT；Phase 7-0e.2 UI Finalization SSOT；Phase 7-1c-0 Upload→BDS Sync Trigger SSOT；Phase 7-1c-1b Upload CLI Input Contract SSOT。
 
 ---
 
@@ -285,7 +285,11 @@ Management Center (sno cff796a33d94ea31) + industry_code travel
 |--------|------|------|------|
 | **7-1a** | Login gate + UI shell | **Done** ✅ | `f881d12` legacy www |
 | **7-1b** | Upload receive + staging | **Done** ✅ | `0020b5f` legacy www；`var/bds/uploads/.../staging/` |
-| **7-1c** | Upload → BDS Sync Trigger（CLI） | **Next** | §12；`bin/bds-sync.php` |
+| **7-1c-1** | CLI Command Wrapper（dry-run build） | **Done** ✅ | legacy www；command build only |
+| **7-1c-1b** | Upload CLI Input Contract SSOT | **Done** ✅ | `--upload-session-id` 定案 |
+| **7-1c-2a** | bbc-ai-bot upload mode（Resolver + XlsxReader） | **Next** | §8.8.6 |
+| **7-1c-2b** | legacy www CLI execution | 未開始 | 依 7-1c-2a |
+| **7-1c** | Upload → BDS Sync Trigger（端到端） | **進行中** | 7-1c-2a 阻塞 |
 | **7-1d** | bbcshops redirect-only（可選） | 未開始 | 非 7-1c 阻塞項 |
 
 ---
@@ -324,10 +328,38 @@ bin/bds-sync.php → BDS Pipeline → GCS → Read-back → sync_report
 | 階段 | 元件 | 說明 |
 |------|------|------|
 | 1 | Portal POST | 7-1b staging 完成後觸發 sync |
-| 2 | **CLI Trigger** | 呼叫 `C:\bbc-ai-bot\bin\bds-sync.php`（參數含 staging 路徑／`upload_session_id`） |
-| 3 | BDS Pipeline | Phase 6A 已驗證 core（validation → build → GCS → read-back） |
+| 2 | **CLI Trigger** | 呼叫 `C:\bbc-ai-bot\bin\bds-sync.php`（**upload mode**：`--upload-session-id`） |
+| 3 | BDS Pipeline | upload mode：Resolver → XlsxReader → validation → build → GCS → read-back |
 | 4 | 輸出 | GCS `tenants/5f99b8d665e8444d/knowledge/` + `meta/sync_report.json` |
 | 5 | Portal UI | 成功：`本次同步成功`（§13.1.7）；失敗：§14.1.1 模板 |
+
+**正式 CLI 指令範例（Tenant Pilot — Phase 7-1c-1b 定案）：**
+
+```text
+"C:\Web\xampp\php\php.exe" "C:\bbc-ai-bot\bin\bds-sync.php"
+  --tenant=travel_b
+  --upload-session-id={upload_session_id}
+  --dry-run
+```
+
+**正式 GCS 寫入（7-1c-2b／7-1c-3，須 dry-run PASS 後）：**
+
+```text
+  --tenant=travel_b
+  --upload-session-id={upload_session_id}
+  --dry-run=false
+  --write-gcs
+```
+
+**Upload Portal 禁止行為：**
+
+| 禁止 | 說明 |
+|------|------|
+| 直接同步 Google Sheet | Portal **不得** 觸發 sheet mode（無 `--upload-session-id`）作為產品更新 |
+| `--input-xlsx` | Portal 正式模式 **不** 傳實體路徑；使用 `--upload-session-id` |
+| 獨立 sync 邏輯 | 須共用 `bin/bds-sync.php` BDS Sync Core |
+
+**7-1c-1（Done）：** 僅 command build／dry-run 驗證 UI；**未** 執行 CLI。**7-1c-2a 後** 更新 `upload.php` 指令含 `--upload-session-id`。
 
 **不做（7-1c）：** in-process BDS 重構；Core Orchestrator；Cron；Drive Watch。
 
@@ -678,6 +710,7 @@ UI **必須** 建立下列 **六項** 選項；後端 **僅** 允許 Registry／
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.6** | 2026-06-05 | Phase 7-1c-1b：§12.4 CLI 指令含 `--upload-session-id`；禁止 Portal 直接同步 Sheet |
 | **v1.5** | 2026-06-05 | Phase 7-1c-0：§12 Upload→BDS Sync Trigger；§11.4 子階段；7-1a／7-1b Done |
 | **v1.4** | 2026-06-05 | Phase 7-0e.2 Final：目前 AI 使用版本；Sync Version Contract；成功／失敗訊息定案；Metadata Source Priority |
 | **v1.3** | 2026-06-05 | Phase 7-0e.1：欄位順序調整；AI 使用資料狀態；Upload Hint；同步中 UX；成功／失敗訊息模板 |
@@ -691,8 +724,8 @@ UI **必須** 建立下列 **六項** 選項；後端 **僅** 允許 Registry／
 
 | 項目 | 狀態 |
 |------|------|
-| **文件狀態** | **SSOT 定案（Phase 7-1c-0）** — 7-1c 架構已閉合；待 commit |
-| **程式實作** | **7-1a／7-1b Done**（legacy www）；**7-1c 待實作** |
-| **SAFE TO IMPLEMENT Phase 7-1c** | **是（文件層）** — CLI Trigger 架構已閉合；7-1b staging **Done** |
+| **文件狀態** | **SSOT 定案（Phase 7-1c-1b）** — Upload CLI Input Contract 已閉合 |
+| **程式實作** | **7-1a／7-1b／7-1c-1 Done**（legacy www）；**7-1c-2a 待實作**（bbc-ai-bot） |
+| **SAFE TO IMPLEMENT Phase 7-1c-2a** | **是（文件層）** — `--upload-session-id` 契約已閉合 |
 | **SAFE TO IMPLEMENT Phase 7-1** | **是** — domain／auth／pilot／UI field spec 已閉合 |
 | **SAFE TO IMPLEMENT Phase 7-2** | **是（文件層）** — Shared Portal Final UI spec 已閉合；**依賴** Shared BDS 管線就緒 |

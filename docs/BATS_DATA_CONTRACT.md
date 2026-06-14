@@ -18,6 +18,7 @@
 | §1.5 | Structured Knowledge Input Source |
 | §1.6 | Phase 7 — Upload-Triggered Structured Knowledge |
 | §1.6.6 | Upload → BDS Sync Trigger（Phase 7-1c-0） |
+| §1.6.7 | Upload CLI Input Contract（Phase 7-1c-1b） |
 | §2 | Relationship |
 | §3 | Data Category |
 | §4 | Google Sheet Multi Tab Rule |
@@ -209,7 +210,94 @@ FAQ 型、表格型、條列型知識（含護照、簽證、入境規定、行�
 
 **Out of Scope：** Auto／Scheduled／Cron／Drive Watch Sync — Not Planned。
 
-**交叉引用：** `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §12；`BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §8.8
+**交叉引用：** `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §12；`BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §8.8；**CLI 輸入契約** §1.6.7
+
+#### 1.6.7 Upload CLI Input Contract（Phase 7-1c-1b SSOT）
+
+> **Status: SSOT 定案（2026-06-05）** — Upload Portal staging → `bin/bds-sync.php` 之 **正式 CLI 輸入契約**；依 Phase 7-1c-1a Review 閉合。
+
+##### 1.6.7.1 架構決策
+
+| 項目 | 決策 |
+|------|------|
+| **Upload Mode 正式參數** | `--upload-session-id={id}` — **唯一** Upload Portal 觸發之 CLI 輸入識別 |
+| **不採用（Portal 正式模式）** | `--input-xlsx={path}` — 不暴露實體路徑；營運除錯可列 Future／非 Portal 主徑 |
+| **搭配參數** | `--tenant={tenant_key}` 或 `--sno={tenant_sno}`（Registry 解析；與 session 雙重驗證） |
+| **觸發條件** | 存在 `--upload-session-id` → **upload mode**；不存在 → **sheet mode**（Phase 6A legacy） |
+
+##### 1.6.7.2 Upload Mode 管線
+
+```text
+Upload Portal POST
+        ↓
+var/bds/uploads/tenants/{sno}/staging/{upload_session_id}/
+        ↓
+bin/bds-sync.php --tenant=... --upload-session-id=...
+        ↓
+BdsUploadStagingResolver → BdsXlsxReader → Parser → Validator → Build → GCS
+```
+
+**upload mode 下：** **跳過** `BdsGoogleSheetReader`；**不得** 以 Registry `private_knowledge_sheet_id` 作為本次同步資料來源。
+
+##### 1.6.7.3 Staging Path Contract（Tenant）
+
+| 項目 | 規格 |
+|------|------|
+| **根目錄** | `var/bds/uploads/tenants/{sno}/staging/{upload_session_id}/` |
+| **Excel 檔** | `knowledge_{upload_session_id}.xlsx`（或 `upload_session.json` 之 `stored_filename`） |
+| **Session 檔** | `upload_session.json` |
+| **`upload_session_id` 格式** | `UPLOAD-YYYYMMDD-HHMMSS-{6 hex}` |
+
+**Shared Upload（7-2 預留）：** `var/bds/uploads/shared/{industry_code}/staging/{upload_session_id}/` — 同一 `--upload-session-id` 契約；scope 由 `--scope=shared` + `--industry-code=` 解析（Implementation Plan §8.8.6）。
+
+##### 1.6.7.4 `upload_session.json` 必填欄位
+
+| 欄位 | 說明 | 驗證 |
+|------|------|------|
+| `upload_session_id` | 與 CLI 參數一致 | 格式 + 目錄名一致 |
+| `tenant_key` | 租戶代碼（Pilot：`travel_b`） | 須與 Registry `tenant_key` 一致 |
+| `tenant_sno` | 租戶權威邊界 | 須與 Registry `sno` 一致 |
+| `stored_filename` | staging 內 Excel 檔名 | 須存在於 staging 目錄 |
+| `status` | 接收狀態 | upload mode 觸發前須為 `received_only` 或 `cli_dry_run_verified` |
+| `sync_triggered` | 是否已觸發正式 sync | 成功 promote 前為 `false` |
+
+**建議欄位（稽核）：** `original_filename`、`uploaded_at`、`account_id`、`store_no`、`phase`。
+
+##### 1.6.7.5 Tenant／Sno 雙重驗證
+
+| 步驟 | 規則 |
+|------|------|
+| 1 | CLI 以 `--tenant`／`--sno` 載入 Registry entry |
+| 2 | `BdsUploadStagingResolver` 讀取 `upload_session.json` |
+| 3 | `upload_session.tenant_sno` **必須** 等於 Registry `sno` |
+| 4 | `upload_session.tenant_key` **必須** 等於 Registry `tenant_key` |
+| 5 | 不一致 → **拒絕執行**；**不** 進入 Parser／GCS |
+
+##### 1.6.7.6 Source Metadata（`source_type`）
+
+| 項目 | upload mode 規格 |
+|------|------------------|
+| **`source_type`** | `upload_portal` |
+| **來源識別** | `upload_session_id` + `stored_filename` |
+| **非來源** | Registry `private_knowledge_sheet_id`（sheet mode 專用） |
+| **寫入位置** | `sync_report.json`、`validation_report.json`、knowledge JSON metadata（成功時） |
+
+##### 1.6.7.7 Excel → Contract Tabs
+
+staging `.xlsx` 須可解析為本文件 §4～§8 定義之 **五 Required Tabs**（`company_profile`、`qa`、`external_product_links`、`service_items`、`special_prices`），供 `BdsXlsxReader` → `BdsMockSheetParser` 接入既有 Validation。
+
+##### 1.6.7.8 Safety — Last Successful Version Rule
+
+與 `BATS_DATA_SYNC_POLICY.md` §14.1.1 對齊：
+
+| 失敗類型 | 不得覆蓋 GCS 正式 `knowledge/*.json` |
+|----------|--------------------------------------|
+| Upload Fail（staging／session 無效） | ✅ |
+| Validation Fail | ✅ |
+| Sync Fail | ✅ |
+| Read-back Fail | ✅ |
+
+**交叉引用：** `BATS_DATA_SYNC_POLICY.md` §17.11.2.1；`BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §8.8.6；`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §12.4
 
 ---
 
@@ -904,6 +992,7 @@ tenants/{sno}/knowledge/
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.9** | 2026-06-05 | Phase 7-1c-1b：§1.6.7 Upload CLI Input Contract（`--upload-session-id`、staging、source_type） |
 | **v1.8** | 2026-06-05 | Phase 7-1c-0：§1.6.6 Upload→BDS Sync Trigger；Last Successful Version cross-ref |
 | **v1.7** | 2026-06-05 | Phase 7-0e.2 Final：§1.6.5 Upload Portal Sync Metadata Contract（sync_id、來源優先序） |
 | **v1.6** | 2026-06-05 | Phase 7-0d：§1.6.4 雙 Upload Portal URL（Tenant／Shared） |
@@ -920,6 +1009,6 @@ tenants/{sno}/knowledge/
 
 | 項目 | 狀態 |
 |------|------|
-| 文件狀態 | **Draft — 待審核** |
+| 文件狀態 | **SSOT 定案（Phase 7-1c-1b）** — Upload CLI Input Contract 已閉合 |
 | 程式實作 | **未開始** |
 | Git commit | **尚未提交** |
