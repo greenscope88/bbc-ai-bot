@@ -97,7 +97,13 @@ function print_usage(): void
     fwrite(STDERR, "  php bin/bds-sync.php --tenant=<tenant_key>\n");
     fwrite(STDERR, "  php bin/bds-sync.php --sno=<tenant_sno>\n");
     fwrite(STDERR, "  php bin/bds-sync.php --tenant=travel_b --upload-session-id=UPLOAD-YYYYMMDD-HHMMSS-abcdef --dry-run\n");
+    fwrite(STDERR, "  php bin/bds-sync.php --tenant=travel_b --upload-session-id=UPLOAD-YYYYMMDD-HHMMSS-abcdef --dry-run=false --write-gcs\n");
     fwrite(STDERR, "  php bin/bds-sync.php --tenant=travel_b --dry-run=false --write-gcs\n");
+}
+
+function generate_sync_id(): string
+{
+    return 'SYNC-' . date('Ymd-His');
 }
 
 /**
@@ -155,7 +161,7 @@ function write_registry_error_report(string $outputRoot, array $entry, string $c
 /**
  * @return array{ok: bool, failures: list<string>}
  */
-function verify_readback(BdsGcsUploader $uploader, string $tenantSno): array
+function verify_readback(BdsGcsUploader $uploader, string $tenantSno, ?string $expectedSyncId = null): array
 {
     $expectedFiles = array_values(BdsJsonWriter::TAB_OUTPUT_FILES);
     $expectedPrefix = 'tenants/' . $tenantSno . '/knowledge/';
@@ -199,6 +205,12 @@ function verify_readback(BdsGcsUploader $uploader, string $tenantSno): array
         }
         if (!isset($decoded['schema_version']) || !is_string($decoded['schema_version']) || $decoded['schema_version'] === '') {
             $failures[] = 'schema_version missing: ' . $objectPath;
+        }
+
+        if ($expectedSyncId !== null && $expectedSyncId !== '') {
+            if (!isset($decoded['sync_id']) || $decoded['sync_id'] !== $expectedSyncId) {
+                $failures[] = 'sync_id mismatch: ' . $objectPath;
+            }
         }
 
         $contentOk = false;
@@ -361,14 +373,6 @@ if (count($knowledgeJson) !== 5) {
 
 print_step('Knowledge Build', 'PASS');
 
-$dryRunResult = $writer->writeDryRun($tenantSno, $normalized, $validation, $sourceSheetId, $uploadSource);
-if (($dryRunResult['ok'] ?? false) !== true) {
-    print_step('GCS Upload', 'SKIP');
-    print_step('Read-back Verification', 'SKIP');
-    fwrite(STDERR, "ERROR: JSON writer dry-run failed\n");
-    exit(1);
-}
-
 $writeGcs = $args['write_gcs'] === true;
 $dryRun = $args['dry_run'] === true;
 
@@ -380,6 +384,14 @@ if ($writeGcs && $dryRun) {
 }
 
 if (!$writeGcs || $dryRun) {
+    $dryRunResult = $writer->writeDryRun($tenantSno, $normalized, $validation, $sourceSheetId, $uploadSource);
+    if (($dryRunResult['ok'] ?? false) !== true) {
+        print_step('GCS Upload', 'SKIP');
+        print_step('Read-back Verification', 'SKIP');
+        fwrite(STDERR, "ERROR: JSON writer dry-run failed\n");
+        exit(1);
+    }
+
     print_step('GCS Upload', 'SKIP (dry-run)');
     print_step('Read-back Verification', 'SKIP (dry-run)');
     fwrite(STDOUT, 'Completed.' . PHP_EOL);
@@ -403,6 +415,22 @@ if ($gate['open'] !== true) {
 $bucket = env_string('BDS_GCS_BUCKET');
 $bucket = $bucket !== '' ? $bucket : null;
 $uploader = new BdsGcsUploader($bucket, $credentialsPath, $outputRoot);
+
+$syncId = null;
+$publishedAt = null;
+$uploadStartedAt = gmdate('Y-m-d\TH:i:s\Z');
+
+if ($isUploadMode) {
+    $syncId = generate_sync_id();
+    $publishedAt = gmdate('Y-m-d\TH:i:s\Z');
+    $knowledgeJson = BdsKnowledgeDocumentBuilder::applyFormalSyncMetadata(
+        $knowledgeJson,
+        $syncId,
+        $publishedAt,
+        $uploadSource
+    );
+}
+
 $uploadResult = $uploader->uploadKnowledge($tenantSno, $knowledgeJson, $validation, $sourceSheetId);
 
 if (($uploadResult['ok'] ?? false) !== true) {
@@ -415,7 +443,15 @@ if (($uploadResult['ok'] ?? false) !== true) {
 
 print_step('GCS Upload', 'PASS');
 
-$readback = verify_readback($uploader, $tenantSno);
+$simulateReadbackFail = $isUploadMode && env_string('BDS_SYNC_SIMULATE_READBACK_FAIL') === '1';
+if ($simulateReadbackFail) {
+    $readback = [
+        'ok' => false,
+        'failures' => ['simulated_readback_fail'],
+    ];
+} else {
+    $readback = verify_readback($uploader, $tenantSno, $isUploadMode ? $syncId : null);
+}
 if ($readback['ok'] !== true) {
     print_step('Read-back Verification', 'FAIL');
     foreach ($readback['failures'] as $failure) {
@@ -425,5 +461,20 @@ if ($readback['ok'] !== true) {
 }
 
 print_step('Read-back Verification', 'PASS');
+
+if ($isUploadMode && $syncId !== null && $publishedAt !== null) {
+    $syncReportPath = $writer->writeFormalSyncReport(
+        $tenantSno,
+        $syncId,
+        $publishedAt,
+        $uploadStartedAt,
+        gmdate('Y-m-d\TH:i:s\Z'),
+        $uploadSource,
+        $uploadResult
+    );
+    fwrite(STDOUT, 'Sync ID: ' . $syncId . PHP_EOL);
+    fwrite(STDOUT, 'Sync Report: ' . $syncReportPath . PHP_EOL);
+}
+
 fwrite(STDOUT, 'Completed.' . PHP_EOL);
 exit(0);

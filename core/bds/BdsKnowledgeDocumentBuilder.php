@@ -63,4 +63,45 @@ final class BdsKnowledgeDocumentBuilder
 
     return $document;
   }
+
+  /**
+   * Applies formal sync metadata before GCS promote (upload mode or sheet mode).
+   *
+   * @param array<string, array<string, mixed>> $knowledgeJson
+   * @param array<string, string>|null $uploadSource source_type, upload_session_id, stored_filename
+   * @return array<string, array<string, mixed>>
+   */
+  public static function applyFormalSyncMetadata(
+    array $knowledgeJson,
+    string $syncId,
+    string $publishedAt,
+    ?array $uploadSource = null
+  ): array {
+    $enriched = [];
+
+    foreach ($knowledgeJson as $filename => $document) {
+      if (!is_array($document)) {
+        continue;
+      }
+
+      $document['sync_id'] = $syncId;
+      $document['published_at'] = $publishedAt;
+
+      if ($uploadSource !== null) {
+        if (!empty($uploadSource['source_type'])) {
+          $document['source_type'] = (string) $uploadSource['source_type'];
+        }
+        if (!empty($uploadSource['upload_session_id'])) {
+          $document['upload_session_id'] = (string) $uploadSource['upload_session_id'];
+        }
+        if (!empty($uploadSource['stored_filename'])) {
+          $document['stored_filename'] = (string) $uploadSource['stored_filename'];
+        }
+      }
+
+      $enriched[$filename] = $document;
+    }
+
+    return $enriched;
+  }
 }

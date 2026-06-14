@@ -137,6 +137,64 @@ final class BdsJsonWriter
     return $this->outputRoot;
   }
 
+  /**
+   * Writes formal sync_report.json after successful GCS promote + read-back.
+   *
+   * @param array<string, string>|null $uploadSource
+   * @param array<string, mixed> $uploadResult
+   */
+  public function writeFormalSyncReport(
+    string $tenantSno,
+    string $syncId,
+    string $publishedAt,
+    string $startedAt,
+    string $finishedAt,
+    ?array $uploadSource,
+    array $uploadResult
+  ): string {
+    $reportsDir = $this->getReportsDir($tenantSno);
+    $this->ensureDirectory($reportsDir);
+
+    $uploadedObjects = [];
+    if (isset($uploadResult['uploaded_objects']) && is_array($uploadResult['uploaded_objects'])) {
+      foreach ($uploadResult['uploaded_objects'] as $uploaded) {
+        if (!is_array($uploaded) || !isset($uploaded['object_path'])) {
+          continue;
+        }
+        $uploadedObjects[] = (string) $uploaded['object_path'];
+      }
+    }
+
+    $payload = [
+      'sync_id' => $syncId,
+      'status' => 'success',
+      'tenant_sno' => $tenantSno,
+      'data_category' => self::DATA_CATEGORY,
+      'dry_run' => false,
+      'published_at' => $publishedAt,
+      'started_at' => $startedAt,
+      'finished_at' => $finishedAt,
+      'uploaded_objects' => $uploadedObjects,
+    ];
+
+    if ($uploadSource !== null) {
+      if (!empty($uploadSource['source_type'])) {
+        $payload['source_type'] = (string) $uploadSource['source_type'];
+      }
+      if (!empty($uploadSource['upload_session_id'])) {
+        $payload['upload_session_id'] = (string) $uploadSource['upload_session_id'];
+      }
+      if (!empty($uploadSource['stored_filename'])) {
+        $payload['stored_filename'] = (string) $uploadSource['stored_filename'];
+      }
+    }
+
+    $path = $reportsDir . DIRECTORY_SEPARATOR . 'sync_report.json';
+    $this->writeJsonFile($path, $payload);
+
+    return $path;
+  }
+
   private function getKnowledgeDir(string $tenantSno): string
   {
     return $this->outputRoot
