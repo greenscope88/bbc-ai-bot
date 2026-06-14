@@ -589,7 +589,7 @@ gs://{bucket}/
 | 欄位 | 說明 |
 |------|------|
 | `tenant_sno` | 租戶識別 |
-| `sync_id` | 本次同步唯一 ID |
+| `sync_id` | 本次同步唯一 ID；格式 `SYNC-YYYYMMDD-HHMMSS`（見 `BATS_DATA_CONTRACT.md` §1.6.5） |
 | `source_revision` | Drive / Sheet 修訂版本 |
 | `published_at` | ISO 8601 發布時間 |
 | `schema_version` | JSON schema 版本 |
@@ -1236,10 +1236,11 @@ tenants/5f99b8d665e8444d/knowledge/
 
 ---
 
-## 17. Phase 7 — Upload-Triggered Sync（Pre-Planning）
+## 17. Phase 7 — Upload-Triggered Sync
 
-> **Status: Pre-Planning — 文件決策；非實作 Phase。**  
-> **目的：** 明確 Phase 7 主軸為 **Upload-Triggered Sync**，避免被誤解為 Cron Scheduler First。
+> **Status:** §17.1～§17.7 Pre-Planning（同步主軸）；**§17.8 Phase 7-0c SSOT 定案**（Upload Portal canonical domain／auth）。  
+> **目的：** 明確 Phase 7 主軸為 **Upload-Triggered Sync**，避免被誤解為 Cron Scheduler First。  
+> **實作規劃：** `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md`（L2）。
 
 ### 17.1 正式決策
 
@@ -1324,10 +1325,232 @@ Tenant Private、Industry Shared、Global Shared **共用同一套** Upload → 
 
 | 不做 | 說明 |
 |------|------|
-| Upload Portal 程式實作 | 本節僅 SSOT |
+| Upload Portal 程式實作 | §17.8 定案 domain／auth；程式屬 Phase 7-1（見 MVP Plan） |
 | Cron / Scheduler 程式 | Phase 7 **不** 實作 |
 | Shared Layer Drive 自動下發 | 須 Registry + Policy |
 | 修改 GCS Runtime 路徑 | 不變 |
+
+### 17.8 Upload Portal Canonical Domain & Authentication（Phase 7-0c SSOT）
+
+> **Status: SSOT 定案（2026-06-05）** — 依 Phase 7-0b Login Reuse Audit。  
+> **L2 細節：** `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md`
+
+#### 17.8.1 Dual Upload Portal（Phase 7-0d）
+
+Structured Knowledge 人類更新入口分為 **兩個獨立 Portal**；寫入層級 **不可混用**。
+
+| Portal | Canonical URL | 寫入 GCS 層級 | Phase |
+|--------|---------------|---------------|-------|
+| **Tenant Upload Portal** | `https://kowanbo.com/bds/upload.php` | `tenants/{sno}/knowledge/` | 7-1 |
+| **Shared Upload Portal** | `https://kowanbo.com/bds/shared_upload.php` | `shared/{industry_code}/knowledge/` | 7-2 |
+
+| 共同項 | 說明 |
+|--------|------|
+| **Host** | Host A（`103.1.222.14`）；Document Root `C:\Web\xampp\htdocs\www` |
+| **bbcshops.com** | Redirect-only；**非** 登入域、**非** canonical |
+| **Auth** | Legacy `brandlogin.php` + `TourBus*` session（kowanbo） |
+
+#### 17.8.2 Tenant Upload Portal
+
+| 項目 | 正式值 |
+|------|--------|
+| **用途** | Tenant Private Knowledge Excel 上傳 |
+| **Redirect** | `https://bbcshops.com/bds/upload.php` → kowanbo canonical |
+| **未登入導向** | `brandlogin.php?retUrl=/bds/upload.php` |
+| **Pilot gate** | `TourBusstoreNo === 6180` → `travel_b` / `sno` `5f99b8d665e8444d` |
+| **GCS** | `tenants/5f99b8d665e8444d/knowledge/` |
+
+#### 17.8.3 Shared Upload Portal（摘要；詳見 §17.9）
+
+| 項目 | 正式值 |
+|------|--------|
+| **用途** | BBC 管理中心上傳 Industry Shared Knowledge Excel |
+| **Redirect** | `https://bbcshops.com/bds/shared_upload.php` → kowanbo canonical |
+| **Permission** | Management Center `sno` `cff796a33d94ea31` only |
+| **MVP industry** | `travel` → `shared/travel/knowledge/` |
+
+#### 17.8.4 bbcshops.com 角色（MVP）
+
+| 項目 | 說明 |
+|------|------|
+| **非登入域** | Phase 7 **不以** `bbcshops.com` 承接 brandlogin session |
+| **Tenant redirect** | `https://bbcshops.com/bds/upload.php` → kowanbo |
+| **Shared redirect** | `https://bbcshops.com/bds/shared_upload.php` → kowanbo |
+| **原因** | `kowanbo.com` 與 `bbcshops.com` **不共用** `PHPSESSID`；跨域 session 無法沿用 |
+
+#### 17.8.5 Legacy Brand Login Reuse
+
+| 項目 | 決策 |
+|------|------|
+| **參考** | `view/store/memStore.php` 登入保護模式 |
+| **Session** | Legacy `TourBus*`（`PHPSESSID`，host-only） |
+| **禁止** | 文件或程式記錄明文密碼；hardcode 手機密碼 gate |
+
+#### 17.8.6 Security — retUrl Allowlist
+
+| 規則 | 說明 |
+|------|------|
+| **Allowlist** | `retUrl` 僅允許 `/bds/` 開頭相對路徑（MVP：`/bds/upload.php`、`/bds/shared_upload.php`） |
+| **禁止** | 外部 URL、open redirect、`..` 路徑穿越 |
+| **預設** | 非法值 → 依 Portal 預設路徑 |
+
+#### 17.8.7 Future — Login Bridge Token（Deferred）
+
+若產品要求 `bbcshops.com` 為正式操作域，另開 **Phase 7-x**：kowanbo 登入後以 **短效 signed token** 做跨域 bridge。Phase 7-1／7-2 **不實作**。
+
+### 17.9 Shared Upload Portal（Phase 7-0d SSOT）
+
+> **Status: SSOT 定案（2026-06-05）** — L2：`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §9。
+
+#### 17.9.1 正式決策
+
+| 項目 | 正式值 |
+|------|--------|
+| **Canonical URL** | `https://kowanbo.com/bds/shared_upload.php` |
+| **用途** | BBC 管理中心上傳 **Industry Shared** Structured Knowledge Excel |
+| **Auth** | 同 §17.8 — Legacy brand login（kowanbo） |
+| **Permission gate** | 僅 Management Center 帳號；wire `sno` = `cff796a33d94ea31` |
+| **禁止** | 明文密碼寫入文件／程式；hardcode 手機密碼 gate |
+
+#### 17.9.2 MVP Scope
+
+| 項目 | 值 |
+|------|-----|
+| **industry_code** | `travel` |
+| **GCS 目標** | `shared/travel/knowledge/` |
+| **Contract** | `BATS_SHARED_KNOWLEDGE_CONTRACT.md` |
+| **Deferred** | `shared/global/knowledge/`（Global Shared upload） |
+
+#### 17.9.3 寫入邊界
+
+| 禁止 | 說明 |
+|------|------|
+| Tenant Portal → `shared/` | Tenant upload **不得** 寫入 Shared 路徑 |
+| Shared Portal → `tenants/` | Shared upload **不得** 寫入 Tenant 路徑 |
+| 跨 industry（MVP） | 僅 `travel`；不得寫入其他 `industry_code` |
+
+**交叉引用：** `BATS_DATA_OWNERSHIP_POLICY.md` §3.7；`BATS_DATA_SOURCE_REGISTRY.md` §10.6.6
+
+### 17.10 Upload Portal UI / Field Spec（Phase 7-0e.2 Final SSOT）
+
+> **Status: SSOT 定案（2026-06-05）** — L2 完整欄位表、UX 文案、Sync Version：`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §13。  
+> **7-0e.2 定案：** `目前 AI 使用版本`；成功訊息含同步範圍／同步版本；Metadata Source Priority；AI Data Status 兩值規則。
+
+#### 17.10.1 雙 Portal UI 分工（欄位順序 — Final）
+
+| Portal | URL | MVP 可見欄位（順序） |
+|--------|-----|----------------------|
+| **Tenant Upload Portal** | `/bds/upload.php` | ① 旅行社名稱 ② 上一次成功同步時間 ③ **目前 AI 使用版本** ④ 目前 AI 使用資料狀態 ⑤ Excel ⑥ 上傳並同步 ⑦ 同步結果 |
+| **Shared Upload Portal** | `/bds/shared_upload.php` | ① 資料層級 ② Industry Code ③ 上一次成功同步時間 ④ **目前 AI 使用版本** ⑤ 目前 AI 使用資料狀態 ⑥ Excel ⑦ 上傳並同步 ⑧ 同步結果 |
+
+**共通：** Excel 僅 `.xlsx`；Upload Hint、同步中狀態見 §17.10.5；Industry 六項見 §17.10.4。
+
+#### 17.10.2 禁止 UI 暴露之後端識別
+
+| Portal | 禁止可見 |
+|--------|----------|
+| **Tenant** | `tenant_key`、`sno`、`gcs_prefix`、`bucket`、`folder_id` |
+| **Shared** | `owner_scope`、`bucket`、`gcs_prefix`、`folder_id`、`policy flags` |
+
+後端自 session／Registry／Policy 解析；使用者僅見業務語意欄位。
+
+#### 17.10.3 同步 Metadata 資料來源（Metadata Source Priority — 禁止 Host B SQL）
+
+**上一次成功同步時間**、**目前 AI 使用版本**（`sync_id`）、**目前 AI 使用資料狀態** **不得** 來自 Host B SQL。
+
+| 優先序 | 來源 |
+|--------|------|
+| 1 | GCS `sync_report.json` |
+| 2 | GCS knowledge 物件 metadata（`updated`／`published_at`／`sync_id`） |
+| 3 | Host A `var/bds/` report（fallback） |
+| 4 | Google Drive archive metadata（**僅**輔助；**不可** 作為 Runtime SSOT） |
+
+**禁止：** 新增 Host B SQL 欄位；修改 Host B SQL Schema；建立同步版本資料表。
+
+**上一次成功同步時間：** 有紀錄顯示時間；無紀錄 `尚無成功同步紀錄`。
+
+**目前 AI 使用資料狀態（AI Data Status Rule — 僅兩值）：**
+
+| 值 | 說明 |
+|----|------|
+| `已同步版本` | GCS 現行 knowledge 與最近成功 `sync_id` 一致；或本次 session 上傳成功 |
+| `仍為上一次成功同步版本` | 有歷史成功紀錄，本次 session 尚未新一次成功 promote |
+
+無任何成功紀錄時顯示 `—`。
+
+#### 17.10.4 Shared Industry Code UI（六項 — Final）
+
+UI 選項（**正式六項**）：`travel`、`hotel`、`restaurant`、`beauty`、`education`、`medical`。  
+**MVP：** `travel` = enabled；其餘 = disabled。  
+**未來：** 由 Platform Registry／Policy 控制 enabled。映射見 Registry §10.6.7。
+
+#### 17.10.5 Upload Hint、同步中與結果訊息（Final）
+
+**Upload Hint（選檔區上方）：**
+
+```text
+請上傳 .xlsx 檔案，系統會先檢查格式，通過後才會更新 AI 知識庫。
+```
+
+**同步中：** 訊息 `正在上傳並同步，請勿關閉此頁面。`；按鈕 `同步處理中...`（disabled）。
+
+**Tenant 成功：**
+
+```text
+本次同步成功
+
+同步範圍：
+{tenant_key}
+
+同步版本：
+{sync_id}
+
+AI 知識庫已更新。
+```
+
+**Shared 成功：**
+
+```text
+本次同步成功
+
+同步範圍：
+shared/{industry_code}
+
+同步版本：
+{sync_id}
+
+公有知識庫已更新。
+```
+
+**失敗（統一）：**
+
+```text
+本次同步失敗
+
+失敗原因：
+{reason}
+
+本次未更新 GCS，
+舊版資料仍維持可用。
+
+請修正 Excel 後重新上傳。
+```
+
+失敗時 **不得** 覆蓋 GCS 正式 knowledge JSON（§14）。
+
+#### 17.10.6 同步版本（Sync Version / `sync_id` Contract）
+
+| 項目 | 規格 |
+|------|------|
+| UI 標籤 | 目前 AI 使用版本 |
+| 後端鍵 | `sync_id` |
+| 格式 | `SYNC-YYYYMMDD-HHMMSS` |
+| 範例 | `SYNC-20260613-153025` |
+| 寫入 | BDS 成功 promote 後寫入 `sync_report.json` 與 knowledge metadata |
+| 讀取 | §17.10.3 優先序 |
+| 用途 | 客服確認、Tenant 驗證、Read-back 驗證、問題追蹤、Versioning 對照 |
+
+**交叉引用：** `BATS_DATA_CONTRACT.md` §1.6.5；`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §13.6
 
 ---
 
@@ -1519,6 +1742,22 @@ Google Drive（Archive Layer）
 | 觸發點 | 上傳頁 Upload 成功（§6.4、§13.1） |
 | 非觸發點 | Drive 檔案直接修改、Sheet 儲存格即時編輯 |
 | BDS 職責 | 接收 Upload → 寫入 Archive → 驗證轉換 → 寫入 GCS |
+
+### 19.4 Host A Upload Portal — Canonical URLs（Phase 7-0c / 7-0d）
+
+| Portal | Canonical URL | 寫入層級 | Phase |
+|--------|---------------|----------|-------|
+| **Tenant Upload Portal** | `https://kowanbo.com/bds/upload.php` | `tenants/{sno}/knowledge/` | 7-1 |
+| **Shared Upload Portal** | `https://kowanbo.com/bds/shared_upload.php` | `shared/{industry_code}/knowledge/` | 7-2 |
+
+| 共同項 | 說明 |
+|--------|------|
+| **登入** | Legacy `brandlogin.php`（同域 kowanbo）；見 §17.8 |
+| **bbcshops.com** | Redirect-only；**非** Update Entry canonical |
+| **Tenant Pilot** | `travel_b`（`storeNo` 6180、`sno` `5f99b8d665e8444d`） |
+| **Shared Gate** | Management Center `sno` `cff796a33d94ea31`；MVP `industry_code` `travel` |
+
+**交叉引用：** `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md`；`BATS_DATA_SOURCE_REGISTRY.md` §10.6.5、§10.6.6
 
 ---
 
@@ -1773,6 +2012,7 @@ Service Account 僅授權必要之 `tenants/{sno}/` prefix；不得授予跨 ten
 | `TENANT_SOURCE_REGISTRY_POLICY.md` | Tenant / Source Instance 治理；BDS 同步目標資料結構 |
 | `TENANT_SOURCE_RUNTIME_BRIDGE_V1.md` | Intelligence Layer 橋接；消費 GCS 同步後之 `product_sources` |
 | `DOCUMENTATION_GOVERNANCE_POLICY.md` | 本文件為 BDS 領域 L1 SSOT |
+| `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` | Phase 7-1 Upload Portal URL、Auth、Pilot（L2） |
 | `RECOVERY_AND_ROLLBACK_POLICY.md` | 同步失敗與回滾程序 |
 
 ---
@@ -1781,6 +2021,11 @@ Service Account 僅授權必要之 `tenants/{sno}/` prefix；不得授予跨 ten
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v2.8** | 2026-06-05 | Phase 7-0e.2 Final：§17.10.6 Sync Version；目前 AI 使用版本；成功訊息定案；Metadata Source Priority |
+| **v2.7** | 2026-06-05 | Phase 7-0e.1：§17.10 欄位順序；AI 使用資料狀態；Upload Hint；同步中 UX；成功／失敗訊息模板 |
+| **v2.6** | 2026-06-05 | Phase 7-0e：§17.10 Upload Portal UI／Field Spec；sync result 文案；last upload time 來源 |
+| **v2.5** | 2026-06-05 | Phase 7-0d：§17.8 dual portal；§17.9 Shared Upload Portal；§19.4 雙 URL |
+| **v2.4** | 2026-06-05 | Phase 7-0c：§17.8 Upload Portal canonical domain／auth；§19.4 kowanbo URL；bbcshops redirect-only |
 | **v2.3** | 2026-06-12 | Phase 6E-1：§11.8 Shared Archive 與 Tenant Archive 一致性 |
 | **v2.2** | 2026-06-12 | Phase 6D-0：§11 納入 `archive/`；§11.6～§11.7 knowledge／archive／meta 分離與 prefix 定案 |
 | **v2.1** | 2026-06-06 | Phase 6B-2C-1：§20.1 cross-ref Platform Drive Registry §6.7 |

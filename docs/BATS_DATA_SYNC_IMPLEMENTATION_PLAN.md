@@ -905,7 +905,7 @@ Shared 路徑讀取框架（須 Registry + Policy）；read-back；close-out rep
 
 | 欄位 | 說明 |
 |------|------|
-| `sync_id` | 唯一同步識別 |
+| `sync_id` | 唯一同步識別；格式 `SYNC-YYYYMMDD-HHMMSS`（Upload Portal 顯示為「目前 AI 使用版本」；見 `BATS_DATA_CONTRACT.md` §1.6.5） |
 | `tenant_sno` | 租戶 sno |
 | `data_category` | `tenant_private_knowledge` |
 | `status` | `success` / `failed` / `dry_run` |
@@ -985,8 +985,9 @@ L1 SSOT（政策）
 ├── BATS_DATA_CONTRACT.md           5 Tab / 5 JSON 欄位契約
 └── BATS_DATA_OWNERSHIP_POLICY.md   歸屬、寫入邊界、Override
 
-L2 規劃（本文件）
-└── BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md   分階段實作、交付順序
+L2 規劃（本文件體系）
+├── BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md   分階段實作、交付順序（Phase 1～6、§8 Phase 7）
+└── BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md   Phase 7-1 URL、Auth、Pilot、安全約束
 
 L3 實作（未來）
 └── core/bds/、bin/bds-sync.php 等
@@ -1026,10 +1027,111 @@ L3 實作（未來）
 
 ---
 
+## 8. Phase 7 — Upload Portal（7-1 / 7-2 / 7-3）
+
+> **Status:** SSOT 定案（Phase 7-0e.2 Final）；**程式未開始**。  
+> **詳細規劃：** `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md`（本節為摘要與交付順序）。**7-1a 前文件已閉合。**
+
+### 8.1 目標總覽
+
+| Phase | 名稱 | Canonical URL | 寫入層級 |
+|-------|------|---------------|----------|
+| **7-1** | Tenant Upload Portal MVP | `kowanbo.com/bds/upload.php` | `tenants/{sno}/knowledge/` |
+| **7-2** | Shared Upload Portal MVP | `kowanbo.com/bds/shared_upload.php` | `shared/travel/knowledge/` |
+| **7-3** | Production Hardening | （沿用 7-1／7-2 URL） | Audit、recovery、runbook |
+
+**共同：** Upload-Triggered Sync（Mode B）；Legacy `brandlogin.php` + `TourBus*` session；bbcshops redirect-only。
+
+### 8.2 子階段
+
+| 子階段 | 內容 | 狀態 |
+|--------|------|------|
+| **7-0b** | Login Reuse Audit（唯讀） | **Done** ✅ |
+| **7-0c** | Canonical Domain SSOT（Tenant Portal） | **Done** ✅ |
+| **7-0d** | Shared Upload Portal SSOT | **Done** ✅ |
+| **7-0e** | Upload Portal UI／Field Spec SSOT | **Done** ✅ |
+| **7-0e.1** | Upload Portal UI Enhancement（欄位順序、狀態、UX 文案） | **Done** ✅ |
+| **7-0e.2** | Upload Portal UI Finalization（Sync Version、訊息定案、Metadata Priority） | **Done** ✅ |
+| **7-1a** | `www/bds/upload.php` + travel_b gate + retUrl allowlist | 未開始 |
+| **7-1b** | Tenant Upload UI（§13.2 欄位）+ POST → BDS pipeline（6A core） | 未開始 |
+| **7-1c** | `bbcshops.com/bds/upload.php` redirect-only（可選） | 未開始 |
+| **7-2a** | `www/bds/shared_upload.php` + management center sno gate | 未開始 |
+| **7-2b** | Shared UI（§13.3 欄位、§13.4 industry select）+ Shared Contract → `shared/travel/knowledge/` | 未開始 |
+| **7-2c** | `bbcshops.com/bds/shared_upload.php` redirect-only（可選） | 未開始 |
+| **7-3** | Audit、recovery、retUrl 強化、營運 runbook | 未開始 |
+| **7-x** | Login Bridge Token（跨域） | **Deferred** |
+
+### 8.3 Phase 7-1 退出準則（Tenant）
+
+- [ ] 未登入 → `brandlogin.php?retUrl=/bds/upload.php` → 登入後回到 upload
+- [ ] `TourBusstoreNo=6180` 可上傳；其他 storeNo 拒絕
+- [ ] 上傳成功 → BDS → GCS `tenants/5f99b8d665e8444d/knowledge/` + Read-back
+- [ ] Tenant upload **不得** 寫入 `shared/`
+- [ ] 非法 `retUrl` 不造成 open redirect
+- [ ] UI 欄位順序（Final）：旅行社名稱 → 上一次成功同步時間 → **目前 AI 使用版本** → 目前 AI 使用資料狀態 → Excel → 上傳並同步 → 同步結果（§13.2）
+- [ ] **不** 顯示 `tenant_key`／`sno`／`gcs_prefix`／`bucket`（同步結果範圍可顯示 `tenant_key` 如 `travel_b`）
+- [ ] 目前 AI 使用版本：格式 `SYNC-YYYYMMDD-HHMMSS`；來源 GCS `sync_report`／knowledge meta（§13.1.2）
+- [ ] AI 資料狀態：僅 `已同步版本`／`仍為上一次成功同步版本`（§13.1.4）
+- [ ] Upload Hint、同步中狀態（§13.1.5～§13.1.6）
+- [ ] 成功訊息：同步範圍 `{tenant_key}` + 同步版本 `{sync_id}` + `AI 知識庫已更新。`（§13.1.7）
+- [ ] 失敗訊息：統一模板含 `本次未更新 GCS，` 換行（§13.1.7）
+- [ ] Metadata 來自 GCS／`var/bds/`（**非** Host B SQL）（§13.1.1）
+
+### 8.4 Phase 7-2 退出準則（Shared）
+
+- [ ] 未登入 → `brandlogin.php?retUrl=/bds/shared_upload.php`
+- [ ] 僅 management center `sno` `cff796a33d94ea31` 可上傳；其他帳號拒絕
+- [ ] MVP 僅 `industry_code=travel` → GCS `shared/travel/knowledge/` + Read-back
+- [ ] Shared upload **不得** 寫入 `tenants/`
+- [ ] **無** 密碼／手機密碼 hardcode gate
+- [ ] UI 欄位順序（Final）：資料層級 → Industry Code → 上一次成功同步時間 → **目前 AI 使用版本** → 目前 AI 使用資料狀態 → Excel → 上傳並同步 → 同步結果（§13.3）
+- [ ] Industry Code 六項：`travel` enabled；其餘 disabled（§13.4）
+- [ ] 成功訊息：同步範圍 `shared/{industry_code}` + 同步版本 + `公有知識庫已更新。`（§13.1.7）
+- [ ] Upload Hint、同步中、失敗模板、Metadata 來源同 7-1
+- [ ] **不** 顯示 `owner_scope`／`bucket`／`gcs_prefix`／`folder_id`／policy flags
+
+### 8.5 Phase 7-3（Hardening）
+
+| 項目 | 說明 |
+|------|------|
+| Audit trail | 上傳者、層級、路徑、sync_id |
+| Recovery | 對齊 `RECOVERY_AND_ROLLBACK_POLICY.md` |
+| retUrl | Server-side allowlist 強化 |
+| Global Shared | `shared/global/knowledge/` upload — **仍 Deferred** |
+
+### 8.6 明確不做
+
+| 不做 | 說明 |
+|------|------|
+| bbcshops 登入域 | §17.8 Sync Policy |
+| Login Bridge Token | Phase 7-x Deferred |
+| Global Shared upload（7-2 MVP） | Deferred；可 7-2+ 或 7-3 後 |
+| Registry Schema 變更 | 沿用既有 `sno`／`tenant_key`／management center wire id |
+| 密碼 in code/docs | §17.9／Ownership §3.7 |
+| Host B SQL 新欄位／Schema／同步版本表 | §17.10.3、§17.10.6；使用 GCS meta／sync_report |
+
+### 8.7 UI Field Spec（Phase 7-0e.2 Final 摘要）
+
+| 項目 | SSOT |
+|------|------|
+| Tenant／Shared 最終欄位順序 | `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §13.2～§13.3 |
+| 目前 AI 使用版本 | `sync_id` = `SYNC-YYYYMMDD-HHMMSS`（§13.1.2、§13.6） |
+| Metadata 來源優先序 | GCS sync_report → knowledge meta → `var/bds/` → Drive（輔助） |
+| AI 資料狀態 | `已同步版本`／`仍為上一次成功同步版本` |
+| 成功訊息 | Tenant：`{tenant_key}` + `{sync_id}`；Shared：`shared/{industry_code}` + `{sync_id}` |
+| Industry 六項 | travel enabled；其餘 disabled；未來 Registry／Policy 控制 |
+
+---
+
 ## 版本紀錄
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v2.3** | 2026-06-05 | Phase 7-0e.2 Final：§8.7 Sync Version；7-0e.2 done；7-1a 前退出準則閉合 |
+| **v2.2** | 2026-06-05 | Phase 7-0e.1：§8.7 UI Enhancement；7-0e.1 done；7-1／7-2 退出準則增補狀態欄位與 UX |
+| **v2.1** | 2026-06-05 | Phase 7-0e：§8.7 UI Field Spec；7-0e done；7-1／7-2 退出準則 UI 項 |
+| **v2.0** | 2026-06-05 | Phase 7-0d：§8 分解為 7-1 Tenant／7-2 Shared／7-3 Hardening |
+| **v1.9** | 2026-06-05 | Phase 7-0c：§8 Upload Portal MVP 子階段；cross-ref MVP Plan |
 | **v1.8** | 2026-06-10 | P1-7 Knowledge Priority、P2-1 Shared Sheet Contract cross-ref |
 | **v1.7** | 2026-06-10 | Phase 6A cross-ref §18.7 Structured Knowledge = Google Sheet |
 | **v1.6** | 2026-06-10 | Phase 6A SSOT：管線、CLI、Registry、Safety、Acceptance Criteria |

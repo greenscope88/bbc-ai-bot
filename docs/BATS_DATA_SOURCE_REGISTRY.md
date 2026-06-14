@@ -1310,6 +1310,96 @@ GCS Knowledge Layer（受控路徑；非 Phase 5 範圍）
 | Cron / Scheduler 程式 | Phase 7 Planning 不實作 |
 | 修改 GCS Knowledge 路徑 | SSOT 不變 |
 
+#### 10.6.5 Tenant Upload Portal — URL & Pilot Mapping（Phase 7-0c SSOT）
+
+> **Status: SSOT 定案（2026-06-05）** — L2 細節見 `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md`；Auth 見 `BATS_DATA_SYNC_POLICY.md` §17.8。
+
+| 項目 | 正式值 |
+|------|--------|
+| **Canonical Tenant Portal** | `https://kowanbo.com/bds/upload.php` |
+| **bbcshops.com（Tenant）** | Redirect-only → kowanbo canonical；**非** 登入域 |
+| **Pilot tenant_key** | `travel_b` |
+| **Pilot sno** | `5f99b8d665e8444d` |
+| **Pilot storeNo（session gate）** | `6180`（`TourBusstoreNo`） |
+| **Pilot depID** | `888` |
+| **GCS 目標** | `tenants/5f99b8d665e8444d/knowledge/` |
+
+**Session → Registry 解析（MVP）：**
+
+```text
+TourBusstoreNo=6180 → tenant_key travel_b → sno 5f99b8d665e8444d → tenants/{sno}/knowledge/
+```
+
+#### 10.6.6 Shared Upload Portal — Scope Resolver（Phase 7-0d SSOT）
+
+> **Status: SSOT 定案（2026-06-05）** — L2：`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §9；Auth §17.9 Sync Policy。
+
+| 項目 | 正式值 |
+|------|--------|
+| **Canonical Shared Portal** | `https://kowanbo.com/bds/shared_upload.php` |
+| **bbcshops.com（Shared）** | Redirect-only → kowanbo canonical |
+| **Permission gate** | Management Center wire `sno` = `cff796a33d94ea31` |
+| **MVP industry_code** | `travel` |
+| **Target GCS prefix** | `shared/travel/knowledge/` |
+| **Deferred** | `shared/global/knowledge/`（Global Shared upload） |
+
+**Scope 解析（MVP）：**
+
+```text
+login session → management center sno gate (cff796a33d94ea31)
+    → industry_code travel (MVP fixed or UI selector locked to travel)
+    → shared/travel/knowledge/
+```
+
+| 禁止 | 說明 |
+|------|------|
+| Tenant resolver 用於 Shared | Tenant `storeNo`／`sno` gate **不得** 授權 Shared 寫入 |
+| Shared resolver 用於 Tenant | Management center gate **不得** 寫入 `tenants/` |
+| 密碼識別 | Gate 僅用 **sno／session 對照**；**不得** 密碼或手機密碼 hardcode |
+
+#### 10.6.7 Industry Code — UI Option & Resolver Mapping（Phase 7-0e.2 Final SSOT）
+
+> **Status: SSOT 定案（2026-06-05）** — UI **正式六項** 與 GCS／Drive 路徑對照；L2：`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §13.4。
+
+| industry_code | MVP enabled | GCS knowledge target | Drive shared archive |
+|---------------|-------------|----------------------|----------------------|
+| `travel` | **yes** | `shared/travel/knowledge/` | `industries/travel/shared/02_Shared_Layer/` |
+| `hotel` | **no** | `shared/hotel/knowledge/` | `industries/hotel/shared/02_Shared_Layer/` |
+| `restaurant` | **no** | `shared/restaurant/knowledge/` | `industries/restaurant/shared/02_Shared_Layer/` |
+| `beauty` | **no** | `shared/beauty/knowledge/` | `industries/beauty/shared/02_Shared_Layer/` |
+| `education` | **no** | `shared/education/knowledge/` | `industries/education/shared/02_Shared_Layer/` |
+| `medical` | **no** | `shared/medical/knowledge/` | `industries/medical/shared/02_Shared_Layer/` |
+
+**Resolver 規則：**
+
+- UI **必須** 列出上述六項。
+- **MVP：** 僅 `travel` enabled；其餘 disabled。
+- **未來：** Platform Registry／Policy 控制各 industry enabled；後端 gate 拒絕未啟用提交。
+- 未啟用 industry 提交 → 拒絕；**不得** 寫入 GCS。
+
+#### 10.6.8 Upload Portal Sync Metadata Source（Phase 7-0e.2 SSOT）
+
+> Upload Portal readonly 狀態欄位之 **讀取** 來源；**禁止** Host B SQL。
+
+| UI 欄位 | 後端鍵 | 來源優先序 |
+|---------|--------|------------|
+| 上一次成功同步時間 | `finished_at`／`published_at` | §10.6.8.1 |
+| 目前 AI 使用版本 | `sync_id` | §10.6.8.1 |
+| 目前 AI 使用資料狀態 | 衍生比對 | GCS 現行 knowledge vs 最近 success `sync_id` |
+
+##### 10.6.8.1 Metadata Source Priority
+
+| 優先序 | 來源 |
+|--------|------|
+| 1 | GCS `sync_report.json`（`tenants/{sno}/meta/` 或 `shared/{industry}/meta/`） |
+| 2 | GCS knowledge 物件 metadata |
+| 3 | Host A `var/bds/` report |
+| 4 | Google Drive archive metadata（**僅**輔助） |
+
+**`sync_id` 格式：** `SYNC-YYYYMMDD-HHMMSS`（例：`SYNC-20260613-153025`）。
+
+**交叉引用：** `BATS_DATA_SYNC_POLICY.md` §17.10.3、§17.10.6；`BATS_DATA_CONTRACT.md` §1.6.5
+
 ---
 
 ## 相關文件
@@ -1317,6 +1407,7 @@ GCS Knowledge Layer（受控路徑；非 Phase 5 範圍）
 | 文件 | 關係 |
 |------|------|
 | `BATS_DATA_SYNC_POLICY.md` | 同步模式、Knowledge Layer 三層（§12.7）、Data Category、Drive 三層、Anti Hardcode |
+| `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` | Phase 7-1 Upload Portal URL、Auth、Pilot（L2） |
 | `BATS_DATA_CONTRACT.md` | Data Contract L3 SSOT — `private_knowledge_sheet_id` 對應之 5 Tab / 5 JSON |
 | `TENANT_SOURCE_REGISTRY_POLICY.md` | 商品源（bbctravel / grp / tourcenter）Registry；與本文件 **互補** |
 | `TENANT_SOURCE_RUNTIME_BRIDGE_V1.md` | Intelligence Layer 消費 `product_sources` |
@@ -1328,6 +1419,10 @@ GCS Knowledge Layer（受控路徑；非 Phase 5 範圍）
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v2.7** | 2026-06-05 | Phase 7-0e.2 Final：§10.6.7 六項 industry 定案；§10.6.8 Sync Metadata Source |
+| **v2.6** | 2026-06-05 | Phase 7-0e：§10.6.7 Industry Code UI option & resolver mapping |
+| **v2.5** | 2026-06-05 | Phase 7-0d：§10.6.5 Tenant 更名；§10.6.6 Shared Upload scope resolver |
+| **v2.4** | 2026-06-05 | Phase 7-0c：§10.6.5 Upload Portal canonical URL、travel_b pilot mapping、bbcshops redirect-only |
 | **v2.3** | 2026-06-12 | Phase 6E-1：§6.7.3 Industry Map 正式定案；§6.7.8 Platform Registry Mapping Contract；§6.7.9 Shared Archive Policy cross-ref |
 | **v2.2** | 2026-06-06 | Phase 6B-2C-1：§6.7 Platform Drive Registry Contract；三 Platform Root Folder ID；Tenant／Platform 分離 |
 | **v2.1** | 2026-06-06 | Phase 7 Pre-Planning：§10.6 Upload-Triggered Sync；三層 Structured Knowledge 同一管線 |

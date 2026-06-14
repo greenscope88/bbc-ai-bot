@@ -506,6 +506,36 @@ shared/global/archive/{data_category}/{drive_file_id}/{file_name}
 | **Policy default OFF** | Shared 兩層預設 **零 promote** |
 | **BATS 不消費 archive** | 三層 `archive/` 皆 **不是** Runtime 答案來源 |
 
+### 3.7 Upload Portal Write Gates（Phase 7-0d SSOT）
+
+> **L2 細節：** `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md`；Sync §17.8～§17.9；Registry §10.6.5～§10.6.6。
+
+#### 3.7.1 Tenant Upload Portal（Phase 7-1）
+
+| 項目 | 規則 |
+|------|------|
+| **誰可使用** | 租戶品牌管理員（Legacy brand login）；Pilot：`TourBusstoreNo=6180` |
+| **允許寫入** | `tenants/{sno}/knowledge/`（Pilot：`tenants/5f99b8d665e8444d/knowledge/`） |
+| **禁止** | 寫入 `shared/`；寫入他社 `tenants/{other_sno}/` |
+| **Tenant Admin 對 Shared** | 租戶管理員 **不可** 透過任何 Upload Portal 寫入 `shared/` |
+
+#### 3.7.2 Shared Upload Portal（Phase 7-2）
+
+| 項目 | 規則 |
+|------|------|
+| **誰可使用** | **僅** BBC 管理中心／Industry Maintainer（Management Center `sno` `cff796a33d94ea31`） |
+| **允許寫入** | `shared/{industry_code}/knowledge/`；MVP：`shared/travel/knowledge/` |
+| **禁止** | 寫入 `tenants/`；Tenant Admin 使用 Shared Portal；密碼／手機密碼 hardcode gate |
+| **Deferred** | `shared/global/knowledge/` — Global Shared upload 另階段 |
+
+#### 3.7.3 雙 Portal 隔離
+
+| 原則 | 說明 |
+|------|------|
+| **獨立 URL** | `upload.php` ≠ `shared_upload.php` |
+| **獨立 gate** | Tenant 用 `storeNo`／tenant `sno`；Shared 用 management center `sno` |
+| **單次 job 單層** | 一次上傳觸發之 BDS job **不得** 同時 promote Tenant + Shared 路徑 |
+
 ---
 
 ## 4. Override Rule
@@ -769,6 +799,7 @@ L2+ 實作文件、程式
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.5** | 2026-06-05 | Phase 7-0d：§3.7 Upload Portal Write Gates（Tenant／Shared 隔離） |
 | **v1.4** | 2026-06-12 | Phase 6E-1：§2.7 Industry First Drive 樹；§3.6 Archive Layer 寫入邊界（三層） |
 | **v1.3** | 2026-06-10 | 新增 §2.7 Google Drive Platform Layer Architecture；Shared 移出租戶資料夾 |
 | **v1.3** | 2026-06-10 | §2.7 Shared Runtime Boundary、Object Versioning、Runtime Source cross-ref |

@@ -17,6 +17,7 @@
 | §1 | Purpose |
 | §1.5 | Structured Knowledge Input Source |
 | §1.6 | Phase 7 — Upload-Triggered Structured Knowledge |
+| §1.6.5 | Upload Portal Sync Metadata Contract |
 | §2 | Relationship |
 | §3 | Data Category |
 | §4 | Google Sheet Multi Tab Rule |
@@ -132,6 +133,66 @@ FAQ 型、表格型、條列型知識（含護照、簽證、入境規定、行�
 |------|--------------------------|---------------------------|
 | **Excel（Structured）** | 可選 Archive 原件 | **主徑** — Contract Validation → GCS JSON |
 | **PDF / Image / Word** | Archive read／promote | **不在** 本 Contract；非 Phase 7 Structured 主徑 |
+
+#### 1.6.4 Upload Portal Canonical URLs（Phase 7-0c / 7-0d）
+
+| Portal | Canonical URL | 寫入層級 |
+|--------|---------------|----------|
+| **Tenant** | `https://kowanbo.com/bds/upload.php` | `tenants/{sno}/knowledge/` |
+| **Shared** | `https://kowanbo.com/bds/shared_upload.php` | `shared/{industry_code}/knowledge/` |
+
+| 共同項 | 說明 |
+|--------|------|
+| **Auth** | Legacy kowanbo `brandlogin.php`；`retUrl` allowlist `/bds/` |
+| **bbcshops.com** | Redirect-only |
+| **Tenant Pilot** | `travel_b` / `storeNo` 6180 |
+| **Shared Gate** | Management Center `sno` `cff796a33d94ea31`；MVP `travel` |
+
+**交叉引用：** `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md`
+
+#### 1.6.5 Upload Portal Sync Metadata Contract（Phase 7-0e.2 SSOT）
+
+> **Status: SSOT 定案（2026-06-05）** — BDS 寫入與 Upload Portal UI 讀取之同步 metadata 契約。  
+> **禁止：** Host B SQL 欄位／Schema／同步版本資料表。
+
+##### 1.6.5.1 `sync_id`（Sync Version）
+
+| 項目 | 規格 |
+|------|------|
+| **欄位名** | `sync_id` |
+| **UI 顯示名** | 目前 AI 使用版本 |
+| **格式** | `SYNC-YYYYMMDD-HHMMSS` |
+| **範例** | `SYNC-20260613-153025` |
+| **產生** | BDS job 於 **成功** promote 至 GCS knowledge 時產生 |
+| **寫入位置** | `sync_report.json`；GCS knowledge 物件 metadata |
+
+##### 1.6.5.2 `sync_report.json` 必填欄位（Upload Portal 相關）
+
+| 欄位 | 說明 |
+|------|------|
+| `sync_id` | 同步版本（§1.6.5.1） |
+| `status` | `success`／`failed` |
+| `finished_at` | 最近一次 job 結束時間（ISO 8601） |
+| `tenant_sno` 或 `industry_code` | scope 識別（依 Tenant／Shared） |
+| `data_category` | `tenant_private_knowledge` 或 `shared_knowledge` |
+
+##### 1.6.5.3 UI 讀取來源優先序
+
+| 優先序 | 來源 |
+|--------|------|
+| 1 | GCS `sync_report.json` |
+| 2 | GCS knowledge 物件 metadata |
+| 3 | Host A `var/bds/` report |
+| 4 | Google Drive archive metadata（**僅**輔助） |
+
+##### 1.6.5.4 AI Data Status（UI 衍生 — 非獨立儲存欄位）
+
+| 顯示值 | 條件 |
+|--------|------|
+| `已同步版本` | 現行 GCS knowledge `sync_id` = 最近 success `sync_id` |
+| `仍為上一次成功同步版本` | 有歷史 success，session 尚未新 success promote |
+
+**交叉引用：** `BATS_DATA_SYNC_POLICY.md` §17.10.3、§17.10.6；`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §13.1、§13.6
 
 ---
 
@@ -826,6 +887,9 @@ tenants/{sno}/knowledge/
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.7** | 2026-06-05 | Phase 7-0e.2 Final：§1.6.5 Upload Portal Sync Metadata Contract（sync_id、來源優先序） |
+| **v1.6** | 2026-06-05 | Phase 7-0d：§1.6.4 雙 Upload Portal URL（Tenant／Shared） |
+| **v1.5** | 2026-06-05 | Phase 7-0c：§1.6.4 Upload Portal canonical URL（kowanbo）；cross-ref MVP Plan |
 | **v1.4** | 2026-06-06 | Phase 7 Pre-Planning：§1.6 Upload-Triggered Structured Knowledge；三層同一 Upload 管線 |
 | **v1.3** | 2026-06-10 | §1.5 Structured Knowledge Input Source；§10.3 Shared 亦以 Sheet 治理 |
 | **v1.2** | 2026-06-09 | 新增 §2.3 BDS Data Input Cross Reference（Sheet Structured / Drive Unstructured） |
