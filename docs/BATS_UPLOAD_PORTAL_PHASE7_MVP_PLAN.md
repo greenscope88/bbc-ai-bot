@@ -654,6 +654,82 @@ Portal UI、說明文字、錯誤訊息 **一律** 使用下列 **中文顯示�
 
 **交叉引用：** `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §8.8.6.5
 
+#### 13.1.10 Portal Download UX — 下載最新版 Excel（Phase 7-1e.8 SSOT）
+
+> **Status: SSOT 定案（2026-06-15）** — Tenant Upload Portal **Latest Successful Workbook** 下載 UX。  
+> **L3 契約：** `BATS_DATA_CONTRACT.md` §1.6.9；**L1 規則：** `BATS_DATA_SYNC_POLICY.md` §14.1.2。
+
+##### 13.1.10.1 使用者故事
+
+旅行社登入 `https://kowanbo.com/bds/upload.php` 後，除上傳外，可 **下載目前 AI 正在使用之最新成功 Excel**，作為離線編輯模板，修改後再透過同一 Portal 上傳。
+
+##### 13.1.10.2 Readonly 區塊整合（Tenant）
+
+下載區塊 **必須** 與既有 readonly metadata **同一視覺群組**，建議順序：
+
+| # | 欄位／控制項 | 類型 | 說明 |
+|---|--------------|------|------|
+| 1 | 旅行社名稱 | readonly | 既有 §13.2 |
+| 2 | 上一次成功同步時間 | readonly | §13.1.3 |
+| 3 | 目前 AI 使用版本 | readonly | §13.1.2；例：`SYNC-20260614-112620` |
+| 4 | 目前 AI 使用資料狀態 | readonly | §13.1.4 |
+| 5 | **最新版 Excel** | **download action** | 見 §13.1.10.3 |
+| 6 | Excel 檔案（上傳） | file input | 既有 |
+| 7 | 上傳並同步 | submit | 既有 |
+| 8 | 同步結果 | system block | 既有 |
+
+##### 13.1.10.3 下載控制項規格
+
+**有成功紀錄時（`latest_successful_workbook` 可用且 `sync_id` 對齊最近 success）：**
+
+```text
+最新版 Excel：
+【下載最新版 Excel】
+```
+
+| 項目 | 規格 |
+|------|------|
+| **控制項** | 連結或 button 觸發下載（`<a download>` 或 server redirect） |
+| **文案** | `下載最新版 Excel`（**定案**） |
+| **href 來源** | `drive_download_url`（Contract §1.6.9.3）；**禁止** 硬編碼 Drive ID |
+| **行為** | 點擊後下載 Google Drive 上 **最後一次成功同步** 之 `.xlsx` |
+| **Download Mode** | View URL 或 Download URL；**禁止** Edit URL |
+
+**無成功紀錄時：**
+
+```text
+最新版 Excel：
+尚無可下載的最新版 Excel
+```
+
+（無連結、無按鈕。）
+
+##### 13.1.10.4 失敗 session 行為
+
+| 情境 | 下載區塊 |
+|------|----------|
+| 本次 POST sync **失敗** | 仍顯示 **上一版成功** 之下載連結（Last Successful Workbook Rule） |
+| readonly `目前 AI 使用資料狀態` | `仍為上一次成功同步版本`（§13.1.4） |
+| 不得 | 連結至本次失敗 staging 檔、`upload_session` 暫存路徑 |
+
+##### 13.1.10.5 禁止 UI 暴露（下載相關）
+
+| 禁止 |
+|------|
+| `drive_file_id`、`folder_id` |
+| `tenant_sno`、`tenant_key` |
+| `bucket`、`gcs_prefix`、`gs://` |
+| `var/bds/` 路徑 |
+| staging／`upload_session_id` 作為下載參數 |
+
+**允許：** 使用者可見之 `sync_id`、同步時間、下載按鈕文案。
+
+##### 13.1.10.6 Shared Upload Portal（7-2 預留）
+
+Shared Portal **可** 於 7-2 採相同模式：下載來源為 **Industry Shared** Drive workbook；metadata scope 為 `shared/{industry_code}/`。**MVP（7-1）** 僅 Tenant Portal 實作。
+
+**交叉引用：** `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §8.8.6.6
+
 ---
 
 ### 13.2 Tenant Private Upload Portal — UI Fields
@@ -667,9 +743,10 @@ Portal UI、說明文字、錯誤訊息 **一律** 使用下列 **中文顯示�
 | 2 | **上一次成功同步時間** | text（display） | `readonly` | §13.1.3 |
 | 3 | **目前 AI 使用版本** | text（display） | `readonly` | `sync_id`；§13.1.2；範例：`SYNC-20260613-153025` |
 | 4 | **目前 AI 使用資料狀態** | text（display） | `readonly` | §13.1.4：`已同步版本`／`仍為上一次成功同步版本` |
-| 5 | **Excel 檔案** | file input | `required`；`accept .xlsx` | 上方 Upload Hint（§13.1.5） |
-| 6 | **上傳並同步** | button | submit | 同步中見 §13.1.6 |
-| 7 | **同步結果** | system block | — | §13.1.7；成功後更新欄位 2、3、4 |
+| 5 | **最新版 Excel** | link／button | readonly action | §13.1.10；`下載最新版 Excel` |
+| 6 | **Excel 檔案** | file input | `required`；`accept .xlsx` | 上方 Upload Hint（§13.1.5） |
+| 7 | **上傳並同步** | button | submit | 同步中見 §13.1.6 |
+| 8 | **同步結果** | system block | — | §13.1.7；成功後更新欄位 2、3、4 |
 
 **後端解析（不可顯示於 UI）：**
 
@@ -795,7 +872,7 @@ UI **必須** 建立下列 **六項** 選項；後端 **僅** 允許 Registry／
 |------|------|
 | `BATS_DATA_SYNC_POLICY.md` §17.8～§17.11、§19.4 | L1 — Dual Portal、UI Final、Sync Trigger |
 | `BATS_DATA_SOURCE_REGISTRY.md` §10.6.5～§10.6.8 | L1 — Tenant pilot、Shared scope、Industry、Sync metadata |
-| `BATS_DATA_CONTRACT.md` §1.6.5、§4.4 | L3 — Upload Portal Sync Metadata；Worksheet Mapping Layer |
+| `BATS_DATA_CONTRACT.md` §1.6.5、§4.4、§1.6.9 | L3 — Sync Metadata；Worksheet Mapping；Latest Successful Workbook |
 | `BATS_DATA_OWNERSHIP_POLICY.md` §3.7 | L1 — Upload Portal 寫入權限 |
 | `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §8 | L2 — Phase 7-1／7-2／7-3 順序 |
 | `BATS_SHARED_KNOWLEDGE_CONTRACT.md` | Shared Excel Contract（7-2） |
@@ -807,6 +884,7 @@ UI **必須** 建立下列 **六項** 選項；後端 **僅** 允許 Registry／
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.8** | 2026-06-15 | Phase 7-1e.8：§13.1.10 Portal Download UX；§13.2 新增「下載最新版 Excel」 |
 | **v1.7** | 2026-06-14 | Phase 7-1e.6：§13.1.8 檔名／順序不檢查；§13.1.9 Worksheet UX 與中文化錯誤訊息 |
 | **v1.6** | 2026-06-05 | Phase 7-1c-1b：§12.4 CLI 指令含 `--upload-session-id`；禁止 Portal 直接同步 Sheet |
 | **v1.5** | 2026-06-05 | Phase 7-1c-0：§12 Upload→BDS Sync Trigger；§11.4 子階段；7-1a／7-1b Done |
@@ -822,8 +900,8 @@ UI **必須** 建立下列 **六項** 選項；後端 **僅** 允許 Registry／
 
 | 項目 | 狀態 |
 |------|------|
-| **文件狀態** | **SSOT 定案（Phase 7-1e.6）** — Worksheet Mapping UX／中文化錯誤訊息已閉合 |
-| **程式實作** | Mapping Layer + Portal 錯誤 formatter **待實作**（Implementation Plan §8.8.6.5） |
+| **文件狀態** | **SSOT 定案（Phase 7-1e.8）** — Latest Successful Workbook Download UX 已閉合 |
+| **程式實作** | Portal 下載 + Drive promote **待實作**（Implementation Plan §8.8.6.6） |
 | **SAFE TO IMPLEMENT Phase 7-1c-2a** | **是（文件層）** — `--upload-session-id` 契約已閉合 |
 | **SAFE TO IMPLEMENT Phase 7-1** | **是** — domain／auth／pilot／UI field spec 已閉合 |
 | **SAFE TO IMPLEMENT Phase 7-2** | **是（文件層）** — Shared Portal Final UI spec 已閉合；**依賴** Shared BDS 管線就緒 |

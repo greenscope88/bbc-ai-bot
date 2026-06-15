@@ -1316,7 +1316,88 @@ BdsXlsxReader::readMappedWorkbook($xlsxPath, $mappingResult)
 - [ ] Portal 失敗訊息符合 §13.1.9（至少 worksheet 結構類錯誤）
 - [ ] 新增 `tests/bds/test_bds_worksheet_mapping_layer.php`（或擴充既有 upload mode test）
 
-**Phase 標記：** Runtime 實作建議列 **Phase 7-1e.7**（本文件定案 **7-1e.6** 僅 Docs）。
+**Phase 標記：** Runtime 實作 **Phase 7-1e.7 Done**；本節定案 **7-1e.6** 僅 Docs。
+
+##### 8.8.6.6 Latest Successful Workbook Download — Future Runtime Design（Phase 7-1e.8）
+
+> **Status: SSOT 定案（2026-06-15）** — Drive workbook promote + Portal 下載；**本節為文件定案，程式待實作（7-1e.8 Runtime）**。  
+> **L3：** `BATS_DATA_CONTRACT.md` §1.6.9；**L1：** `BATS_DATA_SYNC_POLICY.md` §14.1.2；**L2 UX：** `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §13.1.10。
+
+###### 8.8.6.6.1 目標流程
+
+```text
+Formal Sync SUCCESS（dry_run=false, read-back PASS）
+        ↓
+BdsDriveWorkbookPromoter（建議新元件）
+  → 上傳 staging .xlsx → Google Drive tenant workbook（覆寫）
+  → 取得 drive_file_id、drive_download_url（Download Mode，非 Edit）
+        ↓
+BdsLatestSuccessfulWorkbookWriter（建議）
+  → 寫入 var/bds/tenants/{sno}/meta/latest_successful_workbook.json
+  → （可選）內嵌至 success sync_report
+        ↓
+legacy www upload.php GET
+  → 讀 metadata + sync_report（§1.6.5.3 優先序）
+  → 渲染「下載最新版 Excel」href
+```
+
+###### 8.8.6.6.2 新增／擴充元件（建議）
+
+| # | 元件 |  repo | 職責 |
+|---|------|------|------|
+| 1 | **`BdsDriveWorkbookPromoter`** | bbc-ai-bot | success 路徑：staging xlsx → Drive 覆寫；回傳 file id + download URL |
+| 2 | **`BdsLatestSuccessfulWorkbookWriter`** | bbc-ai-bot | 寫入 §1.6.9.3 metadata JSON；**僅** success 呼叫 |
+| 3 | **`bdsLoadLatestSuccessfulWorkbook()`** | legacy www | GET upload.php：解析下載 href；**不** 暴露內部 ID |
+| 4 | **`bin/bds-sync.php` 擴充** | bbc-ai-bot | formal sync success 後呼叫 promoter + writer；fail 路徑 **跳過** |
+
+**不在本 Phase 修改（7-1e.8 文件邊界已列 Out of Scope）：** 可於 **7-1e.8b Runtime** 實作 legacy `upload.php` UI。
+
+###### 8.8.6.6.3 觸發與 Safety Gate
+
+| Gate | 行為 |
+|------|------|
+| `status=success` && `dry_run=false` | 允許 Drive promote + metadata write |
+| Validation／Sync／Read-back Fail | **不** promote；**不** 更新 metadata |
+| Last Successful Version（§14.1.1） | GCS JSON 與 Drive workbook **同步** success 語意 |
+
+###### 8.8.6.6.4 Drive 檔案策略
+
+| 項目 | 規格 |
+|------|------|
+| **Logical 檔** | 每 tenant 單一「tenant private knowledge workbook」於 Drive Archive 路徑 |
+| **成功覆寫** | 每次 success 以本次 staging `knowledge_{upload_session_id}.xlsx` 內容覆寫 |
+| **檔名** | 由 Registry／Drive policy 決定（**非** 使用者 `original_filename`） |
+| **權限** | SA 具 write；Portal 僅持 **download/view** URL |
+
+###### 8.8.6.6.5 Portal 實作要點（legacy www — 7-1e.8b）
+
+| # | 交付項 |
+|---|--------|
+| 1 | readonly 區新增「最新版 Excel」列（§13.1.10.2） |
+| 2 | 有 metadata 時渲染 `<a href="...">下載最新版 Excel</a>` |
+| 3 | 無 metadata 時 `尚無可下載的最新版 Excel` |
+| 4 | POST 失敗同 request：下載 href **不變**（frozen baseline，對齊 7-1e.1 readonly 模式） |
+| 5 | **禁止** 輸出 `drive_file_id`、`folder_id`、`gs://` |
+
+###### 8.8.6.6.6 測試（7-1e.8 Runtime 建議）
+
+| # | 案例 |
+|---|------|
+| A | Success sync → Drive 覆寫 + metadata 寫入 + `sync_id` 一致 |
+| B | Validation fail → Drive／metadata **不變** |
+| C | GET upload.php → 下載 href 指向上一版 success |
+| D | 無 success 紀錄 → 無下載按鈕 |
+| E | metadata `sync_id` 與 readonly「目前 AI 使用版本」一致 |
+
+###### 8.8.6.6.7 退出準則
+
+- [ ] Success 路徑寫入 `latest_successful_workbook.json`（Contract §1.6.9.3）
+- [ ] Fail 路徑 Drive + metadata 不變（§14.1.2.3）
+- [ ] Portal 僅顯示下載 URL／按鈕；無內部 path 洩漏
+- [ ] 下載來源 **非** staging／GCS JSON
+- [ ] 與 §14.1.1 Last Successful Version **一致**
+
+**Phase 標記：** **7-1e.8** = Docs（本 commit）；**7-1e.8b** = bbc-ai-bot Drive promote；**7-1e.8c** = legacy Portal UI。
 
 ---
 
@@ -1324,6 +1405,7 @@ BdsXlsxReader::readMappedWorkbook($xlsxPath, $mappingResult)
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v2.7** | 2026-06-15 | Phase 7-1e.8：§8.8.6.6 Latest Successful Workbook Download Future Runtime |
 | **v2.6** | 2026-06-14 | Phase 7-1e.6：§8.8.6.5 Worksheet Mapping Layer Runtime Design；Portal 中文化；7-1e.7 測試退出準則 |
 | **v2.5** | 2026-06-05 | Phase 7-1c-1b：§8.8.6 CLI Staging Input Contract；7-1c-2a／7-1c-2b 分解 |
 | **v2.4** | 2026-06-05 | Phase 7-1c-0：§8.8 Upload→BDS CLI Trigger；7-1a／7-1b Done；7-1c 重新定義 |

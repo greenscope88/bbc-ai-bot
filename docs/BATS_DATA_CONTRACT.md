@@ -19,6 +19,7 @@
 | §1.6 | Phase 7 — Upload-Triggered Structured Knowledge |
 | §1.6.6 | Upload → BDS Sync Trigger（Phase 7-1c-0） |
 | §1.6.7 | Upload CLI Input Contract（Phase 7-1c-1b） |
+| §1.6.9 | Latest Successful Workbook Contract（Phase 7-1e.8） |
 | §2 | Relationship |
 | §3 | Data Category |
 | §4 | Google Sheet Multi Tab Rule |
@@ -301,6 +302,107 @@ staging `.xlsx` 須可解析為本文件 §4～§8 定義之 **五 Required Cano
 | Read-back Fail | ✅ |
 
 **交叉引用：** `BATS_DATA_SYNC_POLICY.md` §17.11.2.1；`BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §8.8.6；`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §12.4
+
+#### 1.6.9 Latest Successful Workbook Contract（Phase 7-1e.8 SSOT）
+
+> **Status: SSOT 定案（2026-06-15）** — 旅行社自 Upload Portal **下載目前 AI 使用之最新成功 Excel** 之 L3 資料契約。  
+> **L1 治理規則：** `BATS_DATA_SYNC_POLICY.md` §14.1.2；**L2 Portal UX：** `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §13.1.10；**Runtime（未實作）：** `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §8.8.6.6。
+
+##### 1.6.9.1 目的
+
+| 項目 | 說明 |
+|------|------|
+| **使用者需求** | 旅行社需下載「**目前 AI 正在使用**」之 Structured Knowledge **Excel 原件**，作為離線編輯模板 |
+| **正式來源** | **Google Drive** 上之 **Latest Successful Workbook**（tenant private knowledge `.xlsx`） |
+| **非來源** | staging、`var/bds/uploads/`、`upload_session.json`、GCS `knowledge/*.json`、Host B SQL |
+
+##### 1.6.9.2 與三層架構分工
+
+```text
+Upload Portal（上傳入口）
+        ↓ success only
+Google Drive（Latest Successful Workbook — 下載來源）
+        ↓ BDS 轉換
+GCS knowledge/*.json（AI Runtime — 查詢來源，非下載來源）
+```
+
+| 層級 | 角色 | Portal 下載 |
+|------|------|-------------|
+| **Upload Portal** | 唯一正式上傳入口 | 僅提供下載 **連結**（UI） |
+| **Google Drive Archive** | 原始 Excel **Latest Successful** SoT | **是** — 下載目標 |
+| **GCS Knowledge** | AI Runtime JSON | **否** — 不得作為 Excel 下載來源 |
+
+##### 1.6.9.3 `latest_successful_workbook` Metadata Contract
+
+正式同步 **成功**（`status=success` 且 `dry_run=false`）後，BDS **必須** 更新下列 metadata（寫入位置見 §1.6.9.5）：
+
+| 欄位 | 類型 | 必填 | 說明 |
+|------|------|------|------|
+| `source_type` | string | ✅ | 固定 `upload_portal` |
+| `sync_id` | string | ✅ | 與本次成功 promote 之 `sync_id` 一致（`SYNC-YYYYMMDD-HHMMSS`） |
+| `drive_file_id` | string | ✅ | Google Drive 檔案 ID（**僅** 後端／稽核；**禁止** Portal UI 暴露） |
+| `drive_download_url` | string | ✅ | Google Drive **Download** 或 **View** URL（Portal 下載按鈕 **唯一** 可用 href 來源） |
+| `upload_session_id` | string | ✅ | 對應成功批次之 staging session |
+| `stored_filename` | string | ❌ | staging 檔名（稽核） |
+| `original_filename` | string | ❌ | 使用者上傳原始檔名（稽核） |
+| `uploaded_at` | string | ❌ | 上傳接收時間（ISO 8601） |
+| `published_at` | string | ✅ | 成功 promote 時間（ISO 8601）；對齊 `sync_report.finished_at` |
+| `tenant_sno` | string | ✅ | 租戶 wire authority（**禁止** Portal UI 暴露） |
+| `tenant_key` | string | ❌ | Registry 鍵（**禁止** Portal UI 暴露） |
+| `data_category` | string | ✅ | Tenant：`tenant_private_knowledge` |
+
+**Drive URL 模式（Download Mode）：**
+
+| 允許 | 禁止 |
+|------|------|
+| Google Drive **View URL**（`webViewLink` 類型，唯讀瀏覽） | Google Drive **Edit URL** |
+| Google Drive **Download URL**（`webContentLink` 或等價下載連結） | 直接暴露 `drive_file_id`、`folder_id` |
+| Portal 以 `<a href="{drive_download_url}">` 呈現 | 暴露 `gs://`、GCS path、`bucket` |
+
+##### 1.6.9.4 Last Successful Workbook 更新規則
+
+| 條件 | 是否更新 `latest_successful_workbook` |
+|------|----------------------------------------|
+| Formal sync **success**（`status=success`、`dry_run=false`、Read-back PASS） | **是** — 覆蓋 Drive tenant workbook + 更新 metadata |
+| Validation Fail | **否** |
+| Upload Fail（staging／session） | **否** |
+| Sync Fail | **否** |
+| Read-back Fail | **否** |
+| CSRF Fail | **否** |
+| Duplicate Worksheet Fail | **否** |
+| `upload_session.status=sync_failed` | **否** |
+
+**與 Last Successful Version Rule 對齊：** 失敗批次 **不得** 使下載按鈕指向未成功 promote 之 Excel；UI 仍指向 **上一版成功** Drive workbook。
+
+##### 1.6.9.5 儲存位置與讀取優先序
+
+**寫入（Runtime 7-1e.8+）：**
+
+| 優先 | 位置 | 說明 |
+|------|------|------|
+| 1 | Host A `var/bds/tenants/{sno}/meta/latest_successful_workbook.json` | Portal readonly + 下載 href 解析 **首選** |
+| 2 | 成功版 `sync_report.json` 內嵌 `latest_successful_workbook` 物件（**可選**；須 `status=success`） | 與 §1.6.5.2 同一檔案；**僅 success 路徑寫入** |
+
+**讀取（Portal UI — 與 §1.6.5.3 整合）：**
+
+| 優先序 | 來源 |
+|--------|------|
+| 1 | `latest_successful_workbook.json`（存在且 `sync_id` 對應最近 success） |
+| 2 | 成功 `sync_report.json` 內嵌區塊 |
+| 3 | Google Drive archive metadata（**僅** 輔助；**不可** 單獨作為 SSOT） |
+
+**無任何成功紀錄：** 不顯示下載按鈕；顯示 `尚無可下載的最新版 Excel`。
+
+##### 1.6.9.6 Drive Tenant Workbook 覆寫規則
+
+| 規則 | 說明 |
+|------|------|
+| **成功後覆寫** | 每次 formal sync success，BDS **可** 以本次 staging `.xlsx` **覆寫** Drive 上同一 logical tenant workbook |
+| **Drive 語意** | Drive **永遠** 保留 **最新一次成功同步** 之 Excel 原件 |
+| **失敗不覆寫** | 任何 Fail **不得** 覆寫 Drive workbook |
+| **與 §4.4.4 一致** | Upload 原始檔名不參與 Drive 檔名邏輯；Drive 檔名由 BDS／Registry 政策決定（Implementation Plan §8.8.6.6） |
+
+**交叉引用：** `BATS_DATA_SYNC_POLICY.md` §14.1.2、§18；`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §13.1.10
 
 ---
 
@@ -1082,6 +1184,7 @@ tenants/{sno}/knowledge/
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v2.1** | 2026-06-15 | Phase 7-1e.8：§1.6.9 Latest Successful Workbook Contract；Drive 下載來源；metadata 契約 |
 | **v2.0** | 2026-06-14 | Phase 7-1e.6：§4.4 Worksheet Mapping Layer；Upload 中／英工作表別名；順序／檔名不檢查；§4.3 限 Sheet mode |
 | **v1.9** | 2026-06-05 | Phase 7-1c-1b：§1.6.7 Upload CLI Input Contract（`--upload-session-id`、staging、source_type） |
 | **v1.8** | 2026-06-05 | Phase 7-1c-0：§1.6.6 Upload→BDS Sync Trigger；Last Successful Version cross-ref |
@@ -1100,6 +1203,6 @@ tenants/{sno}/knowledge/
 
 | 項目 | 狀態 |
 |------|------|
-| 文件狀態 | **SSOT 定案（Phase 7-1e.6）** — Worksheet Mapping Layer 已閉合 |
-| 程式實作 | Upload mode Mapping Layer **待實作**（§4.4；Implementation Plan §8.8.6.5） |
+| 文件狀態 | **SSOT 定案（Phase 7-1e.8）** — Latest Successful Workbook Contract 已閉合 |
+| 程式實作 | Workbook Download Runtime **待實作**（Implementation Plan §8.8.6.6） |
 | Git commit | **尚未提交** |

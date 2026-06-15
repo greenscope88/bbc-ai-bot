@@ -1103,6 +1103,85 @@ Source（Sheet / Drive / Upload）
 
 **交叉引用：** `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §12.3；`BATS_DATA_CONTRACT.md` §1.6.6；Implementation Plan §8.8
 
+#### 14.1.2 Latest Successful Workbook Rule（Phase 7-1e.8 SSOT）
+
+> **Status: SSOT 定案（2026-06-15）** — **Google Drive** 上 Latest Successful Excel 之下載治理；與 §14.1.1 **互補**（GCS JSON vs Drive Workbook）。
+
+##### 14.1.2.1 核心原則
+
+| 原則 | 說明 |
+|------|------|
+| **下載來源** | **Google Drive** — Latest Successful Workbook **唯一正式來源** |
+| **非下載來源** | staging、`var/bds/uploads/`、`upload_session`、GCS `knowledge/*.json` |
+| **與 AI Runtime 對齊** | 下載版 `sync_id` **必須** 等於目前 AI 使用之成功 `sync_id`（§14.1.1） |
+| **Upload Portal** | 唯一正式上傳入口；**同頁** 提供下載連結（L2：`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §13.1.10） |
+
+##### 14.1.2.2 更新條件（Must Update）
+
+**僅** 下列完整成功路徑可更新 Drive tenant workbook 與 `latest_successful_workbook` metadata：
+
+```text
+Upload Portal POST
+  → staging 成功
+  → Validation PASS
+  → Formal Sync PASS（dry_run=false）
+  → GCS Write PASS
+  → Read-back PASS
+  → upload_session.status = sync_success（Portal 語意）
+  → sync_report.status = success
+```
+
+| 必要條件 | 說明 |
+|----------|------|
+| `sync_report.status` | `success` |
+| `sync_report.dry_run` | `false` |
+| Read-back | PASS |
+| Drive promote／archive write | 成功覆寫 tenant workbook |
+
+##### 14.1.2.3 不得更新（Must Not Update）
+
+下列失敗 **均不得** 更新 Latest Successful Workbook（Drive 檔案 + metadata **維持上一版成功**）：
+
+| 失敗類型 | 說明 |
+|----------|------|
+| Upload Fail | staging／session 無效 |
+| CSRF Fail | Portal 安全驗證失敗 |
+| Validation Fail | Contract／Worksheet 驗證失敗 |
+| Duplicate Worksheet Fail | Mapping Layer 重複映射 |
+| Sync Fail | BDS job 失敗 |
+| Read-back Fail | GCS read-back 未通過 |
+| `upload_session.status=sync_failed` | Portal 正式同步失敗 |
+
+**使用者體驗：** 失敗後「下載最新版 Excel」仍指向 **上一次成功** Drive 檔案；與 §14.1.1「仍為上一次成功同步版本」一致。
+
+##### 14.1.2.4 Google Drive 覆寫規則
+
+| 規則 | 說明 |
+|------|------|
+| **成功覆寫** | Formal sync success 後，Drive tenant workbook **允許** 以本次上傳 `.xlsx` **覆蓋** 同 logical 路徑檔案 |
+| **Drive 語意** | Drive **永遠** 保留 **最新一次成功同步** 之 Excel（非 staging 暫存、非失敗批次） |
+| **失敗不碰 Drive workbook** | 與 GCS Last Successful 規則對稱 |
+| **Registry 路徑** | 依 `BATS_DATA_SOURCE_REGISTRY.md` tenant private archive／knowledge workbook 路徑（Implementation Plan §8.8.6.6） |
+
+##### 14.1.2.5 Portal 暴露邊界
+
+| 允許 UI 顯示 | 禁止 UI 顯示 |
+|--------------|--------------|
+| 下載連結（`drive_download_url` 或 server-side redirect） | `drive_file_id`、`folder_id` |
+| 目前 AI 使用版本（`sync_id`） | `tenant_sno`、`tenant_key` |
+| 上一次成功同步時間 | `bucket`、`gcs_prefix`、`gs://` |
+| 按鈕文案：`下載最新版 Excel` | 任何內部 Archive 路徑 |
+
+##### 14.1.2.6 Download Mode
+
+| 模式 | 規格 |
+|------|------|
+| **允許** | View URL（唯讀預覽）、Download URL（檔案下載） |
+| **禁止** | Edit URL、Drive 線上編輯入口 |
+| **意圖** | 旅行社 **下載 → 本地編輯 → 重新上傳**；**不得** 繞過 Upload Portal 直接改 Drive |
+
+**交叉引用：** `BATS_DATA_CONTRACT.md` §1.6.9；`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §13.1.10；Implementation Plan §8.8.6.6
+
 ### 14.2 錯誤分類
 
 | 等級 | 範例 | 處理 |
@@ -1599,6 +1678,17 @@ shared/{industry_code}
 | 用途 | 客服確認、Tenant 驗證、Read-back 驗證、問題追蹤、Versioning 對照 |
 
 **交叉引用：** `BATS_DATA_CONTRACT.md` §1.6.5；`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §13.6
+
+#### 17.10.7 Latest Successful Workbook Download（Phase 7-1e.8 SSOT）
+
+> **Status: SSOT 定案（2026-06-15）** — Upload Portal readonly 區塊與 **下載最新版 Excel** 之 L1 UI 政策摘要；完整 UX 見 MVP Plan §13.1.10。
+
+| 項目 | 規格 |
+|------|------|
+| **下載來源** | Google Drive Latest Successful Workbook（§14.1.2） |
+| **與 readonly 整合** | 下載區塊緊鄰「目前 AI 使用版本」「上一次成功同步時間」 |
+| **無成功紀錄** | 隱藏下載按鈕；文案 `尚無可下載的最新版 Excel` |
+| **失敗 session 後** | 下載仍指向上一版成功；**不** 暴露失敗批次 staging 檔 |
 
 ### 17.11 Upload → BDS Sync Trigger Architecture（Phase 7-1c-0 SSOT）
 
@@ -2246,6 +2336,7 @@ Service Account 僅授權必要之 `tenants/{sno}/` prefix；不得授予跨 ten
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v2.12** | 2026-06-15 | Phase 7-1e.8：§14.1.2 Latest Successful Workbook Rule；§17.10.7 Portal Download 政策 |
 | **v2.11** | 2026-06-14 | Phase 7-1e.6：§17.12 Upload Workbook Acceptance Rule；中文錯誤訊息；檔名／順序不檢查 |
 | **v2.10** | 2026-06-05 | Phase 7-1c-1b：§17.11.2.1 CLI Input Modes（sheet／upload）；`--upload-session-id` 定案 |
 | **v2.9** | 2026-06-05 | Phase 7-1c-0：§14.1.1 Last Successful Version Rule；§17.5 Out of Scope 定案；§17.11 Upload→BDS CLI Trigger |
