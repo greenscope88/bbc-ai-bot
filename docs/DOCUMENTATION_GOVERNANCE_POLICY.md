@@ -24,6 +24,7 @@
 | §11 | 技術債與文件關聯 |
 | §12 | 文件審查清單 |
 | §13 | 結論 |
+| §14 | 文件成本控制原則 |
 
 ---
 
@@ -218,6 +219,30 @@ Commit
 
 與 §3 之差異：本節明確要求 **實作與測試後再次更新文件**，避免文件與程式漂移。
 
+**補充：** 此處所指為 **里程碑／Phase／契約對齊** 之必要更新，非每個 commit 或每項測試皆須改文件；細則見 §5.4.1、§14。
+
+### 5.4.1 最小文件更新原則
+
+文件更新應聚焦於：
+
+* 架構變更
+* Contract 變更
+* Policy 變更
+* Roadmap / Phase 狀態變更
+* SSOT 與實作不一致
+
+不要求因以下事項更新正式文件：
+
+* 每個 Function 完成
+* 每個 Class 完成
+* 每個 Test 完成
+* 每個 Commit 完成
+* 小型 UX polish
+* 小型 bug fix
+* 不影響架構與契約的 refactor
+
+除非上述事項造成 SSOT、架構、契約、Policy 或 Roadmap 改變。
+
 ### 5.5 文件淘汰原則
 
 若文件：
@@ -394,6 +419,16 @@ C:\bbc-ai-bot\docs\TECH_DEBT.md
 | 7 | **生命週期狀態是否標註？** | |
 | 8 | **Revision History 是否更新？** | |
 | 9 | **是否符合 §5 建立判斷原則？** | |
+| 10 | **是否真的需要更新文件？** | 見 §5.4.1、§14.1 |
+| 11 | **是否只是小型實作 / UX polish？** | 若是，通常不需更新 SSOT |
+| 12 | **是否可只更新 phase status？** | Phase / MVP 完成時見 §14.4 |
+| 13 | **是否可使用 SSOT Read Mode B 或 C 以降低 token 成本？** | 見 §14.3 |
+| 14 | **是否造成重複文件或文件膨脹？** | 見 §14.2 |
+| 15 | **是否觸發 SSOT Frozen？** | UI／文案／小型重構通常不應改 SSOT（§14.7） |
+| 16 | **是否已 Read Before Ask？** | 優先 C → B → A（§14.8） |
+| 17 | **是否 Mainline 優先？** | P2/P3 不得阻擋主線（§14.9） |
+| 18 | **是否應以增量子階段處理？** | 已結案 Phase 不重開（§14.10） |
+| 19 | **是否應列為 Post-MVP 新 Phase？** | Close-out 後不回頭改 MVP 定義（§14.11） |
 
 ---
 
@@ -407,6 +442,182 @@ C:\bbc-ai-bot\docs\TECH_DEBT.md
 **文件是架構的一部分**，與 Registry、Service、Policy 層同等重要。
 
 **程式必須遵循文件**；若實作與文件不符，應視為缺陷，優先透過修訂程式或正式修訂 SSOT 解決，而非默許漂移。
+
+---
+
+## 14. 文件成本控制原則
+
+本節補強文件治理之 **成本邊界**：在保留 DDD / SSOT First 之前提下，降低不必要文件維護、避免文件膨脹、降低 Cursor / AI token 消耗。
+
+### 14.1 文件用途邊界
+
+文件主要用途：
+
+1. Direction
+2. Goal
+3. Architecture
+4. Contract
+5. Policy
+6. Scope
+7. Roadmap
+8. Phase / Milestone status
+
+文件不是每日工作日誌，也不是每個程式修改的流水帳。
+
+### 14.2 文件膨脹防止
+
+同一資訊不得重複散落在多份文件。
+
+若資訊已由 Git commit、測試報告或 phase report 保存，不應再重複寫入多個 SSOT。
+
+### 14.3 SSOT Read Mode
+
+定義 Cursor / AI 開發時的文件讀取模式：
+
+**A = Full Read**
+
+適用：
+
+* 新主線
+* 新模組
+* 架構變更
+* 跨模組變更
+* 不確定 SSOT 是否仍有效
+
+**B = Reuse Previous Context**
+
+適用：
+
+* 同一主線連續開發
+* 已於同日或同一 phase 讀過相關 SSOT
+* 僅需檢查特定章節
+
+**C = No Read Needed**
+
+適用：
+
+* Git close-out
+* Commit
+* Push
+* 單純 verification
+* 不改架構、不改契約、不改文件的 UX polish
+
+詳細判斷與升級條件見 **§14.8 Read Before Ask Principle**。
+
+### 14.4 Phase Completion Update
+
+Phase / MVP 完成時，應更新 status，使文件與實際系統一致。
+
+但只需更新必要狀態與驗收摘要，不需記錄每個測試細節。
+
+### 14.5 Delivery First Principle
+
+在 SSOT 已穩定、架構未變更時，應優先完成主線交付。
+
+文件維護不得高於其產生的開發價值。
+
+### 14.6 Mainline First Principle
+
+已完成 MVP 後的 P2 / P3 延伸功能，若不阻擋上線、不阻擋下一個 tenant、不阻擋主線 roadmap，應記錄於 Roadmap 或 `TECH_DEBT.md`，不應優先於主線開發。
+
+具體優先順序與主線衝突處理見 **§14.9 Mainline Priority Principle**。
+
+### 14.7 SSOT Frozen Principle
+
+**目的：** 避免 **Document Churn（文件震盪）** — 已穩定運作之架構、Contract、Policy、SSOT，不得因非實質變更而頻繁修改。
+
+**不得** 僅因下列原因更新正式 SSOT：
+
+* UI 微調
+* 文案調整
+* 小型重構
+* 非 Contract 行為變更
+
+**僅** 下列情況允許更新 SSOT：
+
+* Architecture Change（架構變更）
+* Contract Change（契約變更）
+* Policy Change（政策變更）
+* Tenant Behavior Change（租戶行為變更）
+
+### 14.8 Read Before Ask Principle
+
+**目的：** 控制 Cursor / AI Token 成本。
+
+AI 在要求重新閱讀文件前，**應先判斷是否已有足夠上下文**。
+
+**優先順序：**
+
+```text
+Read Mode C
+    ↓
+Read Mode B
+    ↓
+Read Mode A
+```
+
+**禁止：** 每個 Prompt 重新閱讀全部 SSOT。
+
+**僅於** 下列情況升級閱讀模式（C → B → A）：
+
+* 架構變更
+* Contract 變更
+* Policy 變更
+* SSOT 衝突
+
+### 14.9 Mainline Priority Principle
+
+**目的：** 確保 **主線優先**。
+
+當 **Mainline** 與 **P2 / P3** 衝突時，**優先 Mainline**。
+
+**不得** 因下列事項阻擋主線交付：
+
+* 技術債
+* 文件美化
+* 預留設計
+* 未來功能
+
+**範例（Post-MVP，不得阻擋主線）：**
+
+* Workbook Download
+* Drive Promote
+* Shared Drive
+* Auto Provisioning
+
+**不得阻擋之主線（範例）：**
+
+* BATS Hybrid Smart Search
+* Tenant Mapping
+* Multi Tenant Rollout
+
+### 14.10 Stable Phase Principle
+
+**目的：** 已結案 Phase **不因小型修正重新開啟**。
+
+**原則：** 狀態為 **Completed**、**Closed-out**、**Pushed** 之 Phase，後續修正應建立增量子階段，例如：
+
+* `Phase x.x.xa`
+* `Phase x.x.xb`
+
+**避免：** 反覆修改歷史里程碑定義與驗收範圍。
+
+### 14.11 One-Way Close-out Principle
+
+**目的：** 降低重構與文件成本；Close-out 後 **預設不回頭**。
+
+**原則：** 後續新增功能應建立 **新 Phase**、**新 Roadmap** 條目，**而非** 修改原 MVP 定義。
+
+**範例：**
+
+| 項目 | 狀態 | 後續處理 |
+|------|------|----------|
+| **BDS Upload Portal MVP** | **Completed** | 維持結案範圍不變 |
+| Drive Promote | Post-MVP | 新 Phase（如 7-1e.8b） |
+| Workbook Download | Post-MVP | 新 Phase（如 7-1e.8c） |
+| Shared Drive / Auto Provisioning | Post-MVP | Roadmap 或 `TECH_DEBT.md` |
+
+**不得** 因 Post-MVP 需求重新定義或擴寫原 MVP 範圍。
 
 ---
 
@@ -434,3 +645,5 @@ L3 功能文件（Phase 設計、Contract、MVP 報告 …）
 |------|------|------|------|
 | 1.0 | 2026-06-05 | Adopted | Initial Version |
 | 1.1 | 2026-06-05 | Adopted | Add document creation criteria and SSOT governance rules. |
+| 1.2 | 2026-06-15 | Adopted | Add document cost control, SSOT Read Mode, minimal completion update, and mainline-first documentation principles. |
+| 1.3 | 2026-06-15 | Adopted | Phase GOV-1.3: §14.7–§14.11 SSOT Frozen, Read Before Ask, Mainline Priority, Stable Phase, One-Way Close-out. |
