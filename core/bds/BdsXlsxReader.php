@@ -7,19 +7,13 @@ declare(strict_types=1);
  * Reads five Required Tabs from a workbook and returns raw row arrays aligned with
  * BdsGoogleSheetReader output for downstream Parser / Validator.
  *
- * @see docs/BATS_DATA_CONTRACT.md §1.6.7
- * @see docs/BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md §8.8.6
+ * @see docs/BATS_DATA_CONTRACT.md §1.6.7、§4.4
+ * @see docs/BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md §8.8.6、§8.8.6.5
  */
 final class BdsXlsxReader
 {
     /** @var list<string> */
-    public const REQUIRED_TABS = [
-        'company_profile',
-        'qa',
-        'external_product_links',
-        'service_items',
-        'special_prices',
-    ];
+    public const REQUIRED_TABS = BdsWorksheetNameMapper::CANONICAL_KEYS;
 
     /**
      * @return array{
@@ -43,36 +37,27 @@ final class BdsXlsxReader
 
         $zip = new \ZipArchive();
         if ($zip->open($filePath) !== true) {
-            throw new \RuntimeException('Unable to open xlsx file.');
+            throw new \RuntimeException(BdsWorksheetNameMapper::FILE_READ_ERROR_MESSAGE);
         }
 
         try {
             $sharedStrings = $this->readSharedStrings($zip);
             $sheetMap = $this->readWorksheetMap($zip);
+            $mapper = new BdsWorksheetNameMapper();
+            $resolution = $mapper->resolve(array_keys($sheetMap));
+            $mappedSheets = $resolution['mapped'];
+
             $output = $this->emptyTabPayload();
-            $foundTabs = [];
 
-            foreach (self::REQUIRED_TABS as $tabName) {
-                if (!isset($sheetMap[$tabName])) {
-                    continue;
+            foreach (self::REQUIRED_TABS as $canonical) {
+                $worksheetName = $mappedSheets[$canonical];
+                if (!isset($sheetMap[$worksheetName])) {
+                    throw new \RuntimeException(BdsWorksheetNameMapper::FILE_READ_ERROR_MESSAGE);
                 }
 
-                $foundTabs[$tabName] = true;
-                $sheetPath = $sheetMap[$tabName];
+                $sheetPath = $sheetMap[$worksheetName];
                 $grid = $this->readWorksheetGrid($zip, $sheetPath, $sharedStrings);
-                $output[$tabName] = $this->gridToRows($grid);
-            }
-
-            $missing = [];
-            foreach (self::REQUIRED_TABS as $tabName) {
-                if (!isset($foundTabs[$tabName])) {
-                    $missing[] = $tabName;
-                }
-            }
-            if ($missing !== []) {
-                throw new \InvalidArgumentException(
-                    'Missing required worksheet tabs: ' . implode(', ', $missing)
-                );
+                $output[$canonical] = $this->gridToRows($grid);
             }
 
             return $output;
