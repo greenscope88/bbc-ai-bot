@@ -1,10 +1,10 @@
 # BDS Upload Portal — Phase 7-1 MVP Plan
 
 **專案根目錄：** `C:\bbc-ai-bot`  
-**文件版本：** 2026-06-05（Phase 7-0c～7-0e.2 / 7-1c-0 / 7-1c-1b）  
-**性質：** L2 實作規劃（SSOT First / DDD）。**不**實作程式、**不**修改 runtime。
+**文件版本：** 2026-06-15（Phase 7-1e.10b MVP Close-out）  
+**性質：** L2 實作規劃（SSOT First / DDD）。
 
-**前置審計：** Phase 7-0b Login Reuse Audit；Phase 7-0c Canonical Domain SSOT；Phase 7-0d Shared Upload Portal SSOT；Phase 7-0e UI／Field Spec SSOT；Phase 7-0e.1 UI Enhancement SSOT；Phase 7-0e.2 UI Finalization SSOT；Phase 7-1c-0 Upload→BDS Sync Trigger SSOT；Phase 7-1c-1b Upload CLI Input Contract SSOT。
+**前置審計：** Phase 7-0b～7-0e.2；Phase 7-1c-0～7-1c-1b；Phase 7-1e.6～7-1e.9a（Tenant Upload Portal MVP Runtime Close-out）。
 
 ---
 
@@ -18,7 +18,8 @@
 | **L1 SSOT** | `BATS_DATA_SOURCE_REGISTRY.md` §10.6 | Registry／Pilot／Shared scope 對照 |
 | **L1 SSOT** | `BATS_DATA_OWNERSHIP_POLICY.md` §3.7 | Upload Portal 寫入權限邊界 |
 | **L2 規劃** | **本文件** | Phase 7-1～7-3 URL、Auth、Gate、**UI Field Spec**、安全約束 |
-| **L3 實作** | `www/bds/upload.php`、`www/bds/shared_upload.php` + `bbc-ai-bot` BDS core | **未開始** |
+| **L3 實作** | `www/bds/upload.php` + `bbc-ai-bot` BDS core | **Completed（7-1）** ✅ |
+| **L3 實作（Post-MVP）** | `www/bds/shared_upload.php` | **Post-MVP（7-2）** |
 
 ---
 
@@ -245,17 +246,17 @@ Management Center (sno cff796a33d94ea31) + industry_code travel
 
 | Phase | 名稱 | 交付摘要 | 狀態 |
 |-------|------|----------|------|
-| **7-1** | **Tenant Upload Portal MVP** | `upload.php`、travel_b gate、staging、CLI→BDS、GCS read-back | **進行中**（7-1a／7-1b Done） |
-| **7-2** | **Shared Upload Portal MVP** | `shared_upload.php`、management center sno gate、`shared/travel/knowledge/`、Shared Contract | 未開始 |
-| **7-3** | **Production Hardening** | Audit log、recovery、retUrl 強化、可選 bbcshops redirect、營運 runbook | 未開始 |
+| **7-1** | **Tenant Upload Portal MVP** | `upload.php`、travel_b gate、staging、CLI→BDS、GCS read-back | **Completed** ✅（7-1e.9a） |
+| **7-2** | **Shared Upload Portal MVP** | `shared_upload.php`、management center sno gate、`shared/travel/knowledge/`、Shared Contract | **Post-MVP** |
+| **7-3** | **Production Hardening** | Audit log、recovery、retUrl 強化、可選 bbcshops redirect、營運 runbook | **Post-MVP** |
 | **7-x** | Login Bridge Token | 跨域 bbcshops 操作域 | **Deferred** |
 
 ### 11.1 Phase 7-1 Scope（Tenant）
 
-| 1 | `www/bds/upload.php` — session 守衛 + `storeNo=6180` gate | **7-1a Done** |
-| 2 | Upload receive + staging（`var/bds/uploads/...`） | **7-1b Done** |
-| 3 | POST → CLI Trigger → `bin/bds-sync.php` → GCS + Read-back | **7-1c** |
-| 4 | Audit：`accountNo`、`storeNo`（**不** UI 暴露 sno） | 7-1c／7-3 |
+| 1 | `www/bds/upload.php` — session 守衛 + `storeNo=6180` gate | **7-1a Completed** ✅ |
+| 2 | Upload receive + staging（`var/bds/uploads/...`） | **7-1b Completed** ✅ |
+| 3 | POST → CLI Trigger → `bin/bds-sync.php` → GCS + Read-back | **7-1c Completed** ✅（7-1e.9a） |
+| 4 | Audit：`accountNo`、`storeNo`（**不** UI 暴露 sno） | **Post-MVP（7-3）** |
 
 **不做：** Shared upload；global shared；bbcshops 登入域。
 
@@ -283,14 +284,18 @@ Management Center (sno cff796a33d94ea31) + industry_code travel
 
 | 子階段 | 名稱 | 狀態 | 摘要 |
 |--------|------|------|------|
-| **7-1a** | Login gate + UI shell | **Done** ✅ | `f881d12` legacy www |
-| **7-1b** | Upload receive + staging | **Done** ✅ | `0020b5f` legacy www；`var/bds/uploads/.../staging/` |
-| **7-1c-1** | CLI Command Wrapper（dry-run build） | **Done** ✅ | legacy www；command build only |
-| **7-1c-1b** | Upload CLI Input Contract SSOT | **Done** ✅ | `--upload-session-id` 定案 |
-| **7-1c-2a** | bbc-ai-bot upload mode（Resolver + XlsxReader） | **Next** | §8.8.6 |
-| **7-1c-2b** | legacy www CLI execution | 未開始 | 依 7-1c-2a |
-| **7-1c** | Upload → BDS Sync Trigger（端到端） | **進行中** | 7-1c-2a 阻塞 |
-| **7-1d** | bbcshops redirect-only（可選） | 未開始 | 非 7-1c 阻塞項 |
+| **7-1a** | Login gate + UI shell | **Completed** ✅ | legacy www |
+| **7-1b** | Upload receive + staging | **Completed** ✅ | `var/bds/uploads/.../staging/` |
+| **7-1c-1** | CLI Command Wrapper（dry-run build） | **Completed** ✅ | legacy www |
+| **7-1c-1b** | Upload CLI Input Contract SSOT | **Completed** ✅ | `--upload-session-id` 定案 |
+| **7-1c-2a** | bbc-ai-bot upload mode（Resolver + XlsxReader） | **Completed** ✅ | `807f6b7` |
+| **7-1c-2b** | legacy www CLI execution | **Completed** ✅ | 7-1c-3b |
+| **7-1c-3a** | Formal sync（live GCS + read-back） | **Completed** ✅ | `d1c52f1` |
+| **7-1c-3b** | Portal POST → CLI formal sync | **Completed** ✅ | legacy www |
+| **7-1c** | Upload → BDS Sync Trigger（端到端） | **Completed** ✅ | 7-1e.9a E2E sign-off |
+| **7-1e** | Worksheet Mapping + Validation UX | **Completed** ✅ | `d94a558`；7-1e.9a |
+| **7-1e.8+** | Workbook Download + Drive Promote | **Post-MVP** | SSOT closed；runtime deferred |
+| **7-1d** | bbcshops redirect-only（可選） | **Post-MVP** | 非 7-1 阻塞項 |
 
 ---
 
@@ -359,7 +364,7 @@ bin/bds-sync.php → BDS Pipeline → GCS → Read-back → sync_report
 | `--input-xlsx` | Portal 正式模式 **不** 傳實體路徑；使用 `--upload-session-id` |
 | 獨立 sync 邏輯 | 須共用 `bin/bds-sync.php` BDS Sync Core |
 
-**7-1c-1（Done）：** 僅 command build／dry-run 驗證 UI；**未** 執行 CLI。**7-1c-2a 後** 更新 `upload.php` 指令含 `--upload-session-id`。
+**7-1c（Completed）：** Portal 於 staging 完成後執行 `bin/bds-sync.php --upload-session-id=...`；成功路徑寫入 GCS + `sync_report`；失敗遵守 §12.3 Last Successful Version（7-1e.9a 驗證）。
 
 **不做（7-1c）：** in-process BDS 重構；Core Orchestrator；Cron；Drive Watch。
 
@@ -708,8 +713,9 @@ Portal UI、說明文字、錯誤訊息 **一律** 使用下列 **中文顯示�
 
 | 情境 | 下載區塊 |
 |------|----------|
-| 本次 POST sync **失敗** | 仍顯示 **上一版成功** 之下載連結（Last Successful Workbook Rule） |
-| readonly `目前 AI 使用資料狀態` | `仍為上一次成功同步版本`（§13.1.4） |
+| 本次 POST sync **失敗**（`status=failed`） | 仍顯示 **上一版成功** 之下載連結（Last Successful Workbook Rule） |
+| 本次 POST **workbook warning**（`status=success_with_workbook_warning`） | 仍顯示 **上一版成功** 下載連結；同步結果見 §13.1.11 |
+| readonly `目前 AI 使用資料狀態` | `仍為上一次成功同步版本`（§13.1.4）；workbook warning 時見 §13.1.11.3 |
 | 不得 | 連結至本次失敗 staging 檔、`upload_session` 暫存路徑 |
 
 ##### 13.1.10.5 禁止 UI 暴露（下載相關）
@@ -729,6 +735,111 @@ Portal UI、說明文字、錯誤訊息 **一律** 使用下列 **中文顯示�
 Shared Portal **可** 於 7-2 採相同模式：下載來源為 **Industry Shared** Drive workbook；metadata scope 為 `shared/{industry_code}/`。**MVP（7-1）** 僅 Tenant Portal 實作。
 
 **交叉引用：** `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §8.8.6.6
+
+#### 13.1.11 Workbook Promote Warning UX（Phase 7-1e.8b-1a SSOT）
+
+> **Status: SSOT 定案（2026-06-14）** — `status=success_with_workbook_warning` 之 Portal 呈現；L1：`BATS_DATA_SYNC_POLICY.md` §14.1.3。
+
+##### 13.1.11.1 觸發條件
+
+| 條件 | 值 |
+|------|-----|
+| `knowledge_sync_status` | `success` |
+| `workbook_promote_status` | `failed` |
+| `sync_report.status` | `success_with_workbook_warning` |
+
+##### 13.1.11.2 同步結果區塊（Tenant — 定案模板）
+
+```text
+本次同步成功
+
+同步範圍：
+{tenant_key}
+
+同步版本：
+{sync_id}
+
+AI 知識庫已更新。
+
+但最新版 Excel 下載功能暫時無法更新。
+
+目前系統仍維持上一版成功下載檔案。
+
+請通知系統管理員協助處理。
+```
+
+##### 13.1.11.3 Readonly 欄位行為
+
+| 欄位 | 行為 |
+|------|------|
+| 上一次成功同步時間 | **更新** 為本次 knowledge success 時間 |
+| 目前 AI 使用版本 | **更新** 為本次 `{sync_id}` |
+| 目前 AI 使用資料狀態 | `已同步版本（下載檔案待更新）`（Contract §1.6.5.4） |
+| 最新版 Excel 下載 | **維持** 上一版成功 `drive_download_url`；**不** 隱藏按鈕（若有歷史成功） |
+
+##### 13.1.11.4 禁止行為
+
+| 禁止 |
+|------|
+| 顯示 `本次同步失敗` |
+| 顯示 `請修正 Excel 後重新上傳` |
+| 顯示 `請重新上傳` |
+| 顯示 `本次未更新 GCS` |
+| 將本次 session 標為 `sync_failed`（應為 `sync_success` + workbook warning） |
+| 隱藏或清空既有下載連結（若有上一版成功 workbook） |
+
+**交叉引用：** `BATS_DATA_SYNC_POLICY.md` §14.1.3.5；Implementation Plan §8.8.6.6.8
+
+#### 13.1.12 Error Classification UX（Phase 7-1e.8b-1a SSOT）
+
+> **Status: SSOT 定案（2026-06-14）** — Upload Portal 錯誤分類與 UX 對照；L1：`BATS_DATA_SYNC_POLICY.md` §14.1.4、§14.1.5。
+
+##### 13.1.12.1 分類矩陣
+
+| 分類 | `sync_report.status` | 主標題 | 重新上傳 | 聯絡管理員 | 下載連結 |
+|------|----------------------|--------|----------|------------|----------|
+| **User Actionable** | `failed` | `本次同步失敗` | ✅ 建議 | ✗ | 維持上一版 |
+| **Infra — 全失敗** | `failed` | `本次同步失敗` | 視情況 | 可選 | 維持上一版 |
+| **Infra — Knowledge OK + Workbook Fail** | `success_with_workbook_warning` | `本次同步成功` + Warning 區塊 | ✗ **禁止建議** | ✅ | 維持上一版 |
+
+##### 13.1.12.2 User Actionable — UX 模板
+
+沿用 §13.1.7 失敗模板：
+
+```text
+本次同步失敗
+
+失敗原因：
+{中文錯誤訊息}
+
+本次未更新 GCS，
+舊版資料仍維持可用。
+
+請修正 Excel 後重新上傳。
+```
+
+**範例 `{中文錯誤訊息}`：** 缺少必要工作表、工作表名稱錯誤、工作表重複映射、必填欄位缺漏（§13.1.9）。
+
+##### 13.1.12.3 System Infrastructure — Knowledge OK + Workbook Fail
+
+沿用 §13.1.11.2；**分類為** Workbook Download Service Warning，**非** User Upload Failure。
+
+**理由：** 重新上傳 **不能保證** 解決 Drive API／權限／平台問題。
+
+##### 13.1.12.4 決策規則（Portal 實作）
+
+```text
+IF knowledge_sync_status = failed
+  → §13.1.7 失敗模板（User Actionable 或 Infra 全失敗）
+
+ELSE IF status = success_with_workbook_warning
+  → §13.1.11.2（禁止重新上傳文案）
+
+ELSE IF status = success
+  → §13.1.7 成功模板
+```
+
+**交叉引用：** `BATS_DATA_CONTRACT.md` §1.6.9.7；`BATS_DATA_SYNC_POLICY.md` §14.1.4、§14.1.5
 
 ---
 
@@ -884,6 +995,8 @@ UI **必須** 建立下列 **六項** 選項；後端 **僅** 允許 Registry／
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v2.0** | 2026-06-15 | Phase 7-1e.10b：§11 MVP Close-out — 7-1／7-1c／7-1e **Completed**；Workbook／Drive **Post-MVP** |
+| **v1.9** | 2026-06-14 | Phase 7-1e.8b-1a：§13.1.11 Workbook Promote Warning UX；§13.1.12 Error Classification UX |
 | **v1.8** | 2026-06-15 | Phase 7-1e.8：§13.1.10 Portal Download UX；§13.2 新增「下載最新版 Excel」 |
 | **v1.7** | 2026-06-14 | Phase 7-1e.6：§13.1.8 檔名／順序不檢查；§13.1.9 Worksheet UX 與中文化錯誤訊息 |
 | **v1.6** | 2026-06-05 | Phase 7-1c-1b：§12.4 CLI 指令含 `--upload-session-id`；禁止 Portal 直接同步 Sheet |
@@ -900,8 +1013,8 @@ UI **必須** 建立下列 **六項** 選項；後端 **僅** 允許 Registry／
 
 | 項目 | 狀態 |
 |------|------|
-| **文件狀態** | **SSOT 定案（Phase 7-1e.8）** — Latest Successful Workbook Download UX 已閉合 |
-| **程式實作** | Portal 下載 + Drive promote **待實作**（Implementation Plan §8.8.6.6） |
-| **SAFE TO IMPLEMENT Phase 7-1c-2a** | **是（文件層）** — `--upload-session-id` 契約已閉合 |
-| **SAFE TO IMPLEMENT Phase 7-1** | **是** — domain／auth／pilot／UI field spec 已閉合 |
-| **SAFE TO IMPLEMENT Phase 7-2** | **是（文件層）** — Shared Portal Final UI spec 已閉合；**依賴** Shared BDS 管線就緒 |
+| **文件狀態** | **SSOT 定案（Phase 7-1e.10b）** — Tenant Upload Portal MVP **Completed** |
+| **7-1 Runtime** | **Completed** ✅ — 7-1e.9a production E2E（`travel_b` / `storeNo=6180`） |
+| **Post-MVP Runtime** | Workbook Download、Drive Promote、Shared Drive、Auto Provisioning、Shared Upload Portal（§11、§13.1.10） |
+| **SAFE TO IMPLEMENT Phase 7-2** | **是（文件層）** — Shared Portal spec 已閉合；**依賴** Shared BDS 管線 + 7-2 runtime |
+| **E2E 證據** | `UPLOAD-20260615-160459-43a5b1` / `SYNC-20260615-100459`（7-1e.9a） |

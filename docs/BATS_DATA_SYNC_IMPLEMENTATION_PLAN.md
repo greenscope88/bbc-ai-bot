@@ -1029,16 +1029,16 @@ L3 實作（未來）
 
 ## 8. Phase 7 — Upload Portal（7-1 / 7-2 / 7-3）
 
-> **Status:** SSOT 定案（Phase 7-1c-1b）；7-1a／7-1b／7-1c-1 **Runtime Done**（legacy www）；**7-1c-2a 待實作**（bbc-ai-bot）。  
+> **Status:** SSOT 定案（Phase 7-1e.10b）；**7-1 Tenant Upload Portal MVP Completed** ✅（7-1e.9a）；**7-2／7-3 Post-MVP**。  
 > **詳細規劃：** `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §12（Sync Trigger）；本節為交付順序。
 
 ### 8.1 目標總覽
 
-| Phase | 名稱 | Canonical URL | 寫入層級 |
-|-------|------|---------------|----------|
-| **7-1** | Tenant Upload Portal MVP | `kowanbo.com/bds/upload.php` | `tenants/{sno}/knowledge/` |
-| **7-2** | Shared Upload Portal MVP | `kowanbo.com/bds/shared_upload.php` | `shared/travel/knowledge/` |
-| **7-3** | Production Hardening | （沿用 7-1／7-2 URL） | Audit、recovery、runbook |
+| Phase | 名稱 | Canonical URL | 寫入層級 | 狀態 |
+|-------|------|---------------|----------|------|
+| **7-1** | Tenant Upload Portal MVP | `kowanbo.com/bds/upload.php` | `tenants/{sno}/knowledge/` | **Completed** ✅ |
+| **7-2** | Shared Upload Portal MVP | `kowanbo.com/bds/shared_upload.php` | `shared/travel/knowledge/` | **Post-MVP** |
+| **7-3** | Production Hardening | （沿用 7-1／7-2 URL） | Audit、recovery、runbook | **Post-MVP** |
 
 **共同：** Upload-Triggered Sync（Mode B）；Legacy `brandlogin.php` + `TourBus*` session；bbcshops redirect-only。
 
@@ -1056,31 +1056,37 @@ L3 實作（未來）
 | **7-1b** | Upload receive + staging（`var/bds/uploads/...`） | **Done** ✅ |
 | **7-1c-1** | CLI Command Wrapper（dry-run build only） | **Done** ✅ |
 | **7-1c-1b** | Upload CLI Input Contract SSOT | **Done** ✅ |
-| **7-1c-2a** | bbc-ai-bot：`BdsUploadStagingResolver`、`BdsXlsxReader`、upload mode | **Next** |
-| **7-1c-2b** | legacy www：CLI execution + `--upload-session-id` | 未開始 |
-| **7-1c** | Upload → BDS Sync Trigger（端到端） | **進行中** |
-| **7-1d** | `bbcshops.com/bds/upload.php` redirect-only（可選） | 未開始 |
-| **7-2a** | `www/bds/shared_upload.php` + management center sno gate | 未開始 |
-| **7-2b** | Shared UI（§13.3 欄位、§13.4 industry select）+ Shared Contract → `shared/travel/knowledge/` | 未開始 |
-| **7-2c** | `bbcshops.com/bds/shared_upload.php` redirect-only（可選） | 未開始 |
-| **7-3** | Audit、recovery、retUrl 強化、營運 runbook | 未開始 |
+| **7-1c-2a** | bbc-ai-bot：`BdsUploadStagingResolver`、`BdsXlsxReader`、upload mode | **Completed** ✅ |
+| **7-1c-2b** | legacy www：CLI execution + `--upload-session-id` | **Completed** ✅ |
+| **7-1c-3a** | Formal sync（live GCS + read-back） | **Completed** ✅ |
+| **7-1c-3b** | Portal POST → CLI formal sync | **Completed** ✅ |
+| **7-1c** | Upload → BDS Sync Trigger（端到端） | **Completed** ✅ |
+| **7-1e** | Worksheet Mapping + Chinese errors + E2E | **Completed** ✅ |
+| **7-1e.8+** | Workbook Download + Drive Promote | **Post-MVP** |
+| **7-1d** | `bbcshops.com/bds/upload.php` redirect-only（可選） | **Post-MVP** |
+| **7-2a** | `www/bds/shared_upload.php` + management center sno gate | **Post-MVP** |
+| **7-2b** | Shared UI + Shared Contract → `shared/travel/knowledge/` | **Post-MVP** |
+| **7-2c** | `bbcshops.com/bds/shared_upload.php` redirect-only（可選） | **Post-MVP** |
+| **7-3** | Audit、recovery、retUrl 強化、營運 runbook | **Post-MVP** |
 | **7-x** | Login Bridge Token（跨域） | **Deferred** |
 
 ### 8.3 Phase 7-1 退出準則（Tenant）
 
-- [ ] 未登入 → `brandlogin.php?retUrl=/bds/upload.php` → 登入後回到 upload
-- [ ] `TourBusstoreNo=6180` 可上傳；其他 storeNo 拒絕
-- [ ] 上傳成功 → BDS → GCS `tenants/5f99b8d665e8444d/knowledge/` + Read-back
-- [ ] Tenant upload **不得** 寫入 `shared/`
-- [ ] 非法 `retUrl` 不造成 open redirect
-- [ ] UI 欄位順序（Final）：旅行社名稱 → 上一次成功同步時間 → **目前 AI 使用版本** → 目前 AI 使用資料狀態 → Excel → 上傳並同步 → 同步結果（§13.2）
-- [ ] **不** 顯示 `tenant_key`／`sno`／`gcs_prefix`／`bucket`（同步結果範圍可顯示 `tenant_key` 如 `travel_b`）
-- [ ] 目前 AI 使用版本：格式 `SYNC-YYYYMMDD-HHMMSS`；來源 GCS `sync_report`／knowledge meta（§13.1.2）
-- [ ] AI 資料狀態：僅 `已同步版本`／`仍為上一次成功同步版本`（§13.1.4）
-- [ ] Upload Hint、同步中狀態（§13.1.5～§13.1.6）
-- [ ] 成功訊息：同步範圍 `{tenant_key}` + 同步版本 `{sync_id}` + `AI 知識庫已更新。`（§13.1.7）
-- [ ] 失敗訊息：統一模板含 `本次未更新 GCS，` 換行（§13.1.7）
-- [ ] Metadata 來自 GCS／`var/bds/`（**非** Host B SQL）（§13.1.1）
+> **Status: Completed** ✅（Phase 7-1e.9a — `travel_b` production E2E）
+
+- [x] 未登入 → `brandlogin.php?retUrl=/bds/upload.php` → 登入後回到 upload
+- [x] `TourBusstoreNo=6180` 可上傳；其他 storeNo 拒絕
+- [x] 上傳成功 → BDS → GCS `tenants/5f99b8d665e8444d/knowledge/` + Read-back
+- [x] Tenant upload **不得** 寫入 `shared/`
+- [x] 非法 `retUrl` 不造成 open redirect
+- [x] UI 欄位順序（Final）：旅行社名稱 → 上一次成功同步時間 → **目前 AI 使用版本** → 目前 AI 使用資料狀態 → Excel → 上傳並同步 → 同步結果（§13.2）
+- [x] **不** 顯示 `tenant_key`／`sno`／`gcs_prefix`／`bucket`（同步結果範圍可顯示 `tenant_key` 如 `travel_b`）
+- [x] 目前 AI 使用版本：格式 `SYNC-YYYYMMDD-HHMMSS`；來源 GCS `sync_report`／knowledge meta（§13.1.2）
+- [x] AI 資料狀態：僅 `已同步版本`／`仍為上一次成功同步版本`（§13.1.4）
+- [x] Upload Hint、同步中狀態（§13.1.5～§13.1.6）
+- [x] 成功訊息：同步範圍 `{tenant_key}` + 同步版本 `{sync_id}` + `AI 知識庫已更新。`（§13.1.7）
+- [x] 失敗訊息：統一模板含 `本次未更新 GCS，` 換行（§13.1.7）
+- [x] Metadata 來自 GCS／`var/bds/`（**非** Host B SQL）（§13.1.1）
 
 ### 8.4 Phase 7-2 退出準則（Shared）
 
@@ -1153,12 +1159,14 @@ Validation → Build → GCS → Read-back → sync_report.json
 
 #### 8.8.2 Phase 7-1c 退出準則
 
-- [ ] 7-1b staging 成功後 Portal 觸發 `bin/bds-sync.php`
-- [ ] 成功：GCS knowledge 更新 + read-back PASS + `sync_report` `status=success` + UI `本次同步成功`
-- [ ] 失敗：GCS 正式 JSON **不變** + UI 失敗模板（§14.1.1）
-- [ ] `sync_id` 僅於 **成功** promote 後更新；失敗不得回退或部分覆蓋
-- [ ] **不** 實作 Cron／Drive Watch／Auto Sync
-- [ ] **不** 實作 Core Orchestrator（Deferred）
+> **Status: Completed** ✅（7-1e.9a）
+
+- [x] 7-1b staging 成功後 Portal 觸發 `bin/bds-sync.php`
+- [x] 成功：GCS knowledge 更新 + read-back PASS + `sync_report` `status=success` + UI `本次同步成功`
+- [x] 失敗：GCS 正式 JSON **不變** + UI 失敗模板（§14.1.1）
+- [x] `sync_id` 僅於 **成功** promote 後更新；失敗不得回退或部分覆蓋
+- [x] **不** 實作 Cron／Drive Watch／Auto Sync
+- [x] **不** 實作 Core Orchestrator（Deferred）
 
 #### 8.8.3 Out of Scope（Not Planned）
 
@@ -1187,7 +1195,9 @@ Auto Sync、Scheduled Sync、Cron Sync、Drive Watch、Google Drive Change Trigg
 | **不採用（Portal 正式）** | `--input-xlsx` |
 | **模式切換** | 有 `--upload-session-id` → upload mode；無 → sheet mode（6A legacy） |
 
-##### 8.8.6.2 Phase 7-1c-2a — bbc-ai-bot（阻塞項）
+##### 8.8.6.2 Phase 7-1c-2a — bbc-ai-bot
+
+> **Status: Completed** ✅（`807f6b7`）
 
 | # | 交付項 | 說明 |
 |---|--------|------|
@@ -1200,13 +1210,15 @@ Auto Sync、Scheduled Sync、Cron Sync、Drive Watch、Google Drive Change Trigg
 
 **7-1c-2a 退出準則：**
 
-- [ ] `bin/bds-sync.php --tenant=travel_b --upload-session-id={id} --dry-run` 可讀 staging xlsx 並完成 validation dry-run
-- [ ] session／sno 不一致 → exit 非 0；GCS **不變**
-- [ ] 無 `--upload-session-id` 時 sheet mode 行為 **不變**（6A 向後相容）
-- [ ] **不** 實作 Core Orchestrator（P2-TD-7C0 Deferred）
-- [ ] **不** 引入 Cron／Auto／Drive Watch
+- [x] `bin/bds-sync.php --tenant=travel_b --upload-session-id={id} --dry-run` 可讀 staging xlsx 並完成 validation dry-run
+- [x] session／sno 不一致 → exit 非 0；GCS **不變**
+- [x] 無 `--upload-session-id` 時 sheet mode 行為 **不變**（6A 向後相容）
+- [x] **不** 實作 Core Orchestrator（P2-TD-7C0 Deferred）
+- [x] **不** 引入 Cron／Auto／Drive Watch
 
 ##### 8.8.6.3 Phase 7-1c-2b — legacy www
+
+> **Status: Completed** ✅（7-1c-3b）
 
 | # | 交付項 | 說明 |
 |---|--------|------|
@@ -1217,9 +1229,9 @@ Auto Sync、Scheduled Sync、Cron Sync、Drive Watch、Google Drive Change Trigg
 
 **7-1c-2b 退出準則：**
 
-- [ ] staging 成功後 Portal 觸發 upload mode CLI
-- [ ] 7-1c-2a upload mode **Done** 為前置條件
-- [ ] 失敗時 GCS 正式 JSON 不變；`sync_triggered` 僅 success 後更新
+- [x] staging 成功後 Portal 觸發 upload mode CLI
+- [x] 7-1c-2a upload mode **Completed** 為前置條件
+- [x] 失敗時 GCS 正式 JSON 不變；`sync_triggered` 僅 success 後更新
 
 ##### 8.8.6.4 Staging Path Contract（摘要）
 
@@ -1234,15 +1246,16 @@ Auto Sync、Scheduled Sync、Cron Sync、Drive Watch、Google Drive Change Trigg
 
 ##### 8.8.6.5 Worksheet Mapping Layer — Runtime Design（Phase 7-1e.6）
 
-> **Status: SSOT 定案（2026-06-14）** — upload mode **Worksheet 名稱映射** 之 Runtime 設計；**本節為文件定案，程式待實作**。  
+> **Status: Completed** ✅（Phase 7-1e.7 `d94a558`；7-1e.9a E2E） — upload mode **Worksheet 名稱映射** Runtime。  
 > **L3 契約：** `BATS_DATA_CONTRACT.md` §4.4；**L1 驗收：** `BATS_DATA_SYNC_POLICY.md` §17.12。
 
-###### 8.8.6.5.1 現況與缺口
+###### 8.8.6.5.1 現況（7-1e.9a Close-out）
 
-| 元件 | 現況（2026-06-14） | 缺口 |
-|------|-------------------|------|
-| `BdsXlsxReader` | 以 **英文 Canonical Key 精確匹配** 工作表名 | **未** 實作 §4.4 中／英別名映射 |
-| `upload.php` | 失敗 UI 可顯示 CLI stdout 片段 | **未** 保證中文化（§13.1.9） |
+| 元件 | 現況 | 狀態 |
+|------|------|------|
+| `BdsWorksheetNameMapper` | 中／英別名映射；缺 key／重複 key Fail | **Completed** ✅ |
+| `BdsXlsxReader` | upload mode 經 Mapping Layer 讀取 grid | **Completed** ✅ |
+| `upload.php` | 失敗 UI 顯示中文 worksheet 錯誤（含 `ERROR:` 前綴 — 見 7-1e.10a） | **Completed** ✅ |
 | Sheet mode | `BdsGoogleSheetReader` 英文 Tab 精確匹配 | **不變** |
 
 ###### 8.8.6.5.2 目標架構
@@ -1310,35 +1323,49 @@ BdsXlsxReader::readMappedWorkbook($xlsxPath, $mappingResult)
 
 ###### 8.8.6.5.7 退出準則
 
-- [ ] `BdsWorksheetMappingLayer` + 別名表與 Contract §4.4.2 一致
-- [ ] upload mode 接受中／英工作表名；順序／檔名不影響
-- [ ] sheet mode **無** regression
-- [ ] Portal 失敗訊息符合 §13.1.9（至少 worksheet 結構類錯誤）
-- [ ] 新增 `tests/bds/test_bds_worksheet_mapping_layer.php`（或擴充既有 upload mode test）
+- [x] `BdsWorksheetMappingLayer` + 別名表與 Contract §4.4.2 一致
+- [x] upload mode 接受中／英工作表名；順序／檔名不影響
+- [x] sheet mode **無** regression
+- [x] Portal 失敗訊息符合 §13.1.9（worksheet 結構類錯誤）
+- [x] `tests/bds/test_bds_worksheet_mapping.php` + upload mode formal sync tests
 
-**Phase 標記：** Runtime 實作 **Phase 7-1e.7 Done**；本節定案 **7-1e.6** 僅 Docs。
+**Phase 標記：** **7-1e.6** Docs；**7-1e.7** Runtime **Completed**；**7-1e.9a** E2E sign-off。
 
-##### 8.8.6.6 Latest Successful Workbook Download — Future Runtime Design（Phase 7-1e.8）
+##### 8.8.6.6 Latest Successful Workbook Download — Post-MVP Runtime Design（Phase 7-1e.8）
 
-> **Status: SSOT 定案（2026-06-15）** — Drive workbook promote + Portal 下載；**本節為文件定案，程式待實作（7-1e.8 Runtime）**。  
+> **Status: SSOT 定案（2026-06-15）** — Drive workbook promote + Portal 下載；**Post-MVP Runtime**（7-1e.8b-2／7-1e.8c）。  
 > **L3：** `BATS_DATA_CONTRACT.md` §1.6.9；**L1：** `BATS_DATA_SYNC_POLICY.md` §14.1.2；**L2 UX：** `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §13.1.10。
 
 ###### 8.8.6.6.1 目標流程
 
 ```text
-Formal Sync SUCCESS（dry_run=false, read-back PASS）
+Formal Sync — Knowledge Path（dry_run=false）
+  → Validation PASS
+  → GCS Upload PASS
+  → Read-back PASS
+  → knowledge_sync_status = success
         ↓
 BdsDriveWorkbookPromoter（建議新元件）
   → 上傳 staging .xlsx → Google Drive tenant workbook（覆寫）
   → 取得 drive_file_id、drive_download_url（Download Mode，非 Edit）
         ↓
-BdsLatestSuccessfulWorkbookWriter（建議）
+  [Promote SUCCESS]
+  → workbook_promote_status = success
+  → status = success
+  → BdsLatestSuccessfulWorkbookWriter
   → 寫入 var/bds/tenants/{sno}/meta/latest_successful_workbook.json
   → （可選）內嵌至 success sync_report
+
+  [Promote FAIL — §14.1.3]
+  → workbook_promote_status = failed
+  → status = success_with_workbook_warning
+  → 不寫入 latest_successful_workbook.json
+  → 不 rollback GCS
+  → sync_report 仍寫入（含雙狀態欄位）
         ↓
-legacy www upload.php GET
+legacy www upload.php GET（7-1e.8c）
   → 讀 metadata + sync_report（§1.6.5.3 優先序）
-  → 渲染「下載最新版 Excel」href
+  → 渲染「下載最新版 Excel」href 或 §13.1.11 Warning
 ```
 
 ###### 8.8.6.6.2 新增／擴充元件（建議）
@@ -1346,9 +1373,9 @@ legacy www upload.php GET
 | # | 元件 |  repo | 職責 |
 |---|------|------|------|
 | 1 | **`BdsDriveWorkbookPromoter`** | bbc-ai-bot | success 路徑：staging xlsx → Drive 覆寫；回傳 file id + download URL |
-| 2 | **`BdsLatestSuccessfulWorkbookWriter`** | bbc-ai-bot | 寫入 §1.6.9.3 metadata JSON；**僅** success 呼叫 |
+| 2 | **`BdsLatestSuccessfulWorkbookWriter`** | bbc-ai-bot | 寫入 §1.6.9.3 metadata JSON；**僅** `workbook_promote_status=success` 呼叫 |
 | 3 | **`bdsLoadLatestSuccessfulWorkbook()`** | legacy www | GET upload.php：解析下載 href；**不** 暴露內部 ID |
-| 4 | **`bin/bds-sync.php` 擴充** | bbc-ai-bot | formal sync success 後呼叫 promoter + writer；fail 路徑 **跳過** |
+| 4 | **`bin/bds-sync.php` 擴充** | bbc-ai-bot | Read-back PASS 後呼叫 promoter；依結果寫 `sync_report` 雙狀態；**僅** promote success 呼叫 writer |
 
 **不在本 Phase 修改（7-1e.8 文件邊界已列 Out of Scope）：** 可於 **7-1e.8b Runtime** 實作 legacy `upload.php` UI。
 
@@ -1356,9 +1383,12 @@ legacy www upload.php GET
 
 | Gate | 行為 |
 |------|------|
-| `status=success` && `dry_run=false` | 允許 Drive promote + metadata write |
-| Validation／Sync／Read-back Fail | **不** promote；**不** 更新 metadata |
-| Last Successful Version（§14.1.1） | GCS JSON 與 Drive workbook **同步** success 語意 |
+| Validation／GCS／Read-back Fail | **不** promote；`knowledge_sync_status=failed`；`status=failed` |
+| Read-back PASS | `knowledge_sync_status=success`；**允許** 進入 Drive promote |
+| Workbook Promote SUCCESS | `workbook_promote_status=success`；`status=success`；寫 metadata |
+| Workbook Promote FAIL | `workbook_promote_status=failed`；`status=success_with_workbook_warning`；**不** 寫 metadata；**不** rollback GCS（§14.1.3） |
+| `dry_run=true` | **不** promote；`workbook_promote_status=skipped` |
+| Last Successful Version（§14.1.1） | GCS：**success 路徑不 rollback**；Drive：**僅 promote success 更新** |
 
 ###### 8.8.6.6.4 Drive 檔案策略
 
@@ -1366,7 +1396,8 @@ legacy www upload.php GET
 |------|------|
 | **Logical 檔** | 每 tenant 單一「tenant private knowledge workbook」於 Drive Archive 路徑 |
 | **成功覆寫** | 每次 success 以本次 staging `knowledge_{upload_session_id}.xlsx` 內容覆寫 |
-| **檔名** | 由 Registry／Drive policy 決定（**非** 使用者 `original_filename`） |
+| **檔名** | `{tenant_sno}.xlsx`（如 `5f99b8d665e8444d.xlsx`）；Registry `private_knowledge_folder_id` 內；**非** `original_filename` |
+| **Runtime 身份** | `drive_file_id`（暖路徑）；檔名僅冷啟動定位 |
 | **權限** | SA 具 write；Portal 僅持 **download/view** URL |
 
 ###### 8.8.6.6.5 Portal 實作要點（legacy www — 7-1e.8b）
@@ -1388,16 +1419,57 @@ legacy www upload.php GET
 | C | GET upload.php → 下載 href 指向上一版 success |
 | D | 無 success 紀錄 → 無下載按鈕 |
 | E | metadata `sync_id` 與 readonly「目前 AI 使用版本」一致 |
+| F | Knowledge success + Drive promote fail → `success_with_workbook_warning`；metadata 不變；GCS 不 rollback |
+| G | User Actionable fail → `failed`；§13.1.7 失敗模板 |
+| H | Workbook warning → §13.1.11 模板；**禁止**「請重新上傳」 |
 
 ###### 8.8.6.6.7 退出準則
 
 - [ ] Success 路徑寫入 `latest_successful_workbook.json`（Contract §1.6.9.3）
-- [ ] Fail 路徑 Drive + metadata 不變（§14.1.2.3）
+- [ ] Promote success：`status=success` + 雙狀態皆 success
+- [ ] Promote fail：`status=success_with_workbook_warning`；metadata 不變；GCS 不 rollback（§14.1.3）
+- [ ] Fail 路徑（validation 等）：Drive + metadata 不變（§14.1.2.3）
 - [ ] Portal 僅顯示下載 URL／按鈕；無內部 path 洩漏
 - [ ] 下載來源 **非** staging／GCS JSON
-- [ ] 與 §14.1.1 Last Successful Version **一致**
+- [ ] 與 §14.1.1 Last Successful Version **一致**（GCS 不 rollback）
 
-**Phase 標記：** **7-1e.8** = Docs（本 commit）；**7-1e.8b** = bbc-ai-bot Drive promote；**7-1e.8c** = legacy Portal UI。
+###### 8.8.6.6.8 Drive Promote Failure Runtime（Phase 7-1e.8b-1a SSOT）
+
+> **Status: SSOT 定案（2026-06-14）** — `bin/bds-sync.php` 在 Read-back PASS 後之 Drive promote 失敗行為。
+
+**`bin/bds-sync.php` 成功路徑（Knowledge 段完成後）：**
+
+```text
+1. knowledge_sync_status = success
+2. sync_id、published_at 已確定（與 GCS 一致）
+3. BdsDriveWorkbookPromoter::promote(...)
+4. IF promote.ok:
+     workbook_promote_status = success
+     status = success
+     BdsLatestSuccessfulWorkbookWriter::write(...)
+   ELSE:
+     workbook_promote_status = failed
+     status = success_with_workbook_warning
+     workbook_promote_error_code / message → sync_report
+     SKIP metadata writer
+     DO NOT rollback GCS
+     DO NOT exit(1) solely for promote fail（job 整體語意：knowledge success）
+5. writeFormalSyncReport(...) — 含雙狀態欄位
+6. exit(0) — knowledge success；workbook 狀態由 status 區分
+```
+
+| 項目 | Promote Fail 時 |
+|------|-----------------|
+| GCS `knowledge/*.json` | **保留** 本次寫入 |
+| `latest_successful_workbook.json` | **不更新** |
+| Drive workbook | **不變** |
+| `sync_report.status` | `success_with_workbook_warning` |
+| CLI exit code | **建議** `0`（knowledge 成功）；或文件化 `2` = partial success — **8b-2 定案時擇一並寫入 runbook** |
+| Portal `upload_session.status` | `sync_success`（由 Portal 讀 `sync_report` 呈現 warning） |
+
+**交叉引用：** `BATS_DATA_SYNC_POLICY.md` §14.1.3；`BATS_DATA_CONTRACT.md` §1.6.9.7；MVP Plan §13.1.11
+
+**Phase 標記：** **7-1e.8** = Docs（c0af123）；**7-1e.8b-1a** = Drive Promote Failure Policy SSOT；**7-1e.8b-2** = **Post-MVP** Runtime；**7-1e.8c** = **Post-MVP** legacy Portal UI。
 
 ---
 
@@ -1405,6 +1477,8 @@ legacy www upload.php GET
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v2.9** | 2026-06-15 | Phase 7-1e.10b：§8 MVP Close-out — 7-1／7-1c／7-1e **Completed**；§8.3／§8.8.2 退出準則勾選；Workbook **Post-MVP** |
+| **v2.8** | 2026-06-14 | Phase 7-1e.8b-1a：§8.8.6.6 雙狀態流程；§8.8.6.6.8 Drive Promote Failure Runtime；檔名 `{tenant_sno}.xlsx` |
 | **v2.7** | 2026-06-15 | Phase 7-1e.8：§8.8.6.6 Latest Successful Workbook Download Future Runtime |
 | **v2.6** | 2026-06-14 | Phase 7-1e.6：§8.8.6.5 Worksheet Mapping Layer Runtime Design；Portal 中文化；7-1e.7 測試退出準則 |
 | **v2.5** | 2026-06-05 | Phase 7-1c-1b：§8.8.6 CLI Staging Input Contract；7-1c-2a／7-1c-2b 分解 |
@@ -1430,7 +1504,9 @@ legacy www upload.php GET
 
 | 項目 | 狀態 |
 |------|------|
-| **文件狀態** | Draft — 待審核 |
-| **實作狀態** | Phase 1～5 **Completed**；Phase 6 未開始 |
+| **文件狀態** | **SSOT 定案（Phase 7-1e.10b）** — Tenant Upload Portal MVP Close-out |
+| **實作狀態** | Phase 1～5 **Completed**；**7-1 Tenant Upload Portal MVP Completed** ✅（7-1e.9a） |
+| **Post-MVP** | Workbook Download、Drive Promote、Shared Drive、7-2 Shared Portal、7-3 Hardening |
 | **前置 SSOT** | Sync / Registry / Contract / Ownership 已 commit |
 | **Pilot** | `travel_b`（`5f99b8d665e8444d`） |
+| **E2E 證據** | `UPLOAD-20260615-160459-43a5b1` / `SYNC-20260615-100459` |

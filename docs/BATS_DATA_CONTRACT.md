@@ -20,6 +20,7 @@
 | §1.6.6 | Upload → BDS Sync Trigger（Phase 7-1c-0） |
 | §1.6.7 | Upload CLI Input Contract（Phase 7-1c-1b） |
 | §1.6.9 | Latest Successful Workbook Contract（Phase 7-1e.8） |
+| §1.6.9.7 | Dual Status Model — Knowledge Sync vs Workbook Promote（Phase 7-1e.8b-1a） |
 | §2 | Relationship |
 | §3 | Data Category |
 | §4 | Google Sheet Multi Tab Rule |
@@ -174,7 +175,11 @@ FAQ 型、表格型、條列型知識（含護照、簽證、入境規定、行�
 | 欄位 | 說明 |
 |------|------|
 | `sync_id` | 同步版本（§1.6.5.1） |
-| `status` | `success`／`failed` |
+| `status` | `success`｜`success_with_workbook_warning`｜`failed`（§1.6.9.7） |
+| `knowledge_sync_status` | `success`｜`failed` — GCS Knowledge Sync 獨立狀態 |
+| `workbook_promote_status` | `success`｜`failed`｜`skipped` — Drive Workbook Promote 獨立狀態 |
+| `workbook_promote_error_code` | 選填；Drive promote 失敗時之營運錯誤碼 |
+| `workbook_promote_error_message` | 選填；營運可讀摘要（**非** Portal 裸 stack trace） |
 | `finished_at` | 最近一次 job 結束時間（ISO 8601） |
 | `tenant_sno` 或 `industry_code` | scope 識別（依 Tenant／Shared） |
 | `data_category` | `tenant_private_knowledge` 或 `shared_knowledge` |
@@ -192,8 +197,9 @@ FAQ 型、表格型、條列型知識（含護照、簽證、入境規定、行�
 
 | 顯示值 | 條件 |
 |--------|------|
-| `已同步版本` | 現行 GCS knowledge `sync_id` = 最近 success `sync_id` |
-| `仍為上一次成功同步版本` | 有歷史 success，session 尚未新 success promote |
+| `已同步版本` | 現行 GCS knowledge `sync_id` = 最近 **knowledge** success `sync_id` |
+| `仍為上一次成功同步版本` | 有歷史 success，session 尚未新 knowledge success promote |
+| `已同步版本（下載檔案待更新）` | `status=success_with_workbook_warning`；AI 已更新但 Drive 下載檔仍為上一版（§1.6.9.7） |
 
 **交叉引用：** `BATS_DATA_SYNC_POLICY.md` §17.10.3、§17.10.6；`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §13.1、§13.6
 
@@ -306,7 +312,7 @@ staging `.xlsx` 須可解析為本文件 §4～§8 定義之 **五 Required Cano
 #### 1.6.9 Latest Successful Workbook Contract（Phase 7-1e.8 SSOT）
 
 > **Status: SSOT 定案（2026-06-15）** — 旅行社自 Upload Portal **下載目前 AI 使用之最新成功 Excel** 之 L3 資料契約。  
-> **L1 治理規則：** `BATS_DATA_SYNC_POLICY.md` §14.1.2；**L2 Portal UX：** `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §13.1.10；**Runtime（未實作）：** `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §8.8.6.6。
+> **L1 治理規則：** `BATS_DATA_SYNC_POLICY.md` §14.1.2；**L2 Portal UX：** `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §13.1.10；**Runtime：Post-MVP**（Implementation Plan §8.8.6.6）。
 
 ##### 1.6.9.1 目的
 
@@ -334,7 +340,7 @@ GCS knowledge/*.json（AI Runtime — 查詢來源，非下載來源）
 
 ##### 1.6.9.3 `latest_successful_workbook` Metadata Contract
 
-正式同步 **成功**（`status=success` 且 `dry_run=false`）後，BDS **必須** 更新下列 metadata（寫入位置見 §1.6.9.5）：
+正式同步 **成功**（`knowledge_sync_status=success` 且 `dry_run=false`）且 **Drive Workbook Promote 成功**（`workbook_promote_status=success`）後，BDS **必須** 更新下列 metadata（寫入位置見 §1.6.9.5）：
 
 | 欄位 | 類型 | 必填 | 說明 |
 |------|------|------|------|
@@ -363,7 +369,9 @@ GCS knowledge/*.json（AI Runtime — 查詢來源，非下載來源）
 
 | 條件 | 是否更新 `latest_successful_workbook` |
 |------|----------------------------------------|
-| Formal sync **success**（`status=success`、`dry_run=false`、Read-back PASS） | **是** — 覆蓋 Drive tenant workbook + 更新 metadata |
+| Knowledge **success** + Workbook Promote **success**（`status=success`） | **是** — 覆蓋 Drive tenant workbook + 更新 metadata |
+| Knowledge **success** + Workbook Promote **fail**（`status=success_with_workbook_warning`） | **否** — 維持上一版（§14.1.3） |
+| Formal sync **success**（舊語意：GCS + Read-back PASS） | 見上列雙狀態 |
 | Validation Fail | **否** |
 | Upload Fail（staging／session） | **否** |
 | Sync Fail | **否** |
@@ -381,7 +389,7 @@ GCS knowledge/*.json（AI Runtime — 查詢來源，非下載來源）
 | 優先 | 位置 | 說明 |
 |------|------|------|
 | 1 | Host A `var/bds/tenants/{sno}/meta/latest_successful_workbook.json` | Portal readonly + 下載 href 解析 **首選** |
-| 2 | 成功版 `sync_report.json` 內嵌 `latest_successful_workbook` 物件（**可選**；須 `status=success`） | 與 §1.6.5.2 同一檔案；**僅 success 路徑寫入** |
+| 2 | 成功版 `sync_report.json` 內嵌 `latest_successful_workbook` 物件（**可選**；須 `workbook_promote_status=success`） | 與 §1.6.5.2 同一檔案；**僅** workbook promote success 路徑寫入 |
 
 **讀取（Portal UI — 與 §1.6.5.3 整合）：**
 
@@ -402,7 +410,64 @@ GCS knowledge/*.json（AI Runtime — 查詢來源，非下載來源）
 | **失敗不覆寫** | 任何 Fail **不得** 覆寫 Drive workbook |
 | **與 §4.4.4 一致** | Upload 原始檔名不參與 Drive 檔名邏輯；Drive 檔名由 BDS／Registry 政策決定（Implementation Plan §8.8.6.6） |
 
-**交叉引用：** `BATS_DATA_SYNC_POLICY.md` §14.1.2、§18；`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §13.1.10
+**交叉引用：** `BATS_DATA_SYNC_POLICY.md` §14.1.2、§14.1.3、§18；`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §13.1.10
+
+##### 1.6.9.7 Dual Status Model — Knowledge Sync vs Workbook Promote（Phase 7-1e.8b-1a SSOT）
+
+> **Status: SSOT 定案（2026-06-14）** — GCS AI Runtime 與 Drive Download 之 **獨立狀態**；L1：`BATS_DATA_SYNC_POLICY.md` §14.1.3～§14.1.5。
+
+###### 1.6.9.7.1 設計原則
+
+| 原則 | 說明 |
+|------|------|
+| **GCS = AI Runtime SoT** | `knowledge_sync_status=success` 表示 AI 可使用本次 `sync_id` |
+| **Drive = Download SoT** | `workbook_promote_status=success` 表示 Portal 可更新下載連結 |
+| **解耦** | Drive promote 失敗 **不得** 否定 knowledge success |
+| **禁止 rollback** | Read-back PASS 後 **不得** 因 Drive 失敗還原 GCS |
+
+###### 1.6.9.7.2 狀態欄位（`sync_report.json`）
+
+| 欄位 | 枚舉 | 說明 |
+|------|------|------|
+| `knowledge_sync_status` | `success`｜`failed` | Validation → GCS Write → Read-back 整段 |
+| `workbook_promote_status` | `success`｜`failed`｜`skipped` | Drive workbook promote；`skipped` = 未執行（fail 前中止或 dry_run） |
+| `status`（聚合） | `success`｜`success_with_workbook_warning`｜`failed` | Portal 主分類用 |
+
+**聚合規則：**
+
+| `knowledge_sync_status` | `workbook_promote_status` | `status` |
+|-------------------------|---------------------------|----------|
+| `failed` | `skipped` 或 `failed` | `failed` |
+| `success` | `success` | `success` |
+| `success` | `failed` | **`success_with_workbook_warning`** |
+| `success` | `skipped` | `success`（無 workbook 路徑；如 sheet mode legacy） |
+
+###### 1.6.9.7.3 Drive Promote Fail 路徑（定案）
+
+```text
+Validation PASS → GCS Upload PASS → Read-back PASS
+        ↓
+knowledge_sync_status = success
+sync_id = 本次新 ID（AI 已使用）
+        ↓
+BdsDriveWorkbookPromoter FAIL
+        ↓
+workbook_promote_status = failed
+status = success_with_workbook_warning
+latest_successful_workbook.json → 不更新
+Drive workbook → 不變
+GCS knowledge/*.json → 不 rollback
+```
+
+###### 1.6.9.7.4 Portal 分類
+
+| `status` | Portal 語意 | 重新上傳 |
+|----------|-------------|----------|
+| `failed` | User Actionable 或 Infra 全失敗（§14.1.4／§14.1.5.3） | 視 §14.1.4 |
+| `success` | 全成功 | — |
+| `success_with_workbook_warning` | AI Success + Download Warning（§14.1.3.5） | **禁止建議** |
+
+**交叉引用：** `BATS_DATA_SYNC_POLICY.md` §14.1.3～§14.1.5；`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §13.1.11、§13.1.12；Implementation Plan §8.8.6.6.8
 
 ---
 
@@ -564,6 +629,7 @@ BATS 讀取（tenant_private_knowledge）
 ### 4.4 Worksheet Mapping Layer（Phase 7-1e.6 SSOT）
 
 > **Status: SSOT 定案（2026-06-14）** — Upload Portal Excel **UX 與 Worksheet 語意映射** 之 L3 契約。  
+> **Runtime：Completed** ✅（Phase 7-1e.7；7-1e.9a E2E）。  
 > **L1 驗收規則：** `BATS_DATA_SYNC_POLICY.md` §17.12；**L2 UI／錯誤文案：** `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §13.1.9；**Runtime 設計：** `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §8.8.6.5。
 
 #### 4.4.1 目的
@@ -1184,6 +1250,8 @@ tenants/{sno}/knowledge/
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v2.3** | 2026-06-15 | Phase 7-1e.10b：§4.4 Runtime Completed；Tenant Upload Portal MVP Close-out |
+| **v2.2** | 2026-06-14 | Phase 7-1e.8b-1a：§1.6.9.7 Dual Status Model；`sync_report` 雙狀態欄位；Drive Promote Fail 不更新 metadata |
 | **v2.1** | 2026-06-15 | Phase 7-1e.8：§1.6.9 Latest Successful Workbook Contract；Drive 下載來源；metadata 契約 |
 | **v2.0** | 2026-06-14 | Phase 7-1e.6：§4.4 Worksheet Mapping Layer；Upload 中／英工作表別名；順序／檔名不檢查；§4.3 限 Sheet mode |
 | **v1.9** | 2026-06-05 | Phase 7-1c-1b：§1.6.7 Upload CLI Input Contract（`--upload-session-id`、staging、source_type） |
@@ -1203,6 +1271,6 @@ tenants/{sno}/knowledge/
 
 | 項目 | 狀態 |
 |------|------|
-| 文件狀態 | **SSOT 定案（Phase 7-1e.8）** — Latest Successful Workbook Contract 已閉合 |
-| 程式實作 | Workbook Download Runtime **待實作**（Implementation Plan §8.8.6.6） |
-| Git commit | **尚未提交** |
+| 文件狀態 | **SSOT 定案（Phase 7-1e.10b）** — Tenant Upload Portal MVP Close-out |
+| 程式實作 | **7-1 Upload Portal MVP Completed** ✅（7-1e.9a）；Workbook Download／Drive Promote **Post-MVP** |
+| Git commit | 待使用者核准後提交（含 7-1e.10b docs delta） |

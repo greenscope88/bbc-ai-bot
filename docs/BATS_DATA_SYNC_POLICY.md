@@ -33,7 +33,7 @@
 | §14 | Error Handling |
 | §15 | BDS v1 MVP Use Case |
 | §16 | Future Roadmap |
-| §17 | Phase 7 — Upload-Triggered Sync（Pre-Planning） |
+| §17 | Phase 7 — Upload-Triggered Sync（7-1 Completed） |
 | §18 | Google Drive Archive Layer |
 | §19 | Update Entry Rule |
 | §20 | Google Drive 三層資料分類 |
@@ -801,7 +801,7 @@ shared/global/knowledge/              # 跨產業 fallback
 | 典型問題 | 「北海道有什麼團？」 | 「護照代辦怎麼收費？」 | 產業通用護照／簽證須知 |
 | 建議路徑 | `tenants/{sno}/knowledge/itinerary/` | `tenants/{sno}/knowledge/` 下 5 JSON | `shared/{industry}/knowledge/`、`shared/global/knowledge/` |
 | 讀取優先序 | 依商品搜尋意圖 | **1（最高）** | **2、3（fallback）** |
-| BDS v1 MVP | **不實作**（Rule 6） | **實作**（Rule 5） | 規劃中 |
+| BDS v1 MVP | **不實作**（Rule 6） | **Completed**（Rule 5） | **Post-MVP** |
 | Data Contract | 專用 schema（L3 待定） | 專用 schema（L3 待定） | 專用 schema（L3 待定） |
 
 ### 12.5 正式規則（Data Category Rules）
@@ -1127,16 +1127,18 @@ Upload Portal POST
   → Formal Sync PASS（dry_run=false）
   → GCS Write PASS
   → Read-back PASS
+  → Drive Workbook Promote（§14.1.3）
   → upload_session.status = sync_success（Portal 語意）
-  → sync_report.status = success
+  → sync_report.status = success 或 success_with_workbook_warning
 ```
 
 | 必要條件 | 說明 |
 |----------|------|
-| `sync_report.status` | `success` |
+| `knowledge_sync_status` | `success`（GCS + Read-back PASS） |
 | `sync_report.dry_run` | `false` |
 | Read-back | PASS |
-| Drive promote／archive write | 成功覆寫 tenant workbook |
+| Drive promote | **成功** → 更新 workbook + metadata；**失敗** → §14.1.3（**不** rollback GCS） |
+| `sync_report.status`（聚合） | 全成功：`success`；Knowledge OK + Drive Fail：`success_with_workbook_warning` |
 
 ##### 14.1.2.3 不得更新（Must Not Update）
 
@@ -1181,6 +1183,186 @@ Upload Portal POST
 | **意圖** | 旅行社 **下載 → 本地編輯 → 重新上傳**；**不得** 繞過 Upload Portal 直接改 Drive |
 
 **交叉引用：** `BATS_DATA_CONTRACT.md` §1.6.9；`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §13.1.10；Implementation Plan §8.8.6.6
+
+#### 14.1.3 Drive Promote Failure Policy（Phase 7-1e.8b-1a SSOT）
+
+> **Status: SSOT 定案（2026-06-14）** — GCS Knowledge Sync 與 Drive Workbook Promote **解耦** 之正式治理；**7-1e.8b-2 Runtime 前必須遵守**。
+
+##### 14.1.3.1 問題定義
+
+當下列路徑已完成：
+
+```text
+Validation PASS
+  → GCS Upload PASS
+  → GCS Read-back PASS
+```
+
+但 **Google Drive Workbook Promote FAIL** 時，BDS **如何分類** 本次同步？
+
+##### 14.1.3.2 正式決策（定案）
+
+| # | 決策 | 說明 |
+|---|------|------|
+| 1 | **AI Knowledge Sync = SUCCESS** | GCS 為 AI Runtime Knowledge Source（`BATS_DRIVE_CONNECTOR_SCOPE.md` §2.1）；Read-back 已 PASS，AI **已使用新版本** |
+| 2 | **Drive Workbook Update = FAILED** | Google Drive workbook 為 **下載／管理** 來源，**非** AI runtime 來源 |
+| 3 | **不得 rollback GCS** | Read-back 已通過；**禁止** 因 Drive promote 失敗而刪除或還原 `knowledge/*.json` |
+| 4 | **不得更新 `latest_successful_workbook.json`** | Drive workbook 未成功更新；Portal 下載連結 **維持上一版成功** workbook |
+| 5 | **獨立狀態模型** | 引入 `knowledge_sync_status` 與 `workbook_promote_status`（Contract §1.6.9.7、`sync_report` §1.6.5.2） |
+| 6 | **聚合 `sync_report.status`** | 定案為 **`success_with_workbook_warning`**（見 §14.1.3.3） |
+| 7 | **Portal 分類** | **AI Runtime Success** + **Workbook Download Service Warning**；**非** User Upload Failure |
+
+##### 14.1.3.3 狀態模型（`sync_report.json`）
+
+| 欄位 | 成功路徑（全成功） | Drive Promote Fail 路徑 |
+|------|-------------------|-------------------------|
+| `knowledge_sync_status` | `success` | `success` |
+| `workbook_promote_status` | `success` | `failed` |
+| `status`（聚合） | `success` | **`success_with_workbook_warning`** |
+| `sync_id` | 本次新 `sync_id` | 本次新 `sync_id`（AI 已使用） |
+| `latest_successful_workbook` metadata | **更新** | **不更新** |
+| Drive tenant workbook | **覆寫** | **不變**（上一版成功） |
+
+**`workbook_promote_status` 枚舉：** `success`｜`failed`｜`skipped`（`skipped` = dry_run 或未進入 upload promote 路徑）
+
+##### 14.1.3.4 與 §14.1.1／§14.1.2 對齊
+
+| 規則 | Drive Promote Fail 時 |
+|------|----------------------|
+| §14.1.1 Last Successful Version（GCS） | **維持本次 success** — 不得 rollback |
+| §14.1.2 Last Successful Workbook（Drive） | **維持上一版** — 不得更新 metadata／Drive 檔 |
+| §14.1.2.1「下載版 sync_id = AI sync_id」 | **暫時不一致** — Portal **必須** 以 Warning UX 說明（MVP Plan §13.1.11） |
+| `upload_session.status`（Portal） | **`sync_success`**（知識庫已更新語意）；**非** `sync_failed` |
+
+##### 14.1.3.5 Portal 文案（定案 — Tenant）
+
+**不得** 使用 §14.1.1 失敗模板或「請重新上傳」。
+
+```text
+本次同步成功
+
+AI 知識庫已更新。
+
+但最新版 Excel 下載功能暫時無法更新。
+
+目前系統仍維持上一版成功下載檔案。
+
+請通知系統管理員協助處理。
+```
+
+**禁止文案：** `請修正 Excel 後重新上傳`；`本次同步失敗`；`本次未更新 GCS`。
+
+##### 14.1.3.6 營運／稽核
+
+| 項目 | 規格 |
+|------|------|
+| `workbook_promote_error_code` | **建議** 寫入 `sync_report.json`（如 `E_DRIVE_PERMISSION_DENIED`） |
+| `workbook_promote_error_message` | 營運可讀摘要；**非** 裸 stack trace |
+| 告警 | **建議** 觸發維運告警（Drive API／ACL） |
+| 重試 | **不由** 旅行社重上傳解決；由管理員修復基礎設施後 **可** 手動 re-promote（未來維運工具；非 8b-2 MVP 必須） |
+
+**交叉引用：** `BATS_DATA_CONTRACT.md` §1.6.9.7；`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §13.1.11；Implementation Plan §8.8.6.6.8
+
+#### 14.1.4 User Actionable Error Policy（Phase 7-1e.8b-1a SSOT）
+
+> **Status: SSOT 定案（2026-06-14）** — 旅行社 **可自行修正** 之上傳錯誤分類。
+
+##### 14.1.4.1 定義
+
+**User Actionable Error** = 旅行社透過 **修正 Excel 並重新上傳** 即可解決之錯誤。
+
+##### 14.1.4.2 範例
+
+| 類型 | 範例 |
+|------|------|
+| 工作表結構 | 缺少必要工作表、工作表名稱錯誤、工作表重複映射 |
+| 檔案格式 | Excel 檔案損毀、非 `.xlsx`、無法開啟 xlsx |
+| 欄位驗證 | 必填欄位缺漏、Contract Validation Fail |
+| Mapping | Worksheet Mapping Fail、Duplicate Worksheet Fail |
+
+##### 14.1.4.3 Portal UX（定案）
+
+```text
+本次同步失敗
+
+失敗原因：
+{中文錯誤訊息}
+
+請修正 Excel 後重新上傳。
+```
+
+| 動作 | 規格 |
+|------|------|
+| 建議重新上傳 | ✅ |
+| 允許重新上傳 | ✅ |
+| 通知管理員 | ✗（一般情況） |
+| GCS | **不得** 更新（§14.1.1） |
+| `sync_report.status` | `failed` |
+| `knowledge_sync_status` | `failed` |
+| `workbook_promote_status` | `skipped` 或未執行 |
+
+**交叉引用：** MVP Plan §13.1.7 失敗模板、§13.1.12；Contract §1.6.9.7
+
+#### 14.1.5 System Infrastructure Error Policy（Phase 7-1e.8b-1a SSOT）
+
+> **Status: SSOT 定案（2026-06-14）** — 平台、API、權限、基礎設施導致之錯誤；**重新上傳通常無法解決**。
+
+##### 14.1.5.1 定義
+
+**System Infrastructure Error** = 非使用者 Excel 內容可修正之錯誤；需 **維運／管理員** 介入。
+
+##### 14.1.5.2 範例
+
+| 類型 | 範例 |
+|------|------|
+| Google Drive API | Timeout、403、429、5xx |
+| 權限／ACL | Service Account Permission Denied、Drive Folder ACL Error |
+| Workbook Promote | Drive Workbook Promote Failure（§14.1.3） |
+| Metadata | `latest_successful_workbook.json` Write Failure（在 knowledge 已成功後） |
+| 平台 | Google Platform Incident、內部 Runtime Infrastructure Failure |
+| GCS（全失敗路徑） | GCS Upload Fail、Read-back Fail（此時 knowledge **未** success） |
+
+##### 14.1.5.3 子類型 A — Knowledge Sync 未成功（全失敗）
+
+| 條件 | GCS 未成功 promote |
+|------|-------------------|
+| Portal 分類 | **Sync Failure**（沿用 §14.1.1 失敗模板） |
+| `sync_report.status` | `failed` |
+| 重新上傳 | **視錯誤類型**；若為暫時性 infra 可重試 |
+
+##### 14.1.5.3.1 子類型 B — Knowledge Success + Workbook Promote Fail（§14.1.3）
+
+| 條件 | Validation／GCS／Read-back PASS；Drive Promote FAIL |
+|------|------------------------------------------------------|
+| Portal 分類 | **AI Runtime Success** + **Workbook Download Service Warning** |
+| `sync_report.status` | `success_with_workbook_warning` |
+| 重新上傳 | **不要求、不建議**（重上傳 **不能保證** 解決 infra 問題） |
+| 下載連結 | **維持** Last Successful Workbook |
+| AI 版本 | **已更新** 至本次 `sync_id` |
+
+##### 14.1.5.4 Portal UX — 子類型 B（定案）
+
+```text
+本次同步成功
+
+AI 知識庫已更新。
+
+但最新版 Excel 下載功能暫時無法更新。
+
+目前系統仍維持上一版成功下載檔案。
+
+請通知系統管理員協助處理。
+```
+
+| 動作 | 規格 |
+|------|------|
+| 要求重新上傳 | ✗ |
+| 建議重新上傳 | ✗ |
+| 聯絡管理員 | ✅ |
+| Last Successful Workbook | ✅ 維持 |
+| Last Successful Version（GCS） | ✅ 維持本次 success |
+
+**交叉引用：** MVP Plan §13.1.11、§13.1.12；Implementation Plan §8.8.6.6.8
 
 ### 14.2 錯誤分類
 
@@ -1311,6 +1493,18 @@ tenants/5f99b8d665e8444d/knowledge/
 | Query Flow | 客服問答讀 `tenant_private_knowledge`；不觸發 BDS（§13.3、§12 Rule 4） |
 | 行程搜尋 | 仍走 Host B API + Multi-Source URL；**不** 以 MVP 取代 `itinerary_data` |
 
+### 15.7 MVP Close-out Status（Phase 7-1e.10b）
+
+| 項目 | 狀態 |
+|------|------|
+| **Tenant Upload Portal（7-1）** | **Completed** ✅ — 7-1e.9a production E2E（`travel_b` / `storeNo=6180`） |
+| **正式入口** | `https://kowanbo.com/bds/upload.php` |
+| **驗證路徑** | Upload → Worksheet Mapping → Validation → Formal Sync → GCS → Read-back |
+| **Safety Rule** | Last Successful Version Rule **PASS**（§14.1.1） |
+| **AI Runtime** | GCS `tenants/{sno}/knowledge/*.json` |
+| **E2E 證據** | `UPLOAD-20260615-160459-43a5b1` / `SYNC-20260615-100459` |
+| **Post-MVP** | Workbook Download、Drive Promote、Shared Drive、Auto Provisioning、Shared Upload Portal（7-2） |
+
 ---
 
 ## 16. Future Roadmap
@@ -1319,13 +1513,14 @@ tenants/5f99b8d665e8444d/knowledge/
 
 | Phase | 內容 | 狀態 |
 |-------|------|------|
-| **BDS v1 MVP** | travel_b `tenant_private_knowledge`：1 Sheet / 5 Tabs → 5 JSON；Mode B；`BATS_DATA_CONTRACT.md` | 規劃中 |
-| **Phase 6A** | Manual Sync Command（Sheet → GCS）；營運 CLI | 已完成 |
-| **Phase 6B** | Drive Connector Read-only / Archive（**非** Structured 更新入口） | 進行中 |
-| **Phase 7** | **Upload-Triggered Sync** — Host A Upload Portal → Excel → BDS → GCS → Read-back（§17） | **Pre-Planning** |
-| **BDS Phase 2** | `itinerary_data` 規劃啟動；`config/product_sources.json`；Webhook | 規劃中 |
-| **Tenant Bridge Phase 1D** | 任意 tenant path 解析；travel_c pilot | 規劃中 |
-| **Tenant Bridge Phase 1E** | GCS Provider 真實下載 + cache | 規劃中 |
+| **BDS v1 MVP** | travel_b `tenant_private_knowledge`：Upload Portal → 5 JSON；Mode B；`BATS_DATA_CONTRACT.md` | **Completed** ✅（7-1e.9a） |
+| **Phase 6A** | Manual Sync Command（Sheet → GCS）；營運 CLI | **Completed** ✅ |
+| **Phase 6B** | Drive Connector Read-only / Archive（**非** Structured 更新入口） | **Post-MVP** |
+| **Phase 7-1** | **Upload-Triggered Sync** — Tenant Upload Portal → Excel → BDS → GCS → Read-back（§17） | **Completed** ✅ |
+| **Phase 7-2** | Shared Upload Portal → `shared/travel/knowledge/` | **Post-MVP** |
+| **BDS Phase 2** | `itinerary_data`；`config/product_sources.json`；Webhook | **Post-MVP** |
+| **Tenant Bridge Phase 1D** | 任意 tenant path 解析；travel_c pilot | **Post-MVP** |
+| **Tenant Bridge Phase 1E** | GCS Provider 真實下載 + cache | **Post-MVP** |
 
 ### 16.2 Mode C（僅限本節 — Future，不實作）
 
@@ -1353,7 +1548,7 @@ tenants/5f99b8d665e8444d/knowledge/
 
 ## 17. Phase 7 — Upload-Triggered Sync
 
-> **Status:** §17.1～§17.7 Pre-Planning（同步主軸）；**§17.8 Phase 7-0c SSOT 定案**（Upload Portal canonical domain／auth）。  
+> **Status:** **7-1 Tenant Upload Portal MVP Completed** ✅（7-1e.9a）；§17.1～§17.12 SSOT 定案；**7-2 Shared Portal Post-MVP**。  
 > **目的：** 明確 Phase 7 主軸為 **Upload-Triggered Sync**，避免被誤解為 Cron Scheduler First。  
 > **實作規劃：** `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md`（L2）。
 
@@ -1441,19 +1636,21 @@ Tenant Private、Industry Shared、Global Shared **共用同一套** Upload → 
 
 | 管線 | 職責 | Phase |
 |------|------|-------|
-| **Phase 7 Upload-Triggered Sync** | Structured Excel → Validation → GCS Knowledge JSON | Phase 7（Planning） |
+| **Phase 7 Upload-Triggered Sync** | Structured Excel → Validation → GCS Knowledge JSON | **Completed**（7-1） |
 | **Phase 6B Drive Connector** | Drive **Archive** 唯讀／受控 promote；PDF／Image／Word 等 **非結構化** | Phase 6B+ |
 | **交集** | 上傳頁可將 Excel **存檔** 至 Drive Archive；**Structured 生效路徑仍為** Upload → BDS → GCS |
 | **禁止混淆** | Drive `files.list`／promote **不得** 取代 Upload Portal 作為 Structured Knowledge 主更新路徑 |
 
 **交叉引用：** `BATS_DRIVE_CONNECTOR_SCOPE.md` §2、`BATS_DATA_CONTRACT.md` §1.6、`BATS_SHARED_KNOWLEDGE_CONTRACT.md` §11.2
 
-### 17.7 明確不做（Planning 階段）
+### 17.7 明確不做（7-1 MVP Close-out）
 
 | 不做 | 說明 |
 |------|------|
-| Upload Portal 程式實作 | §17.8 定案 domain／auth；程式屬 Phase 7-1（見 MVP Plan） |
 | Cron / Scheduler 程式 | Phase 7 **不** 實作 |
+| Workbook Download Runtime | **Post-MVP**（7-1e.8c）；SSOT 已定案 |
+| Drive Promote Runtime | **Post-MVP**（7-1e.8b-2）；SSOT 已定案 |
+| Shared Upload Portal | **Post-MVP**（7-2） |
 | Shared Layer Drive 自動下發 | 須 Registry + Policy |
 | 修改 GCS Runtime 路徑 | 不變 |
 
@@ -1466,10 +1663,10 @@ Tenant Private、Industry Shared、Global Shared **共用同一套** Upload → 
 
 Structured Knowledge 人類更新入口分為 **兩個獨立 Portal**；寫入層級 **不可混用**。
 
-| Portal | Canonical URL | 寫入 GCS 層級 | Phase |
-|--------|---------------|---------------|-------|
-| **Tenant Upload Portal** | `https://kowanbo.com/bds/upload.php` | `tenants/{sno}/knowledge/` | 7-1 |
-| **Shared Upload Portal** | `https://kowanbo.com/bds/shared_upload.php` | `shared/{industry_code}/knowledge/` | 7-2 |
+| Portal | Canonical URL | 寫入 GCS 層級 | Phase | 狀態 |
+|--------|---------------|---------------|-------|------|
+| **Tenant Upload Portal** | `https://kowanbo.com/bds/upload.php` | `tenants/{sno}/knowledge/` | 7-1 | **Completed** ✅ |
+| **Shared Upload Portal** | `https://kowanbo.com/bds/shared_upload.php` | `shared/{industry_code}/knowledge/` | 7-2 | **Post-MVP** |
 
 | 共同項 | 說明 |
 |--------|------|
@@ -1710,7 +1907,7 @@ Upload Portal（固定網頁上傳）
 
 | 步驟 | 元件 |
 |------|------|
-| 1 | Tenant Upload Portal `upload.php`（7-1a／7-1b 已完成 gate + staging） |
+| 1 | Tenant Upload Portal `upload.php`（**7-1 Completed** ✅ — gate + staging + CLI trigger；7-1e.9a） |
 | 2 | **CLI Trigger** — `exec`／`proc_open` 呼叫 `bin/bds-sync.php`（Host A） |
 | 3 | 既有 BDS Pipeline（Phase 6A core） |
 | 4 | GCS `tenants/{sno}/knowledge/` |
@@ -2336,6 +2533,8 @@ Service Account 僅授權必要之 `tenants/{sno}/` prefix；不得授予跨 ten
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v2.14** | 2026-06-15 | Phase 7-1e.10b：§15.7 MVP Close-out；§16.1 roadmap；§17 status **7-1 Completed** |
+| **v2.13** | 2026-06-14 | Phase 7-1e.8b-1a：§14.1.3 Drive Promote Failure Policy；§14.1.4 User Actionable Error；§14.1.5 System Infrastructure Error |
 | **v2.12** | 2026-06-15 | Phase 7-1e.8：§14.1.2 Latest Successful Workbook Rule；§17.10.7 Portal Download 政策 |
 | **v2.11** | 2026-06-14 | Phase 7-1e.6：§17.12 Upload Workbook Acceptance Rule；中文錯誤訊息；檔名／順序不檢查 |
 | **v2.10** | 2026-06-05 | Phase 7-1c-1b：§17.11.2.1 CLI Input Modes（sheet／upload）；`--upload-session-id` 定案 |
@@ -2368,6 +2567,6 @@ Service Account 僅授權必要之 `tenants/{sno}/` prefix；不得授予跨 ten
 
 | 項目 | 狀態 |
 |------|------|
-| 文件狀態 | **Draft — 待審核** |
-| 程式實作 | **未開始**（依本文件後續 Phase 執行） |
-| Git commit | **尚未提交** |
+| 文件狀態 | **SSOT 定案（Phase 7-1e.10b）** — Tenant Upload Portal MVP Close-out |
+| 程式實作 | **7-1 Completed** ✅（Upload Portal → BDS → GCS）；Workbook／Drive **Post-MVP** |
+| Git commit | 待使用者核准後提交（含 7-1e.10b docs delta） |
