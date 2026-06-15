@@ -1713,6 +1713,70 @@ upload mode 與 sheet mode **均須** 遵守 §14.1.1：
 
 **交叉引用：** `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §8.8；`TECH_DEBT.md` P2-TD-7C0
 
+### 17.12 Upload Workbook Acceptance Rule（Phase 7-1e.6 SSOT）
+
+> **Status: SSOT 定案（2026-06-14）** — Upload Portal 接受之 Excel Workbook **驗收規則**（L1）。  
+> **L3 別名表：** `BATS_DATA_CONTRACT.md` §4.4；**L2 UI／錯誤文案：** `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §13.1.9。
+
+#### 17.12.1 適用範圍
+
+| 項目 | 說明 |
+|------|------|
+| **適用** | Tenant Upload Portal（`upload.php`）、Shared Upload Portal（`shared_upload.php`，7-2）之 **upload mode** |
+| **不適用** | Phase 6A **sheet mode**（仍依 Contract §4.3 英文 Tab 精確匹配） |
+
+#### 17.12.2 Workbook 驗收（Must Accept）
+
+下列條件 **同時成立** 時，Workbook **必須** 通過 Worksheet 結構驗收（進入欄位 Validation）：
+
+| # | 規則 | 說明 |
+|---|------|------|
+| 1 | **格式** | 有效 `.xlsx`（OOXML） |
+| 2 | **Canonical 覆蓋** | 經 Mapping Layer 可解析出 **5 個** Canonical Key（§4.4.2） |
+| 3 | **工作表順序** | **任意**；**不得** 作為 Fail 條件 |
+| 4 | **原始檔名** | **任意**；**不得** 作為 Fail 條件 |
+| 5 | **工作表顯示名** | 可為 **中文或英文別名**；**不得** 要求使用者使用 `company_profile` 等技術名 |
+| 6 | **未知工作表** | 未映射 Tab **忽略**；**不** 導致 Fail |
+| 7 | **重複映射** | 兩個工作表映射至同一 Canonical Key → **Fail** |
+
+**合法範例（檔名與順序皆可不同）：**
+
+| 原始檔名 | 工作表（任意順序） |
+|----------|-------------------|
+| `大億旅行社QA.xlsx` | 公司資料、QA、服務項目、特殊價格、其他商品源 |
+| `客服知識庫2026.xlsx` | 問與答、公司基本資料、特殊價格、服務項目、產品連結 |
+| `Knowledge_Final.xlsx` | `company_profile`、`qa`、`service_items`、`special_prices`、`external_product_links` |
+
+#### 17.12.3 Workbook 拒收（Must Reject）
+
+| # | 條件 | 結果 |
+|---|------|------|
+| 1 | 非 `.xlsx` 或檔案毀損 | Upload Fail（staging 前／中） |
+| 2 | 缺少 **任一** Required Canonical Key 對應工作表 | Validation Fail |
+| 3 | 重複映射同一 Canonical Key | Validation Fail |
+| 4 | §7 欄位 Validation Fail | Validation Fail（整檔 Fail，§14.1.1） |
+
+#### 17.12.4 檔名與 Staging
+
+| 項目 | 規則 |
+|------|------|
+| **使用者檔名** | 僅稽核；**不** 參與 BDS 邏輯 |
+| **Staging 檔名** | `knowledge_{upload_session_id}.xlsx` |
+| **Drive Archive** | 成功同步後，Drive 上同路徑 Excel **可被** 下一次成功上傳 **覆蓋** |
+
+#### 17.12.5 Portal 錯誤訊息語言
+
+| 規則 | 說明 |
+|------|------|
+| **使用者可見** | Upload Portal **所有** 錯誤訊息 **必須** 為 **繁體中文** |
+| **禁止直出** | 不得向使用者顯示 `company_profile missing`、`worksheet not found`、`invalid worksheet` 等英文／技術鍵 |
+| **映射** | 缺 Sheet 類錯誤 **必須** 轉為中文顯示名（§4.4.2「中文顯示名」欄） |
+| **實作邊界** | BDS CLI 可保留內部錯誤碼；**legacy www Portal** 負責中文化後顯示（Implementation Plan §8.8.6.5） |
+
+**錯誤文案模板（L2 定案）：** `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §13.1.9。
+
+**交叉引用：** `BATS_DATA_CONTRACT.md` §4.4；`BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §8.8.6.5
+
 ---
 
 ## 18. Google Drive Archive Layer
@@ -2182,6 +2246,7 @@ Service Account 僅授權必要之 `tenants/{sno}/` prefix；不得授予跨 ten
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v2.11** | 2026-06-14 | Phase 7-1e.6：§17.12 Upload Workbook Acceptance Rule；中文錯誤訊息；檔名／順序不檢查 |
 | **v2.10** | 2026-06-05 | Phase 7-1c-1b：§17.11.2.1 CLI Input Modes（sheet／upload）；`--upload-session-id` 定案 |
 | **v2.9** | 2026-06-05 | Phase 7-1c-0：§14.1.1 Last Successful Version Rule；§17.5 Out of Scope 定案；§17.11 Upload→BDS CLI Trigger |
 | **v2.8** | 2026-06-05 | Phase 7-0e.2 Final：§17.10.6 Sync Version；目前 AI 使用版本；成功訊息定案；Metadata Source Priority |

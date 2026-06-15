@@ -556,6 +556,103 @@ shared/{industry_code}
 | **格式** | `.xlsx` only |
 | **HTML** | `accept=".xlsx"`（或等價 MIME 限制） |
 | **必填** | Excel 檔案為 required |
+| **原始檔名** | **不檢查** — 使用者可上傳任意檔名（如 `大億旅行社QA.xlsx`、`最新版.xlsx`）；系統 **不得** 依檔名判定合法性（Contract §4.4.4；Policy §17.12.4） |
+| **工作表名稱** | **不要求** 英文技術名；接受 §4.4.2 中／英別名（Mapping Layer） |
+| **工作表順序** | **不檢查**（Policy §17.12.2） |
+
+#### 13.1.9 Worksheet UX 與中文化錯誤訊息（Phase 7-1e.6 SSOT）
+
+> **Status: SSOT 定案（2026-06-14）** — Upload Portal **使用者可見** Worksheet 語意與 Validation 錯誤之中文化規格。  
+> **L3 別名表：** `BATS_DATA_CONTRACT.md` §4.4.2；**L1 驗收：** `BATS_DATA_SYNC_POLICY.md` §17.12。
+
+##### 13.1.9.1 Upload Hint 補充（選填展示）
+
+除 §13.1.5 外，產品 **可** 於 Hint 或說明區補充（**非** 強制驗證文案）：
+
+```text
+Excel 需包含以下工作表（名稱可為中文或英文，順序不拘）：
+公司基本資料、問與答、服務項目、其他商品源、特殊價格
+```
+
+##### 13.1.9.2 使用者可見工作表語意（Display Names）
+
+Portal UI、說明文字、錯誤訊息 **一律** 使用下列 **中文顯示名**；**不得** 向旅行社暴露 Canonical Key：
+
+| Canonical Key（僅後端） | 中文顯示名 |
+|-------------------------|------------|
+| `company_profile` | 公司基本資料 |
+| `qa` | 問與答 |
+| `external_product_links` | 其他商品源 |
+| `service_items` | 服務項目 |
+| `special_prices` | 特殊價格 |
+
+##### 13.1.9.3 錯誤訊息中文化規則（Must）
+
+| 規則 | 說明 |
+|------|------|
+| **語言** | 所有 Upload Portal 錯誤訊息 **必須** 為繁體中文 |
+| **禁止直出** | **不得** 直接顯示 CLI／BDS 英文技術訊息（如 `company_profile missing`、`worksheet not found`、`invalid worksheet`、`Missing required worksheet tabs`） |
+| **轉換責任** | `upload.php`（或共用 Portal 錯誤 formatter）**必須** 將內部錯誤映射為中文顯示名 |
+| **整體模板** | 仍包在 §13.1.7 失敗模板內之 `{reason}` |
+
+##### 13.1.9.4 錯誤文案模板（定案）
+
+**單一缺少工作表：**
+
+```text
+缺少「{中文顯示名}」工作表
+```
+
+範例：
+
+```text
+缺少「公司基本資料」工作表
+```
+
+**多個缺少工作表：**
+
+```text
+缺少必要工作表：
+
+{中文顯示名_1}
+{中文顯示名_2}
+{中文顯示名_3}
+```
+
+範例：
+
+```text
+缺少必要工作表：
+
+公司基本資料
+問與答
+服務項目
+```
+
+**重複映射（兩個工作表對應同一語意）：**
+
+```text
+工作表「{工作表名_A}」與「{工作表名_B}」皆對應「{中文顯示名}」，請保留其中一個並重新命名。
+```
+
+**檔案無法讀取：**
+
+```text
+無法讀取 Excel 檔案，請確認檔案未損壞且為 .xlsx 格式。
+```
+
+##### 13.1.9.5 內部錯誤 → 中文對照（實作參考）
+
+| 內部訊息模式（BDS／CLI） | Portal `{reason}` 片段 |
+|--------------------------|------------------------|
+| `Missing required worksheet tabs: company_profile` | `缺少「公司基本資料」工作表` |
+| `Missing required worksheet tabs: company_profile, qa` | §13.1.9.4 多列模板 |
+| `Unable to open xlsx file` | §13.1.9.4 檔案無法讀取 |
+| `duplicate worksheet mapping`（未來） | §13.1.9.4 重複映射模板 |
+
+**欄位級 Validation 錯誤：** 優先顯示 **中文業務語意**（如「公司基本資料缺少必要欄位：公司名稱」）；若暫無細映射，至少 **不得** 裸顯英文 snake_case 鍵作為唯一訊息。
+
+**交叉引用：** `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §8.8.6.5
 
 ---
 
@@ -698,7 +795,7 @@ UI **必須** 建立下列 **六項** 選項；後端 **僅** 允許 Registry／
 |------|------|
 | `BATS_DATA_SYNC_POLICY.md` §17.8～§17.11、§19.4 | L1 — Dual Portal、UI Final、Sync Trigger |
 | `BATS_DATA_SOURCE_REGISTRY.md` §10.6.5～§10.6.8 | L1 — Tenant pilot、Shared scope、Industry、Sync metadata |
-| `BATS_DATA_CONTRACT.md` §1.6.5 | L3 — Upload Portal Sync Metadata Contract |
+| `BATS_DATA_CONTRACT.md` §1.6.5、§4.4 | L3 — Upload Portal Sync Metadata；Worksheet Mapping Layer |
 | `BATS_DATA_OWNERSHIP_POLICY.md` §3.7 | L1 — Upload Portal 寫入權限 |
 | `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §8 | L2 — Phase 7-1／7-2／7-3 順序 |
 | `BATS_SHARED_KNOWLEDGE_CONTRACT.md` | Shared Excel Contract（7-2） |
@@ -710,6 +807,7 @@ UI **必須** 建立下列 **六項** 選項；後端 **僅** 允許 Registry／
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v1.7** | 2026-06-14 | Phase 7-1e.6：§13.1.8 檔名／順序不檢查；§13.1.9 Worksheet UX 與中文化錯誤訊息 |
 | **v1.6** | 2026-06-05 | Phase 7-1c-1b：§12.4 CLI 指令含 `--upload-session-id`；禁止 Portal 直接同步 Sheet |
 | **v1.5** | 2026-06-05 | Phase 7-1c-0：§12 Upload→BDS Sync Trigger；§11.4 子階段；7-1a／7-1b Done |
 | **v1.4** | 2026-06-05 | Phase 7-0e.2 Final：目前 AI 使用版本；Sync Version Contract；成功／失敗訊息定案；Metadata Source Priority |
@@ -724,8 +822,8 @@ UI **必須** 建立下列 **六項** 選項；後端 **僅** 允許 Registry／
 
 | 項目 | 狀態 |
 |------|------|
-| **文件狀態** | **SSOT 定案（Phase 7-1c-1b）** — Upload CLI Input Contract 已閉合 |
-| **程式實作** | **7-1a／7-1b／7-1c-1 Done**（legacy www）；**7-1c-2a 待實作**（bbc-ai-bot） |
+| **文件狀態** | **SSOT 定案（Phase 7-1e.6）** — Worksheet Mapping UX／中文化錯誤訊息已閉合 |
+| **程式實作** | Mapping Layer + Portal 錯誤 formatter **待實作**（Implementation Plan §8.8.6.5） |
 | **SAFE TO IMPLEMENT Phase 7-1c-2a** | **是（文件層）** — `--upload-session-id` 契約已閉合 |
 | **SAFE TO IMPLEMENT Phase 7-1** | **是** — domain／auth／pilot／UI field spec 已閉合 |
 | **SAFE TO IMPLEMENT Phase 7-2** | **是（文件層）** — Shared Portal Final UI spec 已閉合；**依賴** Shared BDS 管線就緒 |

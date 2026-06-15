@@ -1193,7 +1193,7 @@ Auto Sync、Scheduled Sync、Cron Sync、Drive Watch、Google Drive Change Trigg
 |---|--------|------|
 | 1 | `parse_cli_args()` 擴充 | 新增 `--upload-session-id`；可選 `--scope=tenant\|shared`（Shared 7-2） |
 | 2 | **`BdsUploadStagingResolver`** | 解析 `var/bds/uploads/.../staging/{id}/`；載入 `upload_session.json`；tenant／sno 雙重驗證 |
-| 3 | **`BdsXlsxReader`** | staging `.xlsx` → 五 Required Tabs（Contract §4～§8） |
+| 3 | **`BdsXlsxReader`** | staging `.xlsx` → 五 Required Canonical Tabs（Contract §4～§8、§4.4 Mapping Layer） |
 | 4 | **`bds-sync.php` upload mode** | 有 session id 時跳過 `BdsGoogleSheetReader`；接入 XlsxReader → 既有 Parser 鏈 |
 | 5 | **Source metadata** | `source_type=upload_portal`；記錄 `upload_session_id` 於 sync_report |
 | 6 | **Safety** | Validation／Sync／Read-back Fail → 不寫 GCS 正式 JSON（§14.1.1） |
@@ -1232,12 +1232,99 @@ Auto Sync、Scheduled Sync、Cron Sync、Drive Watch、Google Drive Change Trigg
 
 **交叉引用：** `BATS_DATA_SYNC_POLICY.md` §17.11.2.1；`BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §12.4
 
+##### 8.8.6.5 Worksheet Mapping Layer — Runtime Design（Phase 7-1e.6）
+
+> **Status: SSOT 定案（2026-06-14）** — upload mode **Worksheet 名稱映射** 之 Runtime 設計；**本節為文件定案，程式待實作**。  
+> **L3 契約：** `BATS_DATA_CONTRACT.md` §4.4；**L1 驗收：** `BATS_DATA_SYNC_POLICY.md` §17.12。
+
+###### 8.8.6.5.1 現況與缺口
+
+| 元件 | 現況（2026-06-14） | 缺口 |
+|------|-------------------|------|
+| `BdsXlsxReader` | 以 **英文 Canonical Key 精確匹配** 工作表名 | **未** 實作 §4.4 中／英別名映射 |
+| `upload.php` | 失敗 UI 可顯示 CLI stdout 片段 | **未** 保證中文化（§13.1.9） |
+| Sheet mode | `BdsGoogleSheetReader` 英文 Tab 精確匹配 | **不變** |
+
+###### 8.8.6.5.2 目標架構
+
+```text
+staging knowledge_{upload_session_id}.xlsx
+        ↓
+BdsWorksheetMappingLayer::resolveWorkbook($xlsxPath)
+  → 掃描全部 worksheet 名稱（順序無關）
+  → 別名表 → 5 Canonical Keys
+  → 缺 key / 重複 key → 結構化錯誤
+        ↓
+BdsXlsxReader::readMappedWorkbook($xlsxPath, $mappingResult)
+  → 與現有 Parser 相同之 tab payload
+        ↓
+既有 BdsMockSheetParser → BdsValidator → GCS
+```
+
+###### 8.8.6.5.3 新增元件（bbc-ai-bot）
+
+| # | 元件 | 職責 |
+|---|------|------|
+| 1 | **`BdsWorksheetMappingLayer`** | 別名表 SSOT（程式內常數或 `config/bds_worksheet_aliases.php`）；`normalizeSheetName()`；`resolveAliases(array $sheetNames): MappingResult` |
+| 2 | **`BdsWorksheetMappingResult`**（或 array shape） | `mapped: array<canonical, sheetName>`、`missing: list<canonical>`、`duplicates: list<{canonical, sheets[]}>` |
+| 3 | **`BdsUploadPortalErrorTranslator`**（建議） | 將 Mapping／Validation 結構化錯誤 → 中文顯示名（供 CLI `--portal-errors=zh` 或 JSON stderr）；Portal 亦可本地映射 |
+| 4 | **`BdsXlsxReader` 擴充** | upload mode 路徑：**先** Mapping Layer，**再** 依映射讀取 grid；sheet mode **不** 經 Mapping |
+
+**別名表：** 與 Contract §4.4.2 **逐字一致**；新增別名 **須** 修訂 SSOT 後再改程式。
+
+###### 8.8.6.5.4 映射演算法（Must）
+
+| 步驟 | 行為 |
+|------|------|
+| 1 | 列舉 workbook 內所有 worksheet 名稱 |
+| 2 | 對每個名稱 `trim()` |
+| 3 | 英文別名：case-insensitive 比對 Canonical 或 §4.4.2 英文欄 |
+| 4 | 中文別名：精確比對 §4.4.2 中文欄 |
+| 5 | 未匹配 → 忽略 |
+| 6 | 同一 Canonical 被 ≥2 個 sheet 匹配 → `duplicate mapping` Fail |
+| 7 | 五 Canonical 任一缺失 → `missing worksheets` Fail |
+| 8 | **不** 檢查 sheet 索引順序；**不** 讀取 `original_filename` |
+
+###### 8.8.6.5.5 Portal 中文化（legacy www）
+
+| # | 交付項 | 說明 |
+|---|--------|------|
+| 1 | **`bdsTranslateUploadError()`**（建議函式名） | 解析 CLI stdout／結構化錯誤 → §13.1.9.4 中文模板 |
+| 2 | **失敗 UI** | `{reason}` **僅** 中文；禁止裸顯 `company_profile missing` 等 |
+| 3 | **成功 UI** | 維持 §13.1.7；不受 Mapping 變更 |
+
+**優先序：** BDS 輸出結構化錯誤（含 `missing_canonical_keys[]`）→ Portal 映射；過渡期可 regex 映射 §13.1.9.5 表格。
+
+###### 8.8.6.5.6 測試（7-1e.7 建議）
+
+| # | 案例 |
+|---|------|
+| A | 全中文工作表名、順序 B（§4.4.2 範例）→ exit 0 |
+| B | 全英文 Canonical 名、順序 A → exit 0 |
+| C | 混用中文＋英文別名 → exit 0 |
+| D | 缺少「公司基本資料」→ Fail；Portal reason 含 `缺少「公司基本資料」工作表` |
+| E | 重複映射（兩個「QA」語意 sheet）→ Fail |
+| F | 未知額外 sheet「備註」→ 忽略；仍 success |
+| G | 原始檔名 `最新版.xlsx` → 不影響結果 |
+| H | Sheet mode regression → 行為不變 |
+
+###### 8.8.6.5.7 退出準則
+
+- [ ] `BdsWorksheetMappingLayer` + 別名表與 Contract §4.4.2 一致
+- [ ] upload mode 接受中／英工作表名；順序／檔名不影響
+- [ ] sheet mode **無** regression
+- [ ] Portal 失敗訊息符合 §13.1.9（至少 worksheet 結構類錯誤）
+- [ ] 新增 `tests/bds/test_bds_worksheet_mapping_layer.php`（或擴充既有 upload mode test）
+
+**Phase 標記：** Runtime 實作建議列 **Phase 7-1e.7**（本文件定案 **7-1e.6** 僅 Docs）。
+
 ---
 
 ## 版本紀錄
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v2.6** | 2026-06-14 | Phase 7-1e.6：§8.8.6.5 Worksheet Mapping Layer Runtime Design；Portal 中文化；7-1e.7 測試退出準則 |
 | **v2.5** | 2026-06-05 | Phase 7-1c-1b：§8.8.6 CLI Staging Input Contract；7-1c-2a／7-1c-2b 分解 |
 | **v2.4** | 2026-06-05 | Phase 7-1c-0：§8.8 Upload→BDS CLI Trigger；7-1a／7-1b Done；7-1c 重新定義 |
 | **v2.3** | 2026-06-05 | Phase 7-0e.2 Final：§8.7 Sync Version；7-0e.2 done；7-1a 前退出準則閉合 |

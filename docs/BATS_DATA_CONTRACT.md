@@ -22,6 +22,7 @@
 | §2 | Relationship |
 | §3 | Data Category |
 | §4 | Google Sheet Multi Tab Rule |
+| §4.4 | Worksheet Mapping Layer（Phase 7-1e.6） |
 | §5 | Required Tabs |
 | §6 | Output JSON Contract |
 | §7 | Field Definition |
@@ -284,7 +285,9 @@ BdsUploadStagingResolver → BdsXlsxReader → Parser → Validator → Build �
 
 ##### 1.6.7.7 Excel → Contract Tabs
 
-staging `.xlsx` 須可解析為本文件 §4～§8 定義之 **五 Required Tabs**（`company_profile`、`qa`、`external_product_links`、`service_items`、`special_prices`），供 `BdsXlsxReader` → `BdsMockSheetParser` 接入既有 Validation。
+staging `.xlsx` 須可解析為本文件 §4～§8 定義之 **五 Required Canonical Tabs**（`company_profile`、`qa`、`external_product_links`、`service_items`、`special_prices`），供 **Worksheet Mapping Layer**（§4.4）→ `BdsXlsxReader` → `BdsMockSheetParser` 接入既有 Validation。
+
+**Upload Portal 模式：** Worksheet **顯示名稱** 可為中文或英文別名；**不得** 要求使用者以英文 snake_case 命名分頁。**Worksheet 順序** 與 **原始檔名** **不** 納入驗證（§4.4.3、§4.4.4）。
 
 ##### 1.6.7.8 Safety — Last Successful Version Rule
 
@@ -445,29 +448,115 @@ BATS 讀取（tenant_private_knowledge）
 | **BDS 原子轉換** | 一次同步可產出完整 `knowledge/` JSON 集合 |
 | **格式一致** | 所有租戶、所有產業共用 Tab 命名與欄位契約 |
 
-### 4.3 Tab 命名規範
+### 4.3 Tab 命名規範（Google Sheet / Sheet Mode）
+
+> **適用範圍：** Phase 6A **sheet mode**（Registry `private_knowledge_sheet_id` → Google Sheet）。  
+> **Upload Portal（upload mode）** 採 §4.4 **Worksheet Mapping Layer**；**不** 套用本節之「精確英文匹配」要求。
 
 | 規則 | 說明 |
 |------|------|
-| **正式 Tab 名稱** | 使用 §5 定義之 **英文 snake_case** 名稱（`company_profile`、`qa` 等） |
-| **大小寫** | Tab 名稱 **區分大小寫**；BDS 須精確匹配 |
+| **正式 Tab 名稱** | 使用 §5 定義之 **英文 snake_case** Canonical Key（`company_profile`、`qa` 等） |
+| **大小寫** | Tab 名稱 **區分大小寫**；Sheet Reader 須精確匹配 |
 | **禁止** | 自訂 Tab 名稱不同步至 JSON（除非修訂本 SSOT 新增 Tab） |
+
+### 4.4 Worksheet Mapping Layer（Phase 7-1e.6 SSOT）
+
+> **Status: SSOT 定案（2026-06-14）** — Upload Portal Excel **UX 與 Worksheet 語意映射** 之 L3 契約。  
+> **L1 驗收規則：** `BATS_DATA_SYNC_POLICY.md` §17.12；**L2 UI／錯誤文案：** `BATS_UPLOAD_PORTAL_PHASE7_MVP_PLAN.md` §13.1.9；**Runtime 設計：** `BATS_DATA_SYNC_IMPLEMENTATION_PLAN.md` §8.8.6.5。
+
+#### 4.4.1 目的
+
+| 項目 | 說明 |
+|------|------|
+| **使用者語意** | 旅行社以 **中文工作表名稱** 維護知識 Excel；**不得** 要求技術英文 Tab 名 |
+| **系統語意** | BDS 內部仍使用 §5 **Canonical Key**（`company_profile` 等）驅動 Parser／Validator／JSON 輸出 |
+| **映射邊界** | Mapping Layer **僅** 負責 Worksheet 名稱 → Canonical Key；**不** 變更 §7 欄位契約 |
+
+#### 4.4.2 Canonical Key 與 Worksheet 別名
+
+每份 Upload Portal `.xlsx` **必須** 能映射出下列 **5 個 Canonical Key**（順序無關）：
+
+| Canonical Key | 中文顯示名（UI／錯誤訊息） | 英文 Worksheet 別名 | 中文 Worksheet 別名 |
+|---------------|---------------------------|---------------------|---------------------|
+| `company_profile` | 公司基本資料 | `company_profile` | `公司基本資料`、`公司資料` |
+| `qa` | 問與答 | `qa` | `問與答`、`常見問題`、`QA` |
+| `external_product_links` | 其他商品源 | `external_product_links` | `產品連結`、`其他商品源` |
+| `service_items` | 服務項目 | `service_items` | `服務項目` |
+| `special_prices` | 特殊價格 | `special_prices` | `特殊價格` |
+
+**別名匹配規則：**
+
+| 規則 | 說明 |
+|------|------|
+| **Trim** | 工作表名稱前後空白忽略 |
+| **英文別名** | 大小寫 **不敏感**（`QA` ≡ `qa`） |
+| **中文別名** | **精確匹配**（全形／半形、標點須與別名表一致） |
+| **一對一** | 同一 Workbook 內，一個 Worksheet **最多** 映射至 **一個** Canonical Key |
+| **重複** | 若兩個工作表映射至同一 Canonical Key → **Validation Fail** |
+| **未知工作表** | 未映射至任何 Canonical Key 的工作表 → **忽略**（不 Fail；不寫入 JSON） |
+
+**範例（皆合法）：**
+
+```text
+工作表順序 A：公司資料 → QA → 服務項目 → 特殊價格 → 其他商品源
+工作表順序 B：問與答 → 公司基本資料 → 特殊價格 → 服務項目 → 產品連結
+```
+
+#### 4.4.3 Worksheet 順序
+
+| 規則 | 說明 |
+|------|------|
+| **完全不檢查** | BDS **不得** 依工作表在 Excel 中的索引或順序判定合法性 |
+| **僅檢查覆蓋** | 五個 Canonical Key **皆** 至少有一個對應工作表即可 |
+
+#### 4.4.4 上傳檔名
+
+| 規則 | 說明 |
+|------|------|
+| **完全不檢查** | 使用者原始檔名（如 `大億旅行社QA.xlsx`、`最新版.xlsx`）**不** 參與 Validation |
+| **Staging 檔名** | Host A 一律存為 `knowledge_{upload_session_id}.xlsx`（或 `upload_session.json` 之 `stored_filename`） |
+| **稽核** | `original_filename` **僅** 寫入 `upload_session.json` 供稽核；**不** 影響同步邏輯 |
+| **Drive Archive** | 同步成功後，Google Drive 上之原始 Excel **可被後續成功上傳覆蓋**（Last Successful Version 僅適用 GCS knowledge JSON） |
+
+#### 4.4.5 映射後資料流
+
+```text
+使用者 .xlsx（任意檔名、任意工作表順序、中／英工作表名）
+        ↓
+Worksheet Mapping Layer（別名表 → 5 Canonical Keys）
+        ↓
+BdsXlsxReader（輸出與 Sheet Mode 相同之 tab payload）
+        ↓
+BdsMockSheetParser → BdsValidator → JSON → GCS
+```
+
+**JSON 輸出：** `source_tab` 欄位仍寫 **Canonical Key**（如 `company_profile`），**不** 寫使用者工作表顯示名。
+
+#### 4.4.6 與 Google Sheet Mode 分工
+
+| 模式 | Worksheet 命名 | 映射 |
+|------|----------------|------|
+| **Sheet mode（6A）** | §4.3 英文 snake_case 精確匹配 | 無 Mapping Layer |
+| **Upload mode（7-1）** | 中文或英文別名（§4.4.2） | **必須** 經 Mapping Layer |
 
 ---
 
 ## 5. Required Tabs
 
-### 5.1 正式定義
+### 5.1 正式定義（Canonical Keys）
 
-每個租戶 `tenant_private_knowledge` Google Sheet **必須** 包含下列 **5 個分頁**：
+每個租戶 `tenant_private_knowledge` **必須** 涵蓋下列 **5 個語意分類**（Canonical Key）：
 
-| # | Tab 名稱 | 中文語意 | 輸出 JSON |
-|---|----------|----------|-----------|
-| 1 | **`company_profile`** | 公司資料 | `company_profile.json` |
-| 2 | **`qa`** | 問答（QA） | `service_qa.json` |
-| 3 | **`external_product_links`** | 其他商品源／外部連結 | `external_product_links.json` |
+| # | Canonical Key | 中文語意（Upload Portal 顯示名） | 輸出 JSON |
+|---|---------------|----------------------------------|-----------|
+| 1 | **`company_profile`** | 公司基本資料 | `company_profile.json` |
+| 2 | **`qa`** | 問與答 | `service_qa.json` |
+| 3 | **`external_product_links`** | 其他商品源 | `external_product_links.json` |
 | 4 | **`service_items`** | 服務項目 | `service_items.json` |
 | 5 | **`special_prices`** | 特殊價格 | `special_prices.json` |
+
+**Google Sheet（sheet mode）：** 分頁名稱 **必須** 等於 Canonical Key（§4.3）。  
+**Upload Portal（upload mode）：** 分頁名稱 **可** 為 §4.4.2 別名；由 Mapping Layer 正規化為 Canonical Key。
 
 ### 5.2 Tab 可否為空
 
@@ -972,8 +1061,9 @@ tenants/{sno}/knowledge/
 | 排除 | 說明 |
 |------|------|
 | 多 Sheet 模式 | 違反 §4 |
-| 自訂 Tab 名稱 | 違反 §5 |
-| Excel 直轉（非 Sheet） | BDS v1 MVP 以 Google Sheet 為準；Excel 上傳可另開 profile |
+| Sheet mode 自訂 Tab 名稱 | 違反 §4.3／§5 |
+| Upload mode 未映射之未知 Tab | 忽略（§4.4.2）；**不** 等同新增 Required Tab |
+| Excel 直轉（非 Upload Portal） | BDS v1 MVP 以 Google Sheet + Upload Portal 為準 |
 
 ---
 
@@ -992,6 +1082,7 @@ tenants/{sno}/knowledge/
 
 | 版本 | 日期 | 說明 |
 |------|------|------|
+| **v2.0** | 2026-06-14 | Phase 7-1e.6：§4.4 Worksheet Mapping Layer；Upload 中／英工作表別名；順序／檔名不檢查；§4.3 限 Sheet mode |
 | **v1.9** | 2026-06-05 | Phase 7-1c-1b：§1.6.7 Upload CLI Input Contract（`--upload-session-id`、staging、source_type） |
 | **v1.8** | 2026-06-05 | Phase 7-1c-0：§1.6.6 Upload→BDS Sync Trigger；Last Successful Version cross-ref |
 | **v1.7** | 2026-06-05 | Phase 7-0e.2 Final：§1.6.5 Upload Portal Sync Metadata Contract（sync_id、來源優先序） |
@@ -1009,6 +1100,6 @@ tenants/{sno}/knowledge/
 
 | 項目 | 狀態 |
 |------|------|
-| 文件狀態 | **SSOT 定案（Phase 7-1c-1b）** — Upload CLI Input Contract 已閉合 |
-| 程式實作 | **未開始** |
+| 文件狀態 | **SSOT 定案（Phase 7-1e.6）** — Worksheet Mapping Layer 已閉合 |
+| 程式實作 | Upload mode Mapping Layer **待實作**（§4.4；Implementation Plan §8.8.6.5） |
 | Git commit | **尚未提交** |
