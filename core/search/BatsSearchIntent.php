@@ -1,0 +1,327 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * Phase 9-C-1 semantic intent DTO (BATS_AI_SEMANTIC_SEARCH.md §3).
+ */
+final class BatsSearchIntent
+{
+    public const INTENT_TOUR_SEARCH = 'tour_search';
+
+    /** @var string */
+    private $intent;
+
+    /** @var string|null */
+    private $destination;
+
+    /** @var list<string> */
+    private $destination_alias;
+
+    /** @var list<string> */
+    private $multi_destination;
+
+    /** @var string|null */
+    private $departure_city;
+
+    /** @var string|null */
+    private $date_from;
+
+    /** @var string|null */
+    private $date_to;
+
+    /** @var list<string> */
+    private $travel_type;
+
+    /** @var int|null */
+    private $budget_min;
+
+    /** @var int|null */
+    private $budget_max;
+
+    /** @var int|null */
+    private $people_count;
+
+    /** @var string|null */
+    private $landmark;
+
+    /** @var list<string> */
+    private $must_have;
+
+    /** @var list<string> */
+    private $avoid;
+
+    /** @var bool */
+    private $clarification_required;
+
+    /** @var string|null */
+    private $clarification_reason;
+
+    /** @var float */
+    private $confidence;
+
+    /** @var string */
+    private $free_text;
+
+    /**
+     * @param list<string> $destination_alias
+     * @param list<string> $multi_destination
+     * @param list<string> $travel_type
+     * @param list<string> $must_have
+     * @param list<string> $avoid
+     */
+    public function __construct(
+        string $free_text,
+        string $intent = self::INTENT_TOUR_SEARCH,
+        ?string $destination = null,
+        array $destination_alias = [],
+        array $multi_destination = [],
+        ?string $departure_city = null,
+        ?string $date_from = null,
+        ?string $date_to = null,
+        array $travel_type = [],
+        ?int $budget_min = null,
+        ?int $budget_max = null,
+        ?int $people_count = null,
+        ?string $landmark = null,
+        array $must_have = [],
+        array $avoid = [],
+        bool $clarification_required = false,
+        ?string $clarification_reason = null,
+        float $confidence = 0.0
+    ) {
+        $this->free_text = trim($free_text);
+        $this->intent = $intent;
+        $this->destination = self::nullableString($destination);
+        $this->destination_alias = self::stringList($destination_alias);
+        $this->multi_destination = self::stringList($multi_destination);
+        $this->departure_city = self::nullableString($departure_city);
+        $this->date_from = self::nullableString($date_from);
+        $this->date_to = self::nullableString($date_to);
+        $this->travel_type = self::stringList($travel_type);
+        $this->budget_min = $budget_min;
+        $this->budget_max = $budget_max;
+        $this->people_count = $people_count;
+        $this->landmark = self::nullableString($landmark);
+        $this->must_have = self::stringList($must_have);
+        $this->avoid = self::stringList($avoid);
+        $this->clarification_required = $clarification_required;
+        $this->clarification_reason = self::nullableString($clarification_reason);
+        $this->confidence = max(0.0, min(1.0, $confidence));
+    }
+
+    public static function empty(string $freeText): self
+    {
+        return new self($freeText);
+    }
+
+    public function getIntent(): string
+    {
+        return $this->intent;
+    }
+
+    public function getDestination(): ?string
+    {
+        return $this->destination;
+    }
+
+    /** @return list<string> */
+    public function getDestinationAlias(): array
+    {
+        return $this->destination_alias;
+    }
+
+    /** @return list<string> */
+    public function getMultiDestination(): array
+    {
+        return $this->multi_destination;
+    }
+
+    public function getDepartureCity(): ?string
+    {
+        return $this->departure_city;
+    }
+
+    public function getDateFrom(): ?string
+    {
+        return $this->date_from;
+    }
+
+    public function getDateTo(): ?string
+    {
+        return $this->date_to;
+    }
+
+    /** @return list<string> */
+    public function getTravelType(): array
+    {
+        return $this->travel_type;
+    }
+
+    public function getBudgetMin(): ?int
+    {
+        return $this->budget_min;
+    }
+
+    public function getBudgetMax(): ?int
+    {
+        return $this->budget_max;
+    }
+
+    public function getPeopleCount(): ?int
+    {
+        return $this->people_count;
+    }
+
+    public function getLandmark(): ?string
+    {
+        return $this->landmark;
+    }
+
+    /** @return list<string> */
+    public function getMustHave(): array
+    {
+        return $this->must_have;
+    }
+
+    /** @return list<string> */
+    public function getAvoid(): array
+    {
+        return $this->avoid;
+    }
+
+    public function isClarificationRequired(): bool
+    {
+        return $this->clarification_required;
+    }
+
+    public function getClarificationReason(): ?string
+    {
+        return $this->clarification_reason;
+    }
+
+    public function getConfidence(): float
+    {
+        return $this->confidence;
+    }
+
+    public function getFreeText(): string
+    {
+        return $this->free_text;
+    }
+
+    /**
+     * @param array<string, mixed> $patch
+     */
+    public function with(array $patch): self
+    {
+        return new self(
+            array_key_exists('free_text', $patch) ? (string) $patch['free_text'] : $this->free_text,
+            isset($patch['intent']) && is_string($patch['intent']) ? $patch['intent'] : $this->intent,
+            array_key_exists('destination', $patch) ? self::nullableString($patch['destination']) : $this->destination,
+            array_key_exists('destination_alias', $patch)
+                ? self::stringList($patch['destination_alias'])
+                : $this->destination_alias,
+            array_key_exists('multi_destination', $patch)
+                ? self::stringList($patch['multi_destination'])
+                : $this->multi_destination,
+            array_key_exists('departure_city', $patch)
+                ? self::nullableString($patch['departure_city'])
+                : $this->departure_city,
+            array_key_exists('date_from', $patch) ? self::nullableString($patch['date_from']) : $this->date_from,
+            array_key_exists('date_to', $patch) ? self::nullableString($patch['date_to']) : $this->date_to,
+            array_key_exists('travel_type', $patch) ? self::stringList($patch['travel_type']) : $this->travel_type,
+            array_key_exists('budget_min', $patch) ? self::nullableInt($patch['budget_min']) : $this->budget_min,
+            array_key_exists('budget_max', $patch) ? self::nullableInt($patch['budget_max']) : $this->budget_max,
+            array_key_exists('people_count', $patch)
+                ? self::nullableInt($patch['people_count'])
+                : $this->people_count,
+            array_key_exists('landmark', $patch) ? self::nullableString($patch['landmark']) : $this->landmark,
+            array_key_exists('must_have', $patch) ? self::stringList($patch['must_have']) : $this->must_have,
+            array_key_exists('avoid', $patch) ? self::stringList($patch['avoid']) : $this->avoid,
+            array_key_exists('clarification_required', $patch)
+                ? (bool) $patch['clarification_required']
+                : $this->clarification_required,
+            array_key_exists('clarification_reason', $patch)
+                ? self::nullableString($patch['clarification_reason'])
+                : $this->clarification_reason,
+            isset($patch['confidence']) ? (float) $patch['confidence'] : $this->confidence
+        );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        return [
+            'intent' => $this->intent,
+            'destination' => $this->destination,
+            'destination_alias' => $this->destination_alias,
+            'multi_destination' => $this->multi_destination,
+            'departure_city' => $this->departure_city,
+            'date_from' => $this->date_from,
+            'date_to' => $this->date_to,
+            'travel_type' => $this->travel_type,
+            'budget_min' => $this->budget_min,
+            'budget_max' => $this->budget_max,
+            'people_count' => $this->people_count,
+            'landmark' => $this->landmark,
+            'must_have' => $this->must_have,
+            'avoid' => $this->avoid,
+            'clarification_required' => $this->clarification_required,
+            'clarification_reason' => $this->clarification_reason,
+            'confidence' => round($this->confidence, 2),
+            'free_text' => $this->free_text,
+        ];
+    }
+
+    /**
+     * @param mixed $value
+     */
+    private static function nullableString($value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $s = trim((string) $value);
+
+        return $s === '' ? null : $s;
+    }
+
+    /**
+     * @param mixed $value
+     */
+    private static function nullableInt($value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return (int) $value;
+    }
+
+    /**
+     * @param mixed $value
+     * @return list<string>
+     */
+    private static function stringList($value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($value as $v) {
+            if (!is_scalar($v)) {
+                continue;
+            }
+            $s = trim((string) $v);
+            if ($s !== '') {
+                $out[] = $s;
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+}
