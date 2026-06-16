@@ -26,6 +26,11 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'H
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridSearchApiDebugLogger.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'TravelBMultiSourceLinkBuilder.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'ShortUrlProviderInterface.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'BatsSearchIntent.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'BatsSearchIntentBuilder.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'BatsSearchIntentMapper.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'ClarificationPolicy.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'TourPromptContextResult.php';
 
 
 
@@ -268,6 +273,263 @@ final class TourPromptContextService
 
         }
 
+    }
+
+
+
+    /**
+     * Phase 9-C-1d-α: structured tour context result (RD-002).
+     *
+     * @param array{
+     *   userText?: string,
+     *   sno?: string,
+     *   channelId?: string|null,
+     *   traceId?: string|null,
+     *   featureEnabled?: bool,
+     *   maxItems?: int,
+     *   apiPageSize?: int,
+     *   searchClient?: TourSearchApiClient,
+     *   intentDetector?: TourQueryIntentDetector,
+     *   contextBuilder?: GeminiTourContextBuilder,
+     *   hybridSearchConfig?: array<string, mixed>|null,
+     *   batsSearchIntentBuilder?: BatsSearchIntentBuilder,
+     *   batsSearchIntentMapper?: BatsSearchIntentMapper,
+     *   apiQueryMapper?: ApiQueryMapper,
+     *   searchUrlBuilder?: SearchUrlBuilder,
+     *   referenceDate?: \DateTimeImmutable
+     * } $params
+     */
+    public function buildTourContextResult(array $params): TourPromptContextResult
+    {
+        if (($params['featureEnabled'] ?? false) !== true) {
+            return TourPromptContextResult::empty();
+        }
+
+        $userText = trim((string) ($params['userText'] ?? ''));
+        if ($userText === '') {
+            return TourPromptContextResult::empty();
+        }
+
+        $sno = trim((string) ($params['sno'] ?? ''));
+        if ($sno === '') {
+            return TourPromptContextResult::empty($userText);
+        }
+
+        try {
+            $intentDetector = $params['intentDetector'] ?? new TourQueryIntentDetector();
+            $tourIntent = $intentDetector->detect($userText);
+            if (($tourIntent['is_tour_query'] ?? false) !== true) {
+                return TourPromptContextResult::empty($userText);
+            }
+
+            $referenceDate = $params['referenceDate'] ?? new \DateTimeImmutable('now', new \DateTimeZone('Asia/Taipei'));
+            $batsBuilder = $params['batsSearchIntentBuilder'] ?? new BatsSearchIntentBuilder();
+            $batsMapper = $params['batsSearchIntentMapper'] ?? new BatsSearchIntentMapper();
+            $batsIntent = $batsBuilder->parse($userText, [
+                'reference_date' => $referenceDate,
+                'merge_legacy_keyword' => true,
+            ]);
+
+            if ($batsIntent->isClarificationRequired()) {
+                return TourPromptContextResult::clarificationRequired(
+                    $batsIntent,
+                    $this->buildClarificationLegacyContext($batsIntent, $userText)
+                );
+            }
+
+            $searchCondition = $batsMapper->toSearchCondition($batsIntent);
+            if ($searchCondition === null) {
+                return TourPromptContextResult::clarificationRequired(
+                    $batsIntent->with([
+                        'clarification_required' => true,
+                        'clarification_reason' => ClarificationPolicy::REASON_DESTINATION_UNKNOWN,
+                    ]),
+                    ''
+                );
+            }
+
+            $searchClient = $this->resolveSearchClient($params);
+            $contextBuilder = $params['contextBuilder'] ?? new GeminiTourContextBuilder();
+            $maxItems = isset($params['maxItems']) ? max(1, (int) $params['maxItems']) : 5;
+            $apiPageSize = isset($params['apiPageSize'])
+                ? max(1, min(100, (int) $params['apiPageSize']))
+                : self::DEFAULT_API_PAGE_SIZE;
+            $channelId = trim((string) ($params['channelId'] ?? ''));
+            $traceId = trim((string) ($params['traceId'] ?? ''));
+
+            $pipeline = $this->runStructuredSearchPipeline(
+                $searchCondition,
+                $userText,
+                $sno,
+                $channelId,
+                $traceId,
+                $apiPageSize,
+                $maxItems,
+                $searchClient,
+                $contextBuilder,
+                $params,
+                $tourIntent
+            );
+
+            return TourPromptContextResult::searchable(
+                $batsIntent,
+                $searchCondition,
+                $pipeline['search_results'],
+                $pipeline['legacy_context']
+            );
+        } catch (\Throwable $e) {
+            return TourPromptContextResult::empty($userText);
+        }
+    }
+
+
+
+    /**
+     * @param array<string, mixed> $params
+     */
+    private function resolveSearchClient(array $params): TourSearchApiClient
+    {
+        $searchClient = $params['searchClient'] ?? null;
+        if ($searchClient instanceof TourSearchApiClient) {
+            return $searchClient;
+        }
+
+        $hostBBaseUrl = '';
+        if (function_exists('app_config_get')) {
+            $hostBBaseUrl = trim((string) app_config_get('gateway.host_b.base_url', ''));
+        }
+        if ($hostBBaseUrl !== '') {
+            return new TourSearchApiClient(rtrim($hostBBaseUrl, '/') . '/api/tour/search');
+        }
+
+        return new TourSearchApiClient();
+    }
+
+    private function buildClarificationLegacyContext(BatsSearchIntent $intent, string $userText): string
+    {
+        if ($intent->getClarificationReason() !== ClarificationPolicy::REASON_DATE_REQUIRED) {
+            return '';
+        }
+
+        $destination = $intent->getDestination();
+        $probe = SearchCondition::empty($userText)->with([
+            'destination' => $destination,
+            'keyword' => $destination,
+            'date_from' => $intent->getDateFrom(),
+            'date_to' => $intent->getDateTo(),
+        ]);
+
+        return HybridDateRequiredGate::buildClarificationContext($probe, $userText);
+    }
+
+    /**
+     * @param array<string, mixed> $params
+     * @param array<string, mixed> $tourIntent
+     * @return array{legacy_context: string, search_results: list<array<string, mixed>>}
+     */
+    private function runStructuredSearchPipeline(
+        SearchCondition $condition,
+        string $userText,
+        string $sno,
+        string $channelId,
+        string $traceId,
+        int $apiPageSize,
+        int $maxItems,
+        TourSearchApiClient $searchClient,
+        GeminiTourContextBuilder $contextBuilder,
+        array $params,
+        array $tourIntent
+    ): array {
+        $hybridConfig = HybridSearchFeatureGate::resolveConfig($params['hybridSearchConfig'] ?? null);
+        $apiMapper = $params['apiQueryMapper'] ?? new ApiQueryMapper();
+
+        $apiParamsInternal = $apiMapper->toClientParams($condition, [
+            'page' => 1,
+            'pageSize' => $apiPageSize,
+            'include_sno' => $sno,
+        ]);
+
+        $apiParams = $apiMapper->toHostBParams($condition, [
+            'page' => 1,
+            'pageSize' => $apiPageSize,
+            'include_sno' => $sno,
+        ]);
+
+        $apiResult = $searchClient->searchWithParams(
+            $sno,
+            $apiParams,
+            $traceId !== '' ? $traceId : null
+        );
+
+        $requestUrl = $searchClient->buildRequestUrlFromParams(
+            $sno,
+            $apiParams,
+            (int) ($apiParams['page'] ?? 1),
+            (int) ($apiParams['pageSize'] ?? $apiPageSize),
+            $traceId !== '' ? $traceId : null
+        );
+
+        HybridSearchApiDebugLogger::logSearchRoundtrip(
+            $traceId,
+            $sno,
+            $condition->toArray(),
+            $apiParamsInternal,
+            $requestUrl,
+            $apiResult
+        );
+
+        $urlBuilder = $params['searchUrlBuilder'] ?? $this->createSearchUrlBuilder();
+        $searchUrlParams = $urlBuilder->searchParamsOnly($condition);
+        $apiResult['search_url'] = $this->resolveSearchUrlForApiResult($urlBuilder, $sno, $condition, $apiResult);
+
+        $storeNo = $this->resolveStoreNoForSno($sno);
+        $buildOptions = [
+            'maxItems' => $maxItems,
+            'apiRawLimit' => $apiPageSize,
+        ];
+        if ($storeNo !== null) {
+            $buildOptions['storeNo'] = $storeNo;
+        }
+
+        $multiSourceConfig = isset($params['travelBMultiSourceLinksConfig']) && is_array($params['travelBMultiSourceLinksConfig'])
+            ? $params['travelBMultiSourceLinksConfig']
+            : null;
+        if (TravelBMultiSourceLinkBuilder::isEnabledForSno($sno, $multiSourceConfig)) {
+            $linkBuilder = isset($params['travelBMultiSourceLinkBuilder'])
+                && $params['travelBMultiSourceLinkBuilder'] instanceof TravelBMultiSourceLinkBuilder
+                ? $params['travelBMultiSourceLinkBuilder']
+                : new TravelBMultiSourceLinkBuilder($multiSourceConfig);
+            $multiSourceLinks = $linkBuilder->buildFromHybridCondition($condition, $sno);
+            $multiSourceLinks = $this->applyBbctravelMultiSourceShortUrls($multiSourceLinks, $params);
+            if ($multiSourceLinks !== []) {
+                $buildOptions['multi_source_links'] = $multiSourceLinks;
+            }
+        }
+
+        $this->writeHybridDryRunLog(
+            $traceId,
+            $sno,
+            $channelId,
+            $userText,
+            $condition,
+            $apiParamsInternal,
+            $searchUrlParams,
+            'hybrid',
+            null,
+            $condition->getParserFlags(),
+            $hybridConfig,
+            $tourIntent
+        );
+
+        $items = $apiResult['items'] ?? [];
+        if (!is_array($items)) {
+            $items = [];
+        }
+
+        return [
+            'legacy_context' => $contextBuilder->build($apiResult, $buildOptions),
+            'search_results' => array_values($items),
+        ];
     }
 
 

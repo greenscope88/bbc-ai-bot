@@ -145,6 +145,13 @@ $service = new TourPromptContextService();
 $GLOBALS['baseUrl'] = $baseUrl;
 $GLOBALS['__tour_prompt_last_query'] = [];
 
+$legacyHybridOff = [
+    'enabled' => false,
+    'allowed_sno' => [$stagingSno],
+    'allowed_channels' => [],
+    'dry_run_log_enabled' => false,
+];
+
 // 1. feature flag off
 $mockOff = mockClientWithData('東京');
 $ctx1 = $service->buildTourContextForPrompt([
@@ -152,6 +159,7 @@ $ctx1 = $service->buildTourContextForPrompt([
     'sno' => $stagingSno,
     'featureEnabled' => false,
     'searchClient' => $mockOff['client'],
+    'hybridSearchConfig' => $legacyHybridOff,
 ]);
 test_assert($ctx1 === '', '1: empty when flag off');
 test_assert($mockOff['called'] === false, '1: search client not called');
@@ -163,6 +171,7 @@ $ctx2 = $service->buildTourContextForPrompt([
     'sno' => $stagingSno,
     'featureEnabled' => true,
     'searchClient' => $mockHello['client'],
+    'hybridSearchConfig' => $legacyHybridOff,
 ]);
 test_assert($ctx2 === '', '2: empty for greeting');
 test_assert($mockHello['called'] === false, '2: search client not called');
@@ -174,6 +183,7 @@ $ctx3 = $service->buildTourContextForPrompt([
     'sno' => $stagingSno,
     'featureEnabled' => true,
     'searchClient' => $mockData['client'],
+    'hybridSearchConfig' => $legacyHybridOff,
 ]);
 test_assert($mockData['called'] === true, '3: search client called');
 test_assert((string) ($GLOBALS['__tour_prompt_last_query']['pageSize'] ?? '') === '30', '3: api pageSize 30');
@@ -188,21 +198,20 @@ $ctx4 = $service->buildTourContextForPrompt([
     'sno' => $stagingSno,
     'featureEnabled' => true,
     'searchClient' => $mockEmpty['client'],
+    'hybridSearchConfig' => $legacyHybridOff,
 ]);
 test_assert(strpos($ctx4, '目前沒有找到符合條件的行程') !== false, '4: empty result message');
 
-// 5. search client throws (injected stub; TourSearchApiClient swallows transport errors internally)
-$throwClient = new class {
-    public function search(string $sno, string $keyword, int $page = 1, int $pageSize = 5, ?string $traceId = null): array
-    {
-        throw new RuntimeException('mock search failure');
-    }
-};
+// 5. search client throws
+$throwClient = new TourSearchApiClient($baseUrl, 5, static function (): array {
+    throw new RuntimeException('mock search failure');
+});
 $ctx5 = $service->buildTourContextForPrompt([
     'userText' => '我想找東京行程',
     'sno' => $stagingSno,
     'featureEnabled' => true,
     'searchClient' => $throwClient,
+    'hybridSearchConfig' => $legacyHybridOff,
 ]);
 test_assert($ctx5 === '', '5: empty on exception');
 
@@ -217,6 +226,7 @@ $ctx7 = $service->buildTourContextForPrompt([
     'featureEnabled' => true,
     'maxItems' => 5,
     'searchClient' => $mockMany['client'],
+    'hybridSearchConfig' => $legacyHybridOff,
 ]);
 test_assert((string) ($GLOBALS['__tour_prompt_last_query']['pageSize'] ?? '') === '30', '7: api pageSize 30');
 test_assert(preg_match_all('/^\d+\.\s+/mu', $ctx7) === 5, '7: max 5 merged display rows');
@@ -228,6 +238,71 @@ $merged = AiPromptBuilder::appendTourContext($basePrompt, $ctx3);
 test_assert(strpos($merged, $basePrompt) === 0, '8: base preserved');
 test_assert(strpos($merged, '以下為系統自動整理的旅遊商品搜尋結果資訊') !== false, '8: merge header');
 test_assert(strpos($merged, '請嚴格遵守（回覆給客人時）：') !== false, '8: merge rules');
+
+// 9. structured result — missing date requires clarification, no search
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridDateRequiredGate.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'DateParser.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'ClarificationPolicy.php';
+
+$GLOBALS['structured_api_calls'] = 0;
+$structuredMockClient = new TourSearchApiClient($baseUrl, 5, static function (): array {
+    ++$GLOBALS['structured_api_calls'];
+    return [
+        'ok' => true,
+        'http_status' => 200,
+        'body' => json_encode(['success' => true, 'items' => [], 'pagination' => ['total' => 0]], JSON_UNESCAPED_UNICODE),
+        'transport_error' => null,
+    ];
+});
+$structuredRef = new DateTimeImmutable('2026-06-05', new DateTimeZone('Asia/Taipei'));
+$structuredResultClarify = $service->buildTourContextResult([
+    'userText' => '北海道',
+    'sno' => $stagingSno,
+    'featureEnabled' => true,
+    'searchClient' => $structuredMockClient,
+    'referenceDate' => $structuredRef,
+]);
+test_assert($structuredResultClarify->isClarificationRequired() === true, '9: clarification_required true');
+test_assert(
+    $structuredResultClarify->getClarificationReason() === ClarificationPolicy::REASON_DATE_REQUIRED,
+    '9: date_required reason'
+);
+test_assert($structuredResultClarify->getSearchCondition() === null, '9: no search_condition');
+test_assert($structuredResultClarify->getSearchResults() === [], '9: no search_results');
+test_assert($GLOBALS['structured_api_calls'] === 0, '9: Host B not called');
+test_assert(
+    strpos($structuredResultClarify->getLegacyContext(), HybridDateRequiredGate::CLARIFICATION_MARKER) !== false,
+    '9: clarification legacy_context'
+);
+test_assert(is_string($structuredResultClarify->getLegacyContext()), '9: legacy_context is string');
+
+// 10. structured result — dated destination searches
+$structuredMockData = mockClientWithData('北海道');
+$structuredResultSearch = $service->buildTourContextResult([
+    'userText' => '北海道7月',
+    'sno' => $stagingSno,
+    'featureEnabled' => true,
+    'searchClient' => $structuredMockData['client'],
+    'referenceDate' => $structuredRef,
+]);
+test_assert($structuredResultSearch->isClarificationRequired() === false, '10: searchable');
+test_assert($structuredResultSearch->getSearchCondition() !== null, '10: search_condition present');
+test_assert($structuredResultSearch->getSearchCondition()->getDestination() === '北海道', '10: destination mapped');
+test_assert($structuredMockData['called'] === true, '10: Host B called');
+test_assert($structuredResultSearch->getSearchResults() !== [], '10: search_results non-empty');
+test_assert(is_string($structuredResultSearch->getLegacyContext()), '10: legacy_context string');
+test_assert($structuredResultSearch->getLegacyContext() !== '', '10: legacy_context built');
+
+// 11. legacy buildTourContextForPrompt unchanged (regression spot-check)
+$legacyCheck = $service->buildTourContextForPrompt([
+    'userText' => '我想找東京行程',
+    'sno' => $stagingSno,
+    'featureEnabled' => true,
+    'searchClient' => mockClientWithData('東京')['client'],
+    'hybridSearchConfig' => $legacyHybridOff,
+]);
+test_assert($legacyCheck !== '', '11: legacy string path still works');
+test_assert(is_string($legacyCheck), '11: legacy returns string');
 
 if ($failures === 0) {
     echo "OK: TourPromptContextService tests passed.\n";
