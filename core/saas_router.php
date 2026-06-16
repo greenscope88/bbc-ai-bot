@@ -16,6 +16,12 @@ require_once __DIR__ . '/tour_prompt_feature_gate.php';
 require_once __DIR__ . '/tenant/LineCredentialResolver.php';
 require_once __DIR__ . '/product_source/integration/BatsFeatureGate.php';
 require_once __DIR__ . '/product_source/integration/BatsWebhookOrchestrator.php';
+require_once __DIR__ . '/search/Phase9C1FeatureGate.php';
+require_once __DIR__ . '/date_clarification_line_formatter.php';
+require_once __DIR__ . '/product_source/channel_publish_plan/ChannelPublishPlan.php';
+require_once __DIR__ . '/product_source/channel_publish_plan/ChannelPublishPlanValidator.php';
+require_once __DIR__ . '/product_source/renderer/gemini/GeminiRenderer.php';
+require_once __DIR__ . '/product_source/integration/GeminiClient.php';
 
 class SaaSRouter
 {
@@ -191,6 +197,32 @@ class SaaSRouter
             $intent = IntentRouter::detect($userMessage);
 
             $batsFeatureConfig = self::loadBatsFeatureConfig();
+
+            // Phase 9-C-1d-β1: structured pilot (travel_b + BATS測試 prefix only).
+            $phase9C1Decision = Phase9C1FeatureGate::evaluate([
+                'sno' => (string) ($tenant['sno'] ?? ''),
+                'userMessage' => $userMessage,
+            ]);
+            Logger::log('saas_router.log', 'phase_9c1_gate_decision', array_merge($phase9C1Decision, [
+                'trace_id' => $traceId,
+            ]));
+            self::appendWebhookLog('phase_9c1_gate_decision', array_merge($phase9C1Decision, [
+                'trace_id' => $traceId,
+            ]));
+            if (($phase9C1Decision['enabled'] ?? false) === true) {
+                $phase9C1Result = self::attemptPhase9C1StructuredPilotPath(
+                    $tenant,
+                    $userMessage,
+                    $traceId,
+                    $replyToken,
+                    $lineReplyUrl,
+                    $lineToken,
+                    (string) ($tenant['channel_id'] ?? '')
+                );
+                if (is_array($phase9C1Result)) {
+                    return $phase9C1Result;
+                }
+            }
 
             // Phase 9-B-26C-7: controlled real LINE reply gate (travel_b + sno + BATS測試*).
             $realGateDecision = self::evaluateControlledRealLineReplyGate($tenant, $userMessage, $batsFeatureConfig);
@@ -935,6 +967,186 @@ class SaaSRouter
                 'result_count' => 12,
             ],
         ];
+    }
+
+    /**
+     * Phase 9-C-1d-β1: structured pilot path (travel_b + BATS測試 prefix).
+     *
+     * @param array<string, mixed> $tenant
+     * @param callable|null $lineReplySender fn(string $url, string $token, string $replyToken, string $text): array
+     * @return array<string, mixed>|null
+     */
+    public static function attemptPhase9C1StructuredPilotPath(
+        array $tenant,
+        string $userMessage,
+        string $traceId,
+        string $replyToken,
+        string $lineReplyUrl,
+        string $lineToken,
+        string $channelId = '',
+        ?TourPromptContextService $tourContextService = null,
+        ?TourSearchApiClient $searchClient = null,
+        ?\DateTimeImmutable $referenceDate = null,
+        $lineReplySender = null,
+        ?GeminiRenderer $geminiRenderer = null,
+        ?GeminiClient $geminiClient = null
+    ): ?array {
+        $tenantSno = trim((string) ($tenant['sno'] ?? ''));
+        if (!Phase9C1FeatureGate::isEnabled([
+            'sno' => $tenantSno,
+            'userMessage' => $userMessage,
+        ])) {
+            return null;
+        }
+
+        if ($replyToken === '' || $lineReplyUrl === '' || $lineToken === '') {
+            Logger::log('saas_router.log', 'phase_9c1_structured_pilot_error', [
+                'trace_id' => $traceId,
+                'reason' => 'missing_line_reply_credentials',
+                'fallthrough_to_legacy' => true,
+            ]);
+
+            return null;
+        }
+
+        try {
+            if ($channelId === '') {
+                $channelId = trim((string) ($tenant['channel_id'] ?? ''));
+            }
+
+            $queryText = Phase9C1FeatureGate::stripPilotQueryPrefix($userMessage);
+            $service = $tourContextService ?? new TourPromptContextService();
+            $contextParams = [
+                'userText' => $queryText,
+                'sno' => $tenantSno,
+                'channelId' => $channelId !== '' ? $channelId : null,
+                'traceId' => $traceId,
+                'featureEnabled' => true,
+                'referenceDate' => $referenceDate ?? new \DateTimeImmutable('now', new \DateTimeZone('Asia/Taipei')),
+                'hybridSearchConfig' => [
+                    'enabled' => false,
+                    'allowed_sno' => [],
+                    'allowed_channels' => [],
+                    'dry_run_log_enabled' => false,
+                ],
+            ];
+            if ($searchClient instanceof TourSearchApiClient) {
+                $contextParams['searchClient'] = $searchClient;
+            }
+
+            $structuredResult = $service->buildTourContextResult($contextParams);
+            $geminiContextSchemaVersion = null;
+            $replyText = '';
+
+            if ($structuredResult->isClarificationRequired()) {
+                $replyText = DateClarificationLineFormatter::formatFromTourContext(
+                    $structuredResult->getLegacyContext()
+                );
+                if ($replyText === '') {
+                    $replyText = '您好 😊 請問您預計什麼時候出發呢？我會依照您的出發時間幫您查詢適合的行程。';
+                }
+            } else {
+                $renderer = $geminiRenderer ?? new GeminiRenderer();
+                $client = $geminiClient ?? new GeminiClient();
+                $tenantName = trim((string) ($tenant['company_name'] ?? ''));
+                if ($tenantName === '') {
+                    $tenantName = 'BBC Travel';
+                }
+
+                $plan = self::buildGeminiPublishPlanFromSearchResults($structuredResult->getSearchResults());
+                $geminiContext = $renderer->renderDocument($plan, [
+                    'schema_version' => GeminiContextDocument::SCHEMA_VERSION_V2,
+                    'customer_query' => $queryText,
+                    'tenant_name' => $tenantName,
+                    'bats_search_intent' => $structuredResult->getIntent()->toArray(),
+                ]);
+                $geminiContextSchemaVersion = $geminiContext->getSchemaVersion();
+                $replyText = $client->generateResponse($geminiContext)->getReplyText();
+            }
+
+            if ($replyText === '') {
+                $replyText = 'BATS Phase 9-C-1 pilot：目前無法產生回覆，請稍後再試。';
+            }
+
+            if (is_callable($lineReplySender)) {
+                $replyRes = $lineReplySender($lineReplyUrl, $lineToken, $replyToken, $replyText);
+            } else {
+                $replyRes = LineService::replyToLine($lineReplyUrl, $lineToken, $replyToken, $replyText);
+            }
+
+            $payload = [
+                'trace_id' => $traceId,
+                'tenant_sno' => $tenantSno,
+                'clarification_required' => $structuredResult->isClarificationRequired(),
+                'clarification_reason' => $structuredResult->getClarificationReason(),
+                'gemini_context_schema_version' => $geminiContextSchemaVersion,
+                'search_result_count' => count($structuredResult->getSearchResults()),
+                'reply_text_length' => mb_strlen($replyText),
+                'line_reply' => $replyRes,
+                'final_route' => 'phase_9c1_structured_pilot',
+            ];
+            Logger::log('saas_router.log', 'phase_9c1_structured_pilot_reply', $payload);
+            self::appendWebhookLog('phase_9c1_structured_pilot_reply', $payload);
+
+            return [
+                'ok' => true,
+                'message' => 'phase_9c1_structured_pilot',
+                'phase_9c1' => $payload,
+            ];
+        } catch (\Throwable $e) {
+            Logger::log('saas_router.log', 'phase_9c1_structured_pilot_error', [
+                'trace_id' => $traceId,
+                'tenant_sno' => $tenantSno,
+                'message' => $e->getMessage(),
+                'fallthrough_to_legacy' => true,
+            ]);
+            self::appendWebhookLog('phase_9c1_structured_pilot_error', [
+                'trace_id' => $traceId,
+                'tenant_sno' => $tenantSno,
+                'message' => $e->getMessage(),
+                'fallthrough_to_legacy' => true,
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * @param list<array<string, mixed>> $searchResults
+     */
+    private static function buildGeminiPublishPlanFromSearchResults(array $searchResults): ChannelPublishPlan
+    {
+        $items = [];
+        foreach ($searchResults as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $title = isset($row['title']) ? trim((string) $row['title']) : '';
+            if ($title === '') {
+                continue;
+            }
+            $primaryUrl = 'https://example.test/tour/pilot';
+            if (isset($row['primary_url']) && trim((string) $row['primary_url']) !== '') {
+                $primaryUrl = trim((string) $row['primary_url']);
+            } elseif (isset($row['search_url']) && trim((string) $row['search_url']) !== '') {
+                $primaryUrl = trim((string) $row['search_url']);
+            }
+            $items[] = [
+                'title' => $title,
+                'summary' => null,
+                'primary_url' => $primaryUrl,
+                'metadata' => $row,
+            ];
+        }
+
+        return (new ChannelPublishPlanValidator())->validate([
+            'channel' => 'gemini',
+            'strategy_name' => 'phase9c1_structured_pilot_v1',
+            'payload_schema_version' => ChannelPublishPlan::PAYLOAD_SCHEMA_VERSION,
+            'items' => $items,
+            'fallback' => null,
+            'metadata' => [],
+        ]);
     }
 
     /**
