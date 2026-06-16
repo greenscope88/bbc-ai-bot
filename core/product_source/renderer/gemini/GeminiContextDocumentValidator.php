@@ -75,6 +75,10 @@ final class GeminiContextDocumentValidator
             $violations = array_merge($violations, $this->collectFallbackPolicyViolations($normalized['fallback_policy']));
         }
 
+        if ($normalized['schema_version'] >= GeminiContextDocument::SCHEMA_VERSION_V2) {
+            $violations = array_merge($violations, $this->collectBatsSearchIntentViolations($document, $normalized));
+        }
+
         return $violations;
     }
 
@@ -161,6 +165,61 @@ final class GeminiContextDocumentValidator
         $message = isset($fallbackPolicy['fallback_message']) ? trim((string) $fallbackPolicy['fallback_message']) : '';
         if ($message === '') {
             $violations[] = 'fallback_policy.fallback_message is required';
+        }
+
+        return $violations;
+    }
+
+    /**
+     * @param array<string, mixed> $document
+     * @param array<string, mixed> $normalized
+     * @return list<string>
+     */
+    private function collectBatsSearchIntentViolations(array $document, array $normalized): array
+    {
+        $violations = [];
+
+        if (!array_key_exists('bats_search_intent', $document) || !is_array($document['bats_search_intent'])) {
+            $violations[] = 'bats_search_intent is required for schema_version=2';
+
+            return $violations;
+        }
+
+        $intent = $normalized['bats_search_intent'];
+        if (!is_array($intent)) {
+            $violations[] = 'bats_search_intent must be an array';
+
+            return $violations;
+        }
+
+        if (!array_key_exists('clarification_required', $intent)) {
+            $violations[] = 'bats_search_intent.clarification_required is required';
+        }
+
+        if (!array_key_exists('destination', $intent)) {
+            $violations[] = 'bats_search_intent.destination key is required';
+        }
+
+        if (!isset($intent['multi_destination']) || !is_array($intent['multi_destination'])) {
+            $violations[] = 'bats_search_intent.multi_destination must be an array';
+        }
+
+        if (!isset($intent['travel_type']) || !is_array($intent['travel_type'])) {
+            $violations[] = 'bats_search_intent.travel_type must be an array';
+        }
+
+        foreach ([
+            'budget_min',
+            'budget_max',
+            'people_count',
+            'departure_city',
+            'landmark',
+            'clarification_reason',
+            'confidence',
+        ] as $key) {
+            if (!array_key_exists($key, $intent)) {
+                $violations[] = 'bats_search_intent.' . $key . ' is required';
+            }
         }
 
         return $violations;

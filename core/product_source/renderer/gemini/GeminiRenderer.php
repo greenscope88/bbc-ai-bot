@@ -47,8 +47,9 @@ final class GeminiRenderer implements ChannelRendererInterface
 
         $mergedContext = array_merge($planMetadata, $renderContext);
 
+        $schemaVersion = $this->resolveSchemaVersion($mergedContext);
         $document = [
-            'schema_version' => GeminiContextDocument::SCHEMA_VERSION,
+            'schema_version' => $schemaVersion,
             'customer_query' => $this->resolveString($mergedContext, 'customer_query'),
             'search_results' => $this->buildSearchResults($plan),
             'tenant_name' => $this->resolveString($mergedContext, 'tenant_name'),
@@ -57,6 +58,10 @@ final class GeminiRenderer implements ChannelRendererInterface
             'guard_policy' => $this->resolveGuardPolicy($mergedContext),
             'fallback_policy' => $this->resolveFallbackPolicy($mergedContext, $planDocument['fallback']),
         ];
+
+        if ($schemaVersion >= GeminiContextDocument::SCHEMA_VERSION_V2) {
+            $document['bats_search_intent'] = $this->resolveBatsSearchIntent($mergedContext);
+        }
 
         return $this->documentValidator->validate($document);
     }
@@ -282,5 +287,61 @@ final class GeminiRenderer implements ChannelRendererInterface
         }
 
         return $merged;
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function resolveSchemaVersion(array $context): int
+    {
+        if (isset($context['schema_version'])) {
+            return max(GeminiContextDocument::SCHEMA_VERSION, (int) $context['schema_version']);
+        }
+
+        return GeminiContextDocument::SCHEMA_VERSION;
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     * @return array<string, mixed>
+     */
+    private function resolveBatsSearchIntent(array $context): array
+    {
+        if (isset($context['bats_search_intent']) && is_array($context['bats_search_intent'])) {
+            return GeminiContextDocument::normalizeBatsSearchIntent($context['bats_search_intent']);
+        }
+
+        if (isset($context['bats_search_intent']) && is_object($context['bats_search_intent'])
+            && method_exists($context['bats_search_intent'], 'toArray')
+        ) {
+            /** @var object{toArray(): array<string, mixed>} $intentObject */
+            $intentObject = $context['bats_search_intent'];
+
+            return GeminiContextDocument::normalizeBatsSearchIntent($intentObject->toArray());
+        }
+
+        $customerQuery = $this->resolveString($context, 'customer_query');
+        if ($customerQuery === '') {
+            return GeminiContextDocument::normalizeBatsSearchIntent([
+                'free_text' => '',
+                'clarification_required' => false,
+                'clarification_reason' => null,
+                'confidence' => 0.0,
+            ]);
+        }
+
+        $intentPath = dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'BatsSearchIntent.php';
+        if (is_file($intentPath)) {
+            require_once $intentPath;
+
+            return GeminiContextDocument::normalizeBatsSearchIntent(BatsSearchIntent::empty($customerQuery)->toArray());
+        }
+
+        return GeminiContextDocument::normalizeBatsSearchIntent([
+            'free_text' => $customerQuery,
+            'clarification_required' => false,
+            'clarification_reason' => null,
+            'confidence' => 0.0,
+        ]);
     }
 }

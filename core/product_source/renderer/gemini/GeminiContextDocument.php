@@ -10,6 +10,8 @@ final class GeminiContextDocument
 {
     public const SCHEMA_VERSION = 1;
 
+    public const SCHEMA_VERSION_V2 = 2;
+
     private string $customerQuery;
 
     /** @var list<array<string, mixed>> */
@@ -31,12 +33,16 @@ final class GeminiContextDocument
 
     private int $schemaVersion;
 
+    /** @var array<string, mixed>|null */
+    private ?array $batsSearchIntent;
+
     /**
      * @param list<array<string, mixed>> $searchResults
      * @param array<string, mixed> $voiceProfile
      * @param list<string> $tenantServiceScope
      * @param array<string, mixed> $guardPolicy
      * @param array<string, mixed> $fallbackPolicy
+     * @param array<string, mixed>|null $batsSearchIntent
      */
     private function __construct(
         string $customerQuery,
@@ -46,7 +52,8 @@ final class GeminiContextDocument
         array $tenantServiceScope,
         array $guardPolicy,
         array $fallbackPolicy,
-        int $schemaVersion
+        int $schemaVersion,
+        ?array $batsSearchIntent = null
     ) {
         $this->customerQuery = $customerQuery;
         $this->searchResults = $searchResults;
@@ -56,6 +63,7 @@ final class GeminiContextDocument
         $this->guardPolicy = $guardPolicy;
         $this->fallbackPolicy = $fallbackPolicy;
         $this->schemaVersion = $schemaVersion;
+        $this->batsSearchIntent = $batsSearchIntent;
     }
 
     /**
@@ -73,7 +81,8 @@ final class GeminiContextDocument
             $normalized['tenant_service_scope'],
             $normalized['guard_policy'],
             $normalized['fallback_policy'],
-            (int) $normalized['schema_version']
+            (int) $normalized['schema_version'],
+            $normalized['bats_search_intent']
         );
     }
 
@@ -82,7 +91,7 @@ final class GeminiContextDocument
      */
     public function toArray(): array
     {
-        return [
+        $document = [
             'schema_version' => $this->schemaVersion,
             'customer_query' => $this->customerQuery,
             'search_results' => $this->searchResults,
@@ -92,6 +101,25 @@ final class GeminiContextDocument
             'guard_policy' => $this->guardPolicy,
             'fallback_policy' => $this->fallbackPolicy,
         ];
+
+        if ($this->schemaVersion >= self::SCHEMA_VERSION_V2 && $this->batsSearchIntent !== null) {
+            $document['bats_search_intent'] = $this->batsSearchIntent;
+        }
+
+        return $document;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function getBatsSearchIntent(): ?array
+    {
+        return $this->batsSearchIntent;
+    }
+
+    public function getSchemaVersion(): int
+    {
+        return $this->schemaVersion;
     }
 
     /**
@@ -155,7 +183,99 @@ final class GeminiContextDocument
             ? $document['fallback_policy']
             : [];
 
+        $out['bats_search_intent'] = null;
+        if ($out['schema_version'] >= self::SCHEMA_VERSION_V2
+            && isset($document['bats_search_intent'])
+            && is_array($document['bats_search_intent'])
+        ) {
+            $out['bats_search_intent'] = self::normalizeBatsSearchIntent($document['bats_search_intent']);
+        }
+
         return $out;
+    }
+
+    /**
+     * @param array<string, mixed> $intent
+     * @return array<string, mixed>
+     */
+    public static function normalizeBatsSearchIntent(array $intent): array
+    {
+        return [
+            'intent' => isset($intent['intent']) ? trim((string) $intent['intent']) : 'tour_search',
+            'destination' => array_key_exists('destination', $intent)
+                ? (is_string($intent['destination']) || $intent['destination'] === null
+                    ? ($intent['destination'] === null ? null : trim((string) $intent['destination']))
+                    : null)
+                : null,
+            'destination_alias' => self::normalizeStringList($intent['destination_alias'] ?? []),
+            'multi_destination' => self::normalizeStringList($intent['multi_destination'] ?? []),
+            'departure_city' => array_key_exists('departure_city', $intent)
+                ? (is_string($intent['departure_city']) || $intent['departure_city'] === null
+                    ? ($intent['departure_city'] === null ? null : trim((string) $intent['departure_city']))
+                    : null)
+                : null,
+            'date_from' => array_key_exists('date_from', $intent)
+                ? (is_string($intent['date_from']) || $intent['date_from'] === null
+                    ? ($intent['date_from'] === null ? null : trim((string) $intent['date_from']))
+                    : null)
+                : null,
+            'date_to' => array_key_exists('date_to', $intent)
+                ? (is_string($intent['date_to']) || $intent['date_to'] === null
+                    ? ($intent['date_to'] === null ? null : trim((string) $intent['date_to']))
+                    : null)
+                : null,
+            'travel_type' => self::normalizeStringList($intent['travel_type'] ?? []),
+            'budget_min' => array_key_exists('budget_min', $intent) && $intent['budget_min'] !== null && $intent['budget_min'] !== ''
+                ? (int) $intent['budget_min']
+                : null,
+            'budget_max' => array_key_exists('budget_max', $intent) && $intent['budget_max'] !== null && $intent['budget_max'] !== ''
+                ? (int) $intent['budget_max']
+                : null,
+            'people_count' => array_key_exists('people_count', $intent) && $intent['people_count'] !== null && $intent['people_count'] !== ''
+                ? (int) $intent['people_count']
+                : null,
+            'landmark' => array_key_exists('landmark', $intent)
+                ? (is_string($intent['landmark']) || $intent['landmark'] === null
+                    ? ($intent['landmark'] === null ? null : trim((string) $intent['landmark']))
+                    : null)
+                : null,
+            'must_have' => self::normalizeStringList($intent['must_have'] ?? []),
+            'avoid' => self::normalizeStringList($intent['avoid'] ?? []),
+            'clarification_required' => array_key_exists('clarification_required', $intent)
+                ? (bool) $intent['clarification_required']
+                : false,
+            'clarification_reason' => array_key_exists('clarification_reason', $intent)
+                ? (is_string($intent['clarification_reason']) || $intent['clarification_reason'] === null
+                    ? ($intent['clarification_reason'] === null ? null : trim((string) $intent['clarification_reason']))
+                    : null)
+                : null,
+            'confidence' => isset($intent['confidence']) ? round((float) $intent['confidence'], 2) : 0.0,
+            'free_text' => isset($intent['free_text']) ? trim((string) $intent['free_text']) : '',
+        ];
+    }
+
+    /**
+     * @param mixed $value
+     * @return list<string>
+     */
+    private static function normalizeStringList($value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($value as $item) {
+            if (!is_scalar($item)) {
+                continue;
+            }
+            $trimmed = trim((string) $item);
+            if ($trimmed !== '') {
+                $out[] = $trimmed;
+            }
+        }
+
+        return array_values(array_unique($out));
     }
 
     /**
