@@ -17,6 +17,9 @@ require_once __DIR__ . '/tenant/LineCredentialResolver.php';
 require_once __DIR__ . '/product_source/integration/BatsFeatureGate.php';
 require_once __DIR__ . '/product_source/integration/BatsWebhookOrchestrator.php';
 require_once __DIR__ . '/search/Phase9C1FeatureGate.php';
+require_once __DIR__ . '/search/AcknowledgementReplyComposer.php';
+require_once __DIR__ . '/search/ConversationStatusResolver.php';
+require_once __DIR__ . '/search/FinalReplyGate.php';
 require_once __DIR__ . '/date_clarification_line_formatter.php';
 require_once __DIR__ . '/product_source/channel_publish_plan/ChannelPublishPlan.php';
 require_once __DIR__ . '/product_source/channel_publish_plan/ChannelPublishPlanValidator.php';
@@ -989,7 +992,10 @@ class SaaSRouter
         ?\DateTimeImmutable $referenceDate = null,
         $lineReplySender = null,
         ?GeminiRenderer $geminiRenderer = null,
-        ?GeminiClient $geminiClient = null
+        ?GeminiClient $geminiClient = null,
+        ?string $conversationId = null,
+        ?ConversationStatusResolver $conversationStatusResolver = null,
+        $ackReplySender = null
     ): ?array {
         $tenantSno = trim((string) ($tenant['sno'] ?? ''));
         if (!Phase9C1FeatureGate::isEnabled([
@@ -1014,7 +1020,34 @@ class SaaSRouter
                 $channelId = trim((string) ($tenant['channel_id'] ?? ''));
             }
 
+            $now = $referenceDate ?? new \DateTimeImmutable('now', new \DateTimeZone('Asia/Taipei'));
+            $conversationKey = $conversationId ?? ($tenantSno . ':' . ($channelId !== '' ? $channelId : 'unknown'));
+            $statusResolver = $conversationStatusResolver ?? new ConversationStatusResolver();
+
             $queryText = Phase9C1FeatureGate::stripPilotQueryPrefix($userMessage);
+            $statusResolver->recordCustomerMessage($conversationKey, $queryText, $now);
+            $conversationStatus = $statusResolver->resolveStatus($conversationKey, $now);
+
+            if ($conversationStatus === ConversationStatusResolver::STATUS_HUMAN_ACTIVE) {
+                $blockedPayload = [
+                    'trace_id' => $traceId,
+                    'tenant_sno' => $tenantSno,
+                    'conversation_id' => $conversationKey,
+                    'conversation_status' => $conversationStatus,
+                    'blocked' => true,
+                    'block_reason' => 'human_active',
+                    'final_route' => 'phase_9c1_structured_pilot_blocked',
+                ];
+                Logger::log('saas_router.log', 'phase_9c1_structured_pilot_blocked', $blockedPayload);
+                self::appendWebhookLog('phase_9c1_structured_pilot_blocked', $blockedPayload);
+
+                return [
+                    'ok' => true,
+                    'message' => 'phase_9c1_structured_pilot_blocked',
+                    'phase_9c1' => $blockedPayload,
+                ];
+            }
+
             $service = $tourContextService ?? new TourPromptContextService();
             $contextParams = [
                 'userText' => $queryText,
@@ -1022,7 +1055,7 @@ class SaaSRouter
                 'channelId' => $channelId !== '' ? $channelId : null,
                 'traceId' => $traceId,
                 'featureEnabled' => true,
-                'referenceDate' => $referenceDate ?? new \DateTimeImmutable('now', new \DateTimeZone('Asia/Taipei')),
+                'referenceDate' => $now,
                 'hybridSearchConfig' => [
                     'enabled' => false,
                     'allowed_sno' => [],
@@ -1037,6 +1070,8 @@ class SaaSRouter
             $structuredResult = $service->buildTourContextResult($contextParams);
             $geminiContextSchemaVersion = null;
             $replyText = '';
+            $ackText = '';
+            $ackReply = null;
 
             if ($structuredResult->isClarificationRequired()) {
                 $replyText = DateClarificationLineFormatter::formatFromTourContext(
@@ -1046,6 +1081,19 @@ class SaaSRouter
                     $replyText = '您好 😊 請問您預計什麼時候出發呢？我會依照您的出發時間幫您查詢適合的行程。';
                 }
             } else {
+                $ackComposer = new AcknowledgementReplyComposer();
+                $ackText = $ackComposer->compose($traceId);
+                if ($ackText !== '' && is_callable($ackReplySender)) {
+                    $ackReply = $ackReplySender($lineReplyUrl, $lineToken, $replyToken, $ackText);
+                } elseif ($ackText !== '') {
+                    Logger::log('saas_router.log', 'phase_9c1_ack_pending_push', [
+                        'trace_id' => $traceId,
+                        'conversation_id' => $conversationKey,
+                        'ack_text_length' => mb_strlen($ackText),
+                        'reason' => 'reply_token_reserved_for_final_reply',
+                    ]);
+                }
+
                 $renderer = $geminiRenderer ?? new GeminiRenderer();
                 $client = $geminiClient ?? new GeminiClient();
                 $tenantName = trim((string) ($tenant['company_name'] ?? ''));
@@ -1068,6 +1116,31 @@ class SaaSRouter
                 $replyText = 'BATS Phase 9-C-1 pilot：目前無法產生回覆，請稍後再試。';
             }
 
+            $finalGate = FinalReplyGate::evaluate($statusResolver->resolveStatus($conversationKey, $now));
+            if (!$finalGate['allowed']) {
+                $blockedPayload = [
+                    'trace_id' => $traceId,
+                    'tenant_sno' => $tenantSno,
+                    'conversation_id' => $conversationKey,
+                    'conversation_status' => $finalGate['conversation_status'],
+                    'blocked' => true,
+                    'block_reason' => $finalGate['block_reason'],
+                    'clarification_required' => $structuredResult->isClarificationRequired(),
+                    'ack_text_length' => $ackText !== '' ? mb_strlen($ackText) : 0,
+                    'reply_text_length' => mb_strlen($replyText),
+                    'final_route' => 'phase_9c1_structured_pilot_final_blocked',
+                ];
+                Logger::log('saas_router.log', 'phase_9c1_structured_pilot_final_blocked', $blockedPayload);
+                self::appendWebhookLog('phase_9c1_structured_pilot_final_blocked', $blockedPayload);
+
+                return [
+                    'ok' => true,
+                    'message' => 'phase_9c1_structured_pilot_final_blocked',
+                    'phase_9c1' => $blockedPayload,
+                ];
+            }
+
+            $replyRes = null;
             if (is_callable($lineReplySender)) {
                 $replyRes = $lineReplySender($lineReplyUrl, $lineToken, $replyToken, $replyText);
             } else {
@@ -1077,10 +1150,14 @@ class SaaSRouter
             $payload = [
                 'trace_id' => $traceId,
                 'tenant_sno' => $tenantSno,
+                'conversation_id' => $conversationKey,
+                'conversation_status' => $finalGate['conversation_status'],
                 'clarification_required' => $structuredResult->isClarificationRequired(),
                 'clarification_reason' => $structuredResult->getClarificationReason(),
                 'gemini_context_schema_version' => $geminiContextSchemaVersion,
                 'search_result_count' => count($structuredResult->getSearchResults()),
+                'ack_text_length' => $ackText !== '' ? mb_strlen($ackText) : 0,
+                'ack_line_reply' => $ackReply,
                 'reply_text_length' => mb_strlen($replyText),
                 'line_reply' => $replyRes,
                 'final_route' => 'phase_9c1_structured_pilot',

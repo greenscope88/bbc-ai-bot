@@ -7,6 +7,8 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'saas_router.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'Phase9C1FeatureGate.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'ConversationStatusResolver.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'AcknowledgementReplyComposer.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'DateParser.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridDateRequiredGate.php';
 
@@ -42,6 +44,22 @@ $mockLineSender = static function (string $url, string $token, string $replyToke
         'reply_token' => $replyToken,
         'text_length' => mb_strlen($text),
         'mock' => true,
+        'kind' => 'final',
+    ];
+};
+
+$ackCalls = [];
+$mockAckSender = static function (string $url, string $token, string $replyToken, string $text) use (&$ackCalls): array {
+    unset($url, $token);
+    $ackCalls[] = [
+        'reply_token' => $replyToken,
+        'text_length' => mb_strlen($text),
+        'text' => $text,
+    ];
+    return [
+        'status' => 200,
+        'mock' => true,
+        'kind' => 'ack',
     ];
 };
 
@@ -166,6 +184,83 @@ test_assert(
     ) === null,
     'case4: no prefix returns null'
 );
+
+// Case 5: HUMAN_ACTIVE blocks AI reply (no final line sender call)
+$humanStore = [];
+$humanResolver = ConversationStatusResolver::createForTesting($humanStore);
+$humanConversationId = 'pilot-human-active';
+$humanResolver->markHumanActive($humanConversationId, $referenceDate);
+$finalCallsHuman = 0;
+$humanFinalSender = static function (string $url, string $token, string $replyToken, string $text) use (&$finalCallsHuman): array {
+    unset($url, $token, $replyToken, $text);
+    ++$finalCallsHuman;
+    return ['mock' => true];
+};
+$resultHuman = SaaSRouter::attemptPhase9C1StructuredPilotPath(
+    $tenantTravelB,
+    'BATS測試北海道7月',
+    'trace-pilot-5',
+    'reply-token-5',
+    'https://api.line.me/v2/bot/message/reply',
+    'channel-token-5',
+    'travel-b-channel',
+    null,
+    buildPilotMockSearchClient(),
+    $referenceDate,
+    $humanFinalSender,
+    null,
+    null,
+    $humanConversationId,
+    $humanResolver
+);
+test_assert(is_array($resultHuman), 'case5: human active returns array');
+test_assert(($resultHuman['message'] ?? '') === 'phase_9c1_structured_pilot_blocked', 'case5: blocked message');
+test_assert(($resultHuman['phase_9c1']['block_reason'] ?? '') === 'human_active', 'case5: human_active reason');
+test_assert($finalCallsHuman === 0, 'case5: no final AI reply sent');
+
+// Case 6: AI_ACTIVE searchable path sends ack (mock) then final reply
+$ackCalls = [];
+$finalCallsAi = 0;
+$aiFinalSender = static function (string $url, string $token, string $replyToken, string $text) use (&$finalCallsAi): array {
+    unset($url, $token);
+    ++$finalCallsAi;
+    return [
+        'status' => 200,
+        'reply_token' => $replyToken,
+        'text_length' => mb_strlen($text),
+        'mock' => true,
+        'kind' => 'final',
+    ];
+};
+$aiStore = [];
+$aiResolver = ConversationStatusResolver::createForTesting($aiStore);
+$resultAi = SaaSRouter::attemptPhase9C1StructuredPilotPath(
+    $tenantTravelB,
+    'BATS測試北海道7月',
+    'trace-pilot-6',
+    'reply-token-6',
+    'https://api.line.me/v2/bot/message/reply',
+    'channel-token-6',
+    'travel-b-channel',
+    null,
+    buildPilotMockSearchClient('北海道7月團B'),
+    $referenceDate,
+    $aiFinalSender,
+    null,
+    null,
+    'pilot-ai-active',
+    $aiResolver,
+    $mockAckSender
+);
+test_assert(is_array($resultAi), 'case6: AI_ACTIVE result array');
+test_assert(($resultAi['message'] ?? '') === 'phase_9c1_structured_pilot', 'case6: pilot message');
+test_assert(count($ackCalls) === 1, 'case6: acknowledgement sent once');
+test_assert(
+    AcknowledgementReplyComposer::isQueryInProgressSemantic((string) ($ackCalls[0]['text'] ?? '')),
+    'case6: acknowledgement semantic'
+);
+test_assert($finalCallsAi === 1, 'case6: final reply sent once');
+test_assert((int) ($resultAi['phase_9c1']['ack_text_length'] ?? 0) > 0, 'case6: ack_text_length logged');
 
 if ($failures > 0) {
     fwrite(STDERR, "\n{$failures} test failure(s)\n");
