@@ -504,6 +504,32 @@ TenantResolver(sno)
 
 **原則：** Rule First，AI Second；**禁止** AI 覆寫已通過 Date Policy 的日期欄位。
 
+### 11.4 下游回覆政策邊界（Semantic Driven — Global）
+
+本文件產出之 `BatsSearchIntent` 為 **Consultant 回覆語意** 的輸入之一，**不** 定義回覆模板或措辭。
+
+**Semantic Driven Response Policy（AD-007）為 Global 政策** — 亦適用 Clarification、FAQ、Knowledge、Support 等非搜尋場景；見 `BATS_AI_TRAVEL_CONSULTANT_POLICY.md` §8.6.1。
+
+```text
+BatsSearchIntent（本文件 SSOT — 商品搜尋場景）
+    ↓
+SearchCondition → Hybrid Search → search_results
+    ↓
+GeminiContextDocument v2（含 bats_search_intent）
+    ↓
+AI Travel Consultant — Semantic Driven Response Generation（Global）
+    ↓
+GeminiResponseContract → LINE Reply
+```
+
+| 層級 | 本文件 | Consultant Policy |
+|------|--------|-------------------|
+| **解析** | destination、date、budget、clarification | — |
+| **語意** | `clarification_required`、是否可搜尋 | Case A/B/C、推薦 vs 追問 |
+| **措辭** | **不** 定義 | §8.6 Global；**固定 Persona、動態 wording** |
+
+**MVP 過渡：** Phase 9-C-2A.1 Opening/Closing Pool 為 Product 路徑 Runtime 過渡；**非** 本文件範疇。見 Consultant Policy §8.7。
+
 ---
 
 ## 12. Future Extension
@@ -521,6 +547,7 @@ TenantResolver(sno)
 | **RAG / 知識庫語意** | BDS tenant knowledge 注入 |
 | **Tenant-specific alias override** | 租戶級別名表（非 MVP） |
 | **Full GeminiIntentParser** | L3 全量 LLM JSON（Phase 2-C 規劃） |
+| **Semantic Driven Response Generation** | Consultant §8.6 Global；Runtime 見 `BATS_AI_RUNTIME_DESIGN.md` §12 |
 
 Future 項目應記錄於 Roadmap 或 `TECH_DEBT.md`，**不得** 阻塞 Hybrid Smart Search 主線（對齊 `DOCUMENTATION_GOVERNANCE_POLICY.md` §14.9）。
 
@@ -541,6 +568,8 @@ Future 項目應記錄於 Roadmap 或 `TECH_DEBT.md`，**不得** 阻塞 Hybrid 
 | Tenant Mapping 安全 | `API_GATEWAY_TENANT_MAPPING_DESIGN.md` |
 | 短網址 | `PRODUCT_SOURCE_SHORTURL_POLICY.md` |
 | 文件成本控制 | `DOCUMENTATION_GOVERNANCE_POLICY.md` §14 |
+| Travel Consultant / 回覆語意 | `BATS_AI_TRAVEL_CONSULTANT_POLICY.md` §8.6（AD-007） |
+| Runtime 遷移 | `BATS_AI_RUNTIME_DESIGN.md` §12 |
 
 ---
 
@@ -560,6 +589,8 @@ Future 項目應記錄於 Roadmap 或 `TECH_DEBT.md`，**不得** 阻塞 Hybrid 
 
 | 版本 | 日期 | 狀態 | 說明 |
 |------|------|------|------|
+| **1.2** | 2026-06-14 | Adopt Draft | §11.4 Global Semantic Driven 邊界、術語修正 |
+| **1.1** | 2026-06-14 | Adopt Draft | §11.4 下游 Semantic Driven Response 邊界 |
 | **1.0** | 2026-06-15 | Adopt Draft | Phase 9-C-1 初版 + Adopt R1/R2/R3 |
 | **1.0** | 2026-06-14 | Draft | Phase 9-C-1 初版：BatsSearchIntent 契約、Clarification、Architecture |
 

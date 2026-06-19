@@ -45,6 +45,7 @@
 | **AD-005C** | **Final Reply Check** — AI 送出前必須檢查 `conversation_status`；`HUMAN_ACTIVE` 時取消 AI Reply |
 | **AD-006** | **Human Takeover Context Continuity** — Takeover 只停止 AI Outbound；持續記錄 Customer / Human Agent 訊息；AI 恢復後延續脈絡 |
 | **AD-006A** | **Resume Context Requirement** — AI 恢復前必須取得 Recent Conversation Context（含 Customer + Human Agent Messages） |
+| **AD-007** | **Semantic Driven Response Policy（Global）** — **全站 AI 回覆**正式架構為**語意驅動**（非模板驅動）；措辭可每次不同，但須保持**事實一致、語意一致、人設一致**；目標為 **Semantic Driven Response Generation**（固定人設約束下之動態措辭生成）；Phase 9-C-2A.1 Opening/Closing Pool 為 **MVP 過渡**，現行有效、非長期 SSOT |
 
 ---
 
@@ -61,6 +62,8 @@
 | §7 | Clarification Policy |
 | §8 | Reply Style Policy |
 | §8.5 | Acknowledgement Reply Policy |
+| §8.6 | Semantic Driven Response Policy（AD-007） |
+| §8.7 | MVP Template Pool Interim（Phase 9-C-2A.1） |
 | §9 | External Product Source Policy |
 | §10 | Human Escalation Policy |
 | §10.5 | Automatic Human Takeover Policy |
@@ -141,6 +144,7 @@ Reply（GeminiResponseContract）
 |------|------|
 | **Persona** | 年輕女性旅遊顧問人設與語氣邊界 |
 | **Reply Policy** | 回覆類型、長度、結構導向 |
+| **Semantic Driven Response Policy（Global）** | 全站 AI 回覆：語意驅動、固定人設、動態措辭（§8.6） |
 | **Grounded Policy** | 資料來源與禁止幻覺 |
 | **Service Scope Policy** | Case A / B / C 服務邊界 |
 | **Guided Selling Policy** | 成交導向對話流程 |
@@ -457,9 +461,12 @@ corpus 無足夠參考資訊
 
 | 禁止 | 說明 |
 |------|------|
-| **公式化** | 每則回覆開頭結尾完全相同 |
+| **公式化** | 每則回覆開頭結尾完全相同（長期目標；MVP 過渡見 §8.7） |
 | **千篇一律** | 不同情境使用同一套話術 |
-| **固定模板** | 機械式「感謝您的詢問，我們有以下行程…」 |
+| **固定模板引擎** | 以越來越大的模板池維持「變化感」；長期應改為 §8.6 語意驅動 |
+| **機械式開場** | 機械式「感謝您的詢問，我們有以下行程…」 |
+
+**邊界：** §8.7 之 MVP Opening/Closing Pool **不** 視為違反本節；其為 Phase 9-C-2A.1 過渡實作，**非** 正式架構終點。
 
 ### 8.2 允許
 
@@ -541,6 +548,217 @@ Final Reply（商品推薦／引導）
 #### 8.5.5 與 Human Takeover 交叉
 
 當 `conversation_status = HUMAN_ACTIVE` 時，**不得** 發送 Acknowledgement Reply（對齊 AD-005C）。
+
+---
+
+### 8.6 Semantic Driven Response Policy（AD-007）
+
+#### 8.6.1 適用範圍（Global Scope）
+
+**Semantic Driven Response Policy 為 BBC AI SaaS 之全域（Global）回覆政策。**
+
+本政策適用於 **所有 AI 生成或 AI 輔助生成之客人可見回覆**，**不** 僅限商品推薦或 Product Search path。
+
+| 回覆類型 | 適用 | 說明 |
+|----------|------|------|
+| **Product Search** | ✅ | 搜尋結果呈現、列表導覽 |
+| **Product Recommendation** | ✅ | 商品推薦、CTA、listing URL |
+| **Clarification** | ✅ | 日期／目的地等追問（§7） |
+| **FAQ** | ✅ | 租戶／共享知識庫問答 |
+| **Service Information** | ✅ | 簽證、護照、票券、飯店等服務說明 |
+| **Company Information** | ✅ | 公司地址、電話、營業資訊 |
+| **Private Knowledge（BDS）** | ✅ | `tenant_private_knowledge` |
+| **Shared Knowledge** | ✅ | Industry / Global fallback |
+| **Customer Support Replies** | ✅ | 轉專員、服務邊界、售後引導 |
+| **Future AI Generated Responses** | ✅ | 未來新增之 AI 通道或場景 **預設適用** |
+
+**規則：**
+
+| 規則 | 說明 |
+|------|------|
+| **Global by default** | 新 AI 回覆功能 **預設** 受本政策約束，除非另有 L3 SSOT 明示排除 |
+| **語意驅動、非模板驅動** | 長期 **不** 以擴充句庫作為主要演進策略 |
+| **Grounding 不變** | 各場景仍須遵守 §4 Grounded Only；知識來源依 BDS / Shared Knowledge SSOT |
+
+#### 8.6.2 正式架構方向
+
+BBC AI SaaS 長期回覆架構為 **Semantic Driven Response Policy（語意驅動回覆政策）**，**不是** Template Driven Response Policy（模板驅動回覆政策）。
+
+| 維度 | Template Driven（過渡 / 非目標） | Semantic Driven（正式方向） |
+|------|----------------------------------|----------------------------|
+| **變化來源** | 預先維護 Opening/Closing 句庫 + 隨機選取 | 依 Context **動態生成措辭**（Semantic Driven Response Generation） |
+| **擴展方式** | 持續新增模板條目 | 擴充 Context 與 Guard，**不** 擴充句庫 |
+| **顧問感** | 有限變化 | 像真人顧問，每次措辭可不同 |
+| **Grounding** | 結構化區塊固定、外框可變 | 全段措辭可變，但受 §4 Grounded 約束 |
+| **人設** | 模板決定表面語氣 | **人設固定**（§8.6.4）；**措辭**隨情境變化 |
+
+**目標：** AI 表現像**真實旅遊顧問**，而非模板引擎。
+
+**術語：** 正式目標架構稱 **Semantic Driven Response Generation**（語意驅動回覆生成），或 **Dynamic Wording Generation under Fixed Persona Constraints**（固定人設約束下之動態措辭生成）。**不** 使用「Dynamic Persona Generation」— 避免暗示 **人設本身** 會改變。
+
+#### 8.6.3 核心規則
+
+AI 回覆**可以**每次不同，但下列三項**必須**一致：
+
+```text
+語氣可變、措辭可變
+    ↓
+事實不可變（Fact Consistency）
+語意不可變（Semantic Consistency）
+人設不可變（Persona Consistency）
+```
+
+##### （1）Fact Consistency — 事實一致
+
+下列內容 **不得** 被 AI 改寫、推論或美化：
+
+| 類別 | 範例 |
+|------|------|
+| 商品 | 品名、售價、出團日期、出發地 |
+| 連結 | `search_results` / Builder 產出之 URL |
+| 知識庫 | 護照費用、電話、地址、取消規定 |
+| 政策 | 服務是否存在、是否可報名、是否成團 |
+
+對齊 §4.1 Grounded Only、§4.2 No Hallucination。
+
+##### （2）Semantic Consistency — 語意一致
+
+AI **可** 自由選詞，但**不可** 改變要傳達的語意。
+
+| 語意（Semantic） | 允許措辭（示意） | 不允許 |
+|------------------|------------------|--------|
+| 已找到符合條件商品 | 「我幫您找到符合需求的行程」「已為您整理相關商品資訊」「以下是符合條件的熱門行程」 | 改為「目前沒有合適商品」或「已為您保留名額」 |
+| 請補充日期 | 「請問您預計什麼時候出發呢？」「方便告訴我出發時間嗎？」 | 改為已可搜尋並推薦商品（Hard Gate 違規） |
+| 轉專員 | Case B 標準語意：服務範圍內但資料不足 | 改為 out_of_scope 或直接給出未 grounding 答案 |
+| FAQ 答案存在於 corpus | 以不同說法轉述同一事實 | 新增 corpus 未記載之費用、電話、政策 |
+
+**規則：** 語意由 Context（Intent、search_results、knowledge、Case A/B/C 等）決定；**措辭** 由 Semantic Driven Response Generation 或過渡期 Formatter 決定。
+
+##### （3）Persona Consistency — 人設一致
+
+**定義：** Persona Consistency 指 AI 始終維持 **同一顧問人設**，而非每次使用相同用字。
+
+| Persona Consistency **意指** | 說明 |
+|------------------------------|------|
+| **Warm（溫暖）** | 語氣正向、樂於協助 |
+| **Friendly（親切）** | 稱呼自然、有耐心 |
+| **Helpful（樂於協助）** | 主動引導下一步、解答疑問 |
+| **Professional（專業）** | 依據資料精確說明、不輕浮不誇大 |
+
+對齊 §3 Persona（年輕女性旅遊顧問；`young_female`）。
+
+| Persona Consistency **不要求** | 說明 |
+|--------------------------------|------|
+| **固定用字（fixed wording）** | 同語意可用不同詞彙 |
+| **固定問候（fixed greeting）** | 問候可因情境變化 |
+| **固定結語（fixed closing）** | 結語可因情境變化 |
+| **固定句型（fixed sentence structure）** | 承接／內容／CTA 可重組 |
+| **固定 emoji 用法（fixed emoji usage）** | 符合 emoji 政策即可；**不** 要求每次相同位置或相同 emoji |
+
+**規則：** **同一人設** 可因 **destination、clarification、FAQ、轉專員** 等 Context **以不同方式表達**；**不可** 換成不同人格（冷淡、嘲諷、過度賣萌、假裝真人員工）。
+
+**規則：** AI **不得** 宣稱自己是「真人客服」或特定姓名；可呈現**顧問風格**，不可**冒充人力**。
+
+#### 8.6.4 生成自由度
+
+語意驅動政策下，AI **不需要**：
+
+| 不需要 | 說明 |
+|--------|------|
+| 固定 Opening 模板 | 問候可每次不同 |
+| 固定 Closing 模板 | 結語可每次不同 |
+| 預定義句型結構 | 承接／內容／CTA 可自然重組 |
+| 固定 emoji 位置或組合 | 僅須符合 §3.3 emoji 政策上限 |
+
+AI **仍須** 遵守：
+
+| 仍須 | 說明 |
+|------|------|
+| §4 Core Principles | Grounded、No Hallucination |
+| §5 Service Scope | Case A / B / C |
+| §6 Guided Selling | 成交導向但不過度推銷 |
+| §7 Clarification | Hard Gate 優先 |
+| `BATS_GEMINI_RESPONSE_CONTRACT.md` | reply_type、validator、emoji 上限 |
+
+#### 8.6.5 目標架構：Semantic Driven Response Generation
+
+長期回覆由 **Gemini**（或未來等效模型）依 Context 執行 **Semantic Driven Response Generation** — 在 **固定 Persona 約束** 下 **動態生成措辭**，**不** 改變人設本身。
+
+輸入 Context 依場景而異，至少可包含：
+
+| Context 來源 | 典型場景 |
+|--------------|----------|
+| `bats_search_intent.*` | Product Search / Recommendation / Clarification |
+| `search_results` / `recommendation_summary` | 商品推薦 |
+| `tenant_private_knowledge` / Shared Knowledge | FAQ、服務／公司資訊 |
+| `voice_profile` / `guard_policy` | 全場景 Persona 與 Anti-hallucination |
+| `fallback_policy` / Case 判定 | 轉專員、out_of_scope |
+
+Product Recommendation 範例輸入：
+
+| Context 欄位 | 用途 |
+|--------------|------|
+| `bats_search_intent.destination` | 目的地語境 |
+| `bats_search_intent.travel_type` | 親子／蜜月等語氣重點 |
+| `bats_search_intent.date_from` / `date_to` | 時間語境 |
+| `bats_search_intent.budget_*` | 預算語境（Soft Clarification） |
+| `search_results` / `recommendation_summary` | Grounded 商品與 URL |
+
+```text
+GeminiContextDocument（v2 或後續版本）
+    + 場景專屬 Context（search_results / knowledge / …）
+    ↓
+GeminiClient（Live API）
+    ↓ Semantic Driven Response Generation
+    ↓（Fixed Persona Constraints + Fact / Semantic Consistency）
+GeminiResponseContract（validator）
+    ↓
+LINE Reply（或 Future Channel）
+```
+
+**規則：** 動態措辭生成 **不得** 繞過 Response Contract Validator；事實須可對照 Context corpus。
+
+#### 8.6.6 與 Semantic Search 分工
+
+| 層級 | 職責 | SSOT |
+|------|------|------|
+| **理解需求** | `BatsSearchIntent`（商品搜尋場景） | `BATS_AI_SEMANTIC_SEARCH.md` |
+| **決定語意** | 是否推薦、是否追問、Case A/B/C、FAQ 命中 | **本文件** |
+| **生成措辭** | 問候、結語、轉場、說明方式（**全場景**） | **§8.6 Semantic Driven** |
+| **驗證輸出** | Grounding、reply_type | `BATS_GEMINI_RESPONSE_CONTRACT.md` |
+
+Semantic Search **不** 定義回覆模板；Consultant Policy **不** 重新定義 Intent 欄位。非搜尋場景之語意由 Knowledge / Service Scope / Case 判定決定，**措辭生成規則仍適用 §8.6**。
+
+---
+
+### 8.7 MVP Template Pool Interim（Phase 9-C-2A.1）
+
+#### 8.7.1 定位
+
+Phase 9-C-2A.1 實作之 **Opening Pool / Closing Pool**（`TravelConsultantPersonaFormatter`）為 **MVP 過渡方案**：
+
+| 項目 | 說明 |
+|------|------|
+| **狀態** | 現行有效、可上線、可驗收 |
+| **架構角色** | 在 Semantic Driven Response Generation 就緒前，提供有限問候／結語變化（**僅 Product 路徑 MVP**） |
+| **非目標** | **不是** 長期 SSOT；**不** 應持續擴充句庫作為主要演進路徑 |
+
+#### 8.7.2 過渡期行為
+
+| 區塊 | MVP 行為 | 長期方向（§8.6） |
+|------|----------|------------------|
+| **Opening** | Pool 隨機選一句 | Semantic Driven Response Generation |
+| **商品列表** | 固定格式（🚩 📅 💰 🛫 📄）；**不變** | 仍須 Grounded；格式由 Renderer/Formatter 或 Contract 約束 |
+| **Closing** | Pool 隨機選一句 | Semantic Driven Response Generation |
+| **Clarification / FAQ / 其他** | 各場景現行 Formatter 或 Gemini path | 同 §8.6 Global；**不** 依賴 Pool 擴充 |
+
+#### 8.7.3 遷移原則
+
+| 原則 | 說明 |
+|------|------|
+| **現行不拆除** | Phase 9-C-2A.2 及以前已上線之 Pool **維持**至 Semantic Driven 路徑就緒 |
+| **不阻塞 MVP** | Pool 與 Semantic Driven **可並存**於 feature gate 後逐步切換 |
+| **遷移觸發** | Gemini Live API + Response Validator 通過 Pilot 驗收後，見 `BATS_AI_RUNTIME_DESIGN.md` §12 |
 
 ---
 
@@ -919,6 +1137,7 @@ Gemini Processing
 |------|------|
 | **AI Recommendation Layer** | 主動推薦、個人化行程組合 |
 | **AI Ranking Layer** | 多源結果智能排序 |
+| **Semantic Driven Response Generation** | §8.6 全站語意驅動回覆；取代 Template Pool 為正式路徑 |
 | **Bonusmee Booking Assistant** | Phase 2 完整報名助理 |
 | **Traveler Registration Workflow** | Request No、旅客登錄、訂位確認 |
 | **RAG / Vector Retrieval** | 知識庫語意檢索增強 |
@@ -932,6 +1151,7 @@ Gemini Processing
 
 | 項目 | 原因 |
 |------|------|
+| **Template Pool 作為長期架構** | 句庫擴充非正式演進路徑；見 AD-007、§8.6 |
 | **AI Suggest Reply Mode** | AI 草稿 → 人工確認 → 送出；不符合 BBC AI SaaS **自動化客服**目標 |
 | **人工指令接手模式** | `#接手`、`#human`、`#結束` 等；已採用 **Automatic Human Takeover**（AD-005） |
 
@@ -947,6 +1167,7 @@ Future 項目應記錄於 Roadmap 或 `TECH_DEBT.md`，**不得** 阻塞 Semanti
 | 日期澄清規則 | `BATS_HYBRID_DATE_POLICY.md` |
 | Gemini Response DTO | `BATS_GEMINI_RESPONSE_CONTRACT.md` |
 | Gemini Client | `BATS_GEMINI_CLIENT.md` |
+| Runtime Design / 遷移 | `BATS_AI_RUNTIME_DESIGN.md` §12 |
 | Multi-Source URL | `MULTI_SOURCE_SEARCH_URL_BUILDER_PHASE9B14.md` |
 | Tenant / Product Source Registry | `TENANT_SOURCE_REGISTRY_POLICY.md` |
 | Source Instance 契約 | `TENANT_SOURCE_INSTANCE_CONTRACT.md` |
@@ -963,10 +1184,10 @@ Future 項目應記錄於 Roadmap 或 `TECH_DEBT.md`，**不得** 阻塞 Semanti
 | 項目 | 狀態 |
 |------|------|
 | **文件狀態** | **v1.0 Adopt Draft** — Gemini Runtime Behavior SSOT |
-| **Adopted Decisions** | AD-001～AD-006A（含 Acknowledgement、Automatic Human Takeover） |
-| **程式實作** | **未開始** — 文件已定案，待 Runtime 實作 |
+| **Adopted Decisions** | AD-001～AD-007（含 Semantic Driven Response Policy） |
+| **程式實作** | Phase 9-C-1 / 9-C-2A MVP 部分已落地；Semantic Driven **文件已定案**，Runtime 遷移待規劃 |
 | **與 Semantic Search 邊界** | 已分離：解析 vs 回覆；Intent 經 Context 傳遞 |
-| **SAFE TO IMPLEMENT** | **是** — AD-001～AD-006A 已 Adopt；實作須依本文件契約 |
+| **SAFE TO IMPLEMENT** | **是** — AD-001～AD-007 已 Adopt；9-C-2A.1 Pool 維持；Semantic Driven 見 Runtime §12 |
 
 ---
 
@@ -974,6 +1195,8 @@ Future 項目應記錄於 Roadmap 或 `TECH_DEBT.md`，**不得** 阻塞 Semanti
 
 | 版本 | 日期 | 狀態 | 說明 |
 |------|------|------|------|
+| **1.2** | 2026-06-14 | Adopt Draft | §8.6 Global Scope、Persona Consistency 定義、Semantic Driven Response Generation 術語 |
+| **1.1** | 2026-06-14 | Adopt Draft | AD-007、§8.6 Semantic Driven Response Policy、§8.7 MVP Template Pool Interim |
 | **1.0** | 2026-06-15 | Adopt Draft | AD-004～AD-006A：Acknowledgement Reply、Automatic Human Takeover、Context Continuity |
 | **1.0** | 2026-06-15 | Adopt Draft | AD-001～AD-003：BatsSearchIntent in Context、Hard/Soft Clarification、External Product Sources |
 | **1.0** | 2026-06-15 | Draft | 初版：Persona、Grounded、Service Scope、Guided Selling、Escalation |

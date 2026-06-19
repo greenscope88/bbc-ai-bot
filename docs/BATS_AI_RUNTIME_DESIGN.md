@@ -30,6 +30,7 @@
 | **RD-005** | **Acknowledgement Reply** 接入於 `saas_router` / Orchestrator **搜尋啟動前**（`clarification_required = false` 且 `AI_ACTIVE`） |
 | **RD-006** | **Automatic Human Takeover** 接入於 **Webhook 入口層**（訊息分類後、AI Outbound 前） |
 | **RD-007** | **Final Reply Check** 接入於 **LINE 送出前最後一道閘門**（`LineService::replyToLine` 呼叫前） |
+| **RD-008** | **Semantic Driven Response（Global）** 為正式全站回覆架構；Phase 9-C-2A.1 Template Pool 為 MVP 過渡；目標為 **Semantic Driven Response Generation**（固定人設約束下動態措辭；見 §3.4、§12） |
 
 ---
 
@@ -48,6 +49,7 @@
 | §9 | Out of Scope |
 | §10 | Success Criteria |
 | §11 | Cross-Reference Index |
+| §12 | Future Migration — Semantic Driven Response |
 
 ---
 
@@ -224,6 +226,55 @@ ClarificationPolicy::decide()
 | `bats_search_intent` in Context | Consultant Policy AD-001 |
 | Acknowledgement Reply | Consultant Policy AD-004；RD-005 |
 | Human Takeover / Final Check | Consultant Policy AD-005～AD-006A；RD-006、RD-007 |
+| Response 措辭生成 | Consultant Policy AD-007、§8.6；RD-008 |
+
+### 3.4 Response Generation Architecture（RD-008）
+
+#### 3.4.1 架構演進
+
+```text
+【MVP 過渡 — 現行有效】
+TravelConsultantPersonaFormatter
+    ├─ Opening Pool（隨機）
+    ├─ 商品區塊（固定格式；Grounded）
+    └─ Closing Pool（隨機）
+         ↑
+    TourFallbackFormatter / TravelConsultantPersonaRuntime
+
+【正式目標 — Semantic Driven（Global）】
+GeminiContextDocument（v2+）+ 場景 Context
+    ↓
+GeminiClient（Live API）
+    ↓
+Semantic Driven Response Generation
+    （Dynamic Wording under Fixed Persona Constraints）
+    ├─ 約束：Fact / Semantic / Persona Consistency（Consultant §8.6）
+    ├─ 場景：Search / Recommendation / Clarification / FAQ / Knowledge / Support / Future
+    └─ 輸出：GeminiResponseContract → LINE Reply
+```
+
+#### 3.4.2 設計原則
+
+| 原則 | 說明 |
+|------|------|
+| **Global 語意驅動** | AD-007 適用**所有** AI 回覆場景，非僅 Product Recommendation |
+| **語意驅動** | 回覆語意由 Context + Case 判定；措辭由 Semantic Driven Response Generation |
+| **人設固定、措辭可變** | Persona 不變； wording / greeting / closing 可隨 Context 變化 |
+| **非模板驅動** | **不** 以擴充 Opening/Closing Pool 作為長期演進策略 |
+| **Grounded First** | 事實來自 search / knowledge corpus；AI 只改「怎麼說」 |
+| **MVP 並存** | Template Pool **保留**至 Semantic Driven path 通過 Pilot；見 §12 |
+
+#### 3.4.3 現行 Runtime 元件（MVP）
+
+| 元件 | 路徑 | 角色 |
+|------|------|------|
+| `TravelConsultantPersonaFormatter` | `core/product_source/recommendation/` | Opening/Closing Pool（過渡） |
+| `TravelConsultantPersonaRuntime` | 同上 | Pilot path 回覆組裝 |
+| `TourFallbackFormatter` | `core/tour_fallback_formatter.php` | Legacy 固定商品列表 + Pool 問候結語 |
+| `ProductRecommendationBuilder` | `core/product_source/recommendation/` | `recommendation_summary`（Grounded 摘要） |
+| `GeminiClient` | `core/product_source/integration/` | 現為 mock；目標改 Live + Semantic Driven Response Generation |
+
+**本階段（9-C-2A.2 Review Fix）：** 僅更新 SSOT；**不** 修改上列 Runtime。
 
 ---
 
@@ -309,6 +360,17 @@ BatsSearchIntentMapper::toSearchCondition(intent)
 | **適用** | 非阻塞搜尋完成後的 race condition 防護（AD-005C） |
 
 **建議元件：** `FinalReplyGate`（新）；可注入 `saas_router` 與 `BatsWebhookOrchestrator`。
+
+### RD-008 — Semantic Driven Response Architecture（Global）
+
+| 項目 | 規格 |
+|------|------|
+| **正式方向** | **Semantic Driven Response Policy（Global）**（Consultant Policy AD-007、§8.6） |
+| **適用範圍** | 全站 AI 回覆：Search、Recommendation、Clarification、FAQ、Knowledge、Support、Future |
+| **目標生成模式** | **Semantic Driven Response Generation** — 固定 Persona 約束下動態措辭；**非** Dynamic Persona |
+| **MVP 過渡** | Phase 9-C-2A.1 Opening/Closing Pool — **維持、不拆除**（現主要覆蓋 Product 路徑） |
+| **不變** | 商品列表格式、搜尋管線、`BatsSearchIntent`、Context 契約 |
+| **遷移** | 見 §12；feature gate 切換；Validator 必須通過後才可關 Pool path |
 
 ---
 
@@ -534,7 +596,9 @@ Phase 9-C-1 MVP **明確排除**：
 | **人工指令接手** `#接手` / `#human` | **Not Planned** |
 | **destination_alias_registry 完整** | Semantic Search Future；MVP 可 stub |
 | **multi_destination parser 完整** | Semantic Search Future；MVP 可空陣列 |
-| **Gemini API 全量整合** | 可先 mock + validator；API 後續 phase |
+| **Gemini API 全量整合** | 可先 mock + validator；API 後續 phase（Semantic Driven 遷移見 §12） |
+| **Semantic Driven 正式切換** | 文件已定案（RD-008）；Runtime 遷移為 **Future**，非本階段 |
+| **拆除 Template Pool** | Pool 在 Semantic Driven 就緒前 **不得** 移除 |
 
 ---
 
@@ -559,6 +623,65 @@ Phase 9-C-1 MVP **驗收條件**（travel_b pilot + feature gate ON）：
 
 ---
 
+## 12. Future Migration — Semantic Driven Response
+
+### 12.1 遷移目標
+
+將回覆生成由 **Template Pool** 過渡至 **Semantic Driven Response Generation**（固定人設約束下之動態措辭），對齊 `BATS_AI_TRAVEL_CONSULTANT_POLICY.md` §8.6（AD-007）。本遷移為 **Global** — 涵蓋 Clarification、FAQ、Knowledge 等全場景，非僅 Product path。
+
+### 12.2 Impact Analysis
+
+| 區域 | 現況（MVP） | 遷移後 | 影響 |
+|------|-------------|--------|------|
+| **Opening / Closing（Product path）** | `TravelConsultantPersonaFormatter` Pool | Semantic Driven Response Generation | **高** — Product 路徑主要變更點 |
+| **Clarification / FAQ / Knowledge** | 各場景 Formatter 或 legacy Gemini | 同 §8.6 Global 規則 | **中～高** — 需統一 Validator |
+| **商品列表** | `TourFallbackFormatter` 固定 🚩📅💰🛫📄 | 仍須 Grounded；格式 SSOT 不變 | **低** |
+| **搜尋 / Intent** | `BatsSearchIntent` → Host B | 不變 | **無** |
+| **Context** | `GeminiContextDocument` v2 + 場景 payload | 擴充多場景 Context；schema 演進另案 | **中** |
+| **GeminiClient** | `generateMockResponse()` | Live API + validator | **高** |
+| **Legacy path** | `TourLineReplyComposer` + Pool | 漸進切換或保留 fallback | **中** |
+| **Tests** | Pool + product format 測試 | 新增 global semantic / persona / grounding 測試 | **中～高** |
+
+### 12.3 建議遷移階段
+
+| 階段 | 內容 | Gate |
+|------|------|------|
+| **M0（現況）** | Opening/Closing Pool + mock Gemini | Phase 9-C-2A.1 ✅ |
+| **M1** | Live API；Product path opening/closing 改 Semantic Driven；商品區塊仍 Formatter | `phase_9c2_semantic_response_enabled` |
+| **M2** | Global Semantic Driven（含 Clarification / FAQ / Knowledge）；Validator 強化 | Pilot travel_b E2E PASS |
+| **M3** | 關閉 Pool path（可保留 emergency fallback） | 營運 sign-off |
+
+### 12.4 前置條件（Migration Readiness）
+
+| # | 條件 |
+|---|------|
+| MR-1 | `GeminiContextDocument` v2 + `recommendation_summary` Pilot 穩定 |
+| MR-2 | `GeminiResponseContractValidator` 通過率 ≥ MVP 門檻（grounding、emoji、reply_type） |
+| MR-3 | Live API 金鑰與 quota 就緒（`.env` 治理流程） |
+| MR-4 | Semantic + Persona consistency 抽測（同語意多措辭；人設 Warm/Friendly/Helpful/Professional 不漂移） |
+| MR-5 | 商品事實回歸測試 PASS（價格、日期、URL 零篡改） |
+
+### 12.5 明確不做（本遷移）
+
+| 排除 | 原因 |
+|------|------|
+| 擴充 Opening/Closing Pool 作為主要功能路線 | 違反 AD-007 |
+| 修改 Hybrid Search / Host B | Out of Scope |
+| 修改商品卡片 emoji 格式 | 已驗收 SSOT |
+| Phase 9-C-2A.2 Runtime 變更 | 本文件僅規劃 |
+
+### 12.6 Feature Gate 建議（Future）
+
+| 設定鍵 | 預設 | 說明 |
+|--------|------|------|
+| `phase_9c2_semantic_response_enabled` | `false` | Global Semantic Driven Response Generation |
+| `phase_9c2_template_pool_enabled` | `true` | MVP Pool fallback（Product path）；M2 後可 false |
+| `phase_9c2_gemini_live_enabled` | `false` | 使用 Live API 取代 mock |
+
+> **命名說明：** 使用 `semantic_response` 而非 `semantic_persona`，因 Persona **固定**、僅 **措辭（wording）** 動態生成。
+
+---
+
 ## 11. Cross-Reference Index
 
 | 主題 | SSOT |
@@ -571,6 +694,7 @@ Phase 9-C-1 MVP **驗收條件**（travel_b pilot + feature gate ON）：
 | Multi-Source | `MULTI_SOURCE_SEARCH_URL_BUILDER_PHASE9B14.md` |
 | Hybrid 2-A | `HYBRID_SMART_SEARCH_PHASE2A_CORE_LAYER.md` |
 | Webhook Orchestrator | `BATS_WEBHOOK_ORCHESTRATOR.md` |
+| Semantic Driven Response | `BATS_AI_TRAVEL_CONSULTANT_POLICY.md` §8.6（AD-007） |
 
 ---
 
@@ -579,9 +703,9 @@ Phase 9-C-1 MVP **驗收條件**（travel_b pilot + feature gate ON）：
 | 項目 | 狀態 |
 |------|------|
 | **文件狀態** | **v1.0 Draft** — Phase 9-C-1 Runtime SSOT |
-| **Adopted Runtime Decisions** | RD-001～RD-007 |
-| **程式實作** | **未開始** |
-| **依賴** | Semantic Search + Consultant Policy 均已 Adopt Draft |
+| **Adopted Runtime Decisions** | RD-001～RD-008 |
+| **程式實作** | Phase 9-C-1 / 9-C-2A MVP 部分已落地；Semantic Driven 遷移見 §12 |
+| **依賴** | Semantic Search + Consultant Policy（含 AD-007）均已 Adopt Draft |
 
 ---
 
@@ -589,6 +713,8 @@ Phase 9-C-1 MVP **驗收條件**（travel_b pilot + feature gate ON）：
 
 | 版本 | 日期 | 狀態 | 說明 |
 |------|------|------|------|
+| **1.2** | 2026-06-14 | Draft | §3.4 / RD-008 / §12 Global Scope、Semantic Driven Response Generation 術語、gate 命名 |
+| **1.1** | 2026-06-14 | Draft | RD-008、§3.4 Response Generation Architecture、§12 Semantic Driven Migration |
 | **1.0** | 2026-06-15 | Draft | 初版：Current/Target Architecture、RD-001～RD-007、MVP 順序 |
 
 ---
