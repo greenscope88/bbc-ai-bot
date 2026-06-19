@@ -87,8 +87,16 @@ final class GeminiResponseContractValidator
             if ($response['used_fallback']) {
                 $violations[] = 'normal_reply must not set used_fallback=true';
             }
-            if ($context['search_results'] === []) {
-                $violations[] = 'normal_reply requires search_results in context';
+            $recSummary = isset($context['recommendation_summary']) && is_array($context['recommendation_summary'])
+                ? $context['recommendation_summary']
+                : null;
+            $hasSearchResults = $context['search_results'] !== [];
+            $hasRecommendations = $recSummary !== null && (int) ($recSummary['result_count'] ?? 0) > 0;
+            $hasProductNoResults = $recSummary !== null
+                && (int) ($recSummary['result_count'] ?? 0) === 0
+                && $this->isProductSearchContext($context);
+            if (!$hasSearchResults && !$hasRecommendations && !$hasProductNoResults) {
+                $violations[] = 'normal_reply requires search_results or recommendation_summary in context';
             }
             $violations = array_merge($violations, $this->collectEmojiViolations(
                 $response['reply_text'],
@@ -205,7 +213,7 @@ final class GeminiResponseContractValidator
             return $violations;
         }
 
-        $groundedCorpus = $this->buildGroundedCorpus($context['search_results']);
+        $groundedCorpus = $this->buildGroundedCorpus($context);
 
         foreach (self::HALLUCINATION_MARKERS as $marker) {
             if (mb_strpos($replyText, $marker) !== false && mb_strpos($groundedCorpus, $marker) === false) {
@@ -233,13 +241,13 @@ final class GeminiResponseContractValidator
     }
 
     /**
-     * @param list<array<string, mixed>> $searchResults
+     * @param array<string, mixed> $context
      */
-    private function buildGroundedCorpus(array $searchResults): string
+    private function buildGroundedCorpus(array $context): string
     {
         $parts = [];
 
-        foreach ($searchResults as $item) {
+        foreach ($context['search_results'] as $item) {
             $parts[] = (string) ($item['title'] ?? '');
             if (isset($item['summary']) && is_string($item['summary'])) {
                 $parts[] = $item['summary'];
@@ -250,7 +258,49 @@ final class GeminiResponseContractValidator
             }
         }
 
+        if (isset($context['recommendation_summary']) && is_array($context['recommendation_summary'])) {
+            $summary = $context['recommendation_summary'];
+            $parts[] = (string) ($summary['recommendation_reason'] ?? '');
+            $parts[] = (string) ($summary['primary_url'] ?? '');
+            if (isset($summary['top_products']) && is_array($summary['top_products'])) {
+                foreach ($summary['top_products'] as $product) {
+                    if (!is_array($product)) {
+                        continue;
+                    }
+                    $parts[] = (string) ($product['title'] ?? '');
+                    $parts[] = (string) ($product['summary'] ?? '');
+                    $parts[] = (string) ($product['primary_url'] ?? '');
+                }
+            }
+        }
+
         return implode(' ', $parts);
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function isProductSearchContext(array $context): bool
+    {
+        if (!isset($context['bats_search_intent']) || !is_array($context['bats_search_intent'])) {
+            return false;
+        }
+
+        $intent = $context['bats_search_intent'];
+        if (($intent['clarification_required'] ?? false) === true) {
+            return false;
+        }
+
+        $destination = isset($intent['destination']) && is_string($intent['destination'])
+            ? trim($intent['destination'])
+            : '';
+        if ($destination !== '') {
+            return true;
+        }
+
+        $freeText = isset($intent['free_text']) ? trim((string) $intent['free_text']) : '';
+
+        return preg_match('/\d{1,2}\s*月/u', $freeText) === 1;
     }
 
     /**

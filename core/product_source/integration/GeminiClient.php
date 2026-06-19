@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'renderer' . DIRECTORY_SEPARATOR . 'gemini' . DIRECTORY_SEPARATOR . 'GeminiContextDocument.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'renderer' . DIRECTORY_SEPARATOR . 'gemini' . DIRECTORY_SEPARATOR . 'GeminiResponseContract.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'renderer' . DIRECTORY_SEPARATOR . 'gemini' . DIRECTORY_SEPARATOR . 'GeminiResponseContractValidator.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'recommendation' . DIRECTORY_SEPARATOR . 'TravelConsultantPersonaRuntime.php';
 
 /**
  * Gemini client adapter skeleton (Phase 9-B-26B-2).
@@ -14,9 +15,14 @@ final class GeminiClient
 {
     private GeminiResponseContractValidator $responseValidator;
 
-    public function __construct(?GeminiResponseContractValidator $responseValidator = null)
-    {
+    private TravelConsultantPersonaRuntime $personaRuntime;
+
+    public function __construct(
+        ?GeminiResponseContractValidator $responseValidator = null,
+        ?TravelConsultantPersonaRuntime $personaRuntime = null
+    ) {
         $this->responseValidator = $responseValidator ?? new GeminiResponseContractValidator();
+        $this->personaRuntime = $personaRuntime ?? new TravelConsultantPersonaRuntime();
     }
 
     /**
@@ -88,6 +94,24 @@ final class GeminiClient
         $voicePersona = isset($ctx['voice_profile']['persona'])
             ? trim((string) $ctx['voice_profile']['persona'])
             : 'young_female';
+        $batsIntent = isset($ctx['bats_search_intent']) && is_array($ctx['bats_search_intent'])
+            ? $ctx['bats_search_intent']
+            : null;
+        $recommendationSummary = isset($ctx['recommendation_summary']) && is_array($ctx['recommendation_summary'])
+            ? $ctx['recommendation_summary']
+            : null;
+
+        if ($recommendationSummary !== null) {
+            $recommendationResponse = $this->buildRecommendationResponseDocument(
+                $recommendationSummary,
+                $batsIntent,
+                $voicePersona
+            );
+            if ($recommendationResponse !== null) {
+                return $recommendationResponse;
+            }
+        }
+
         $scope = $this->detectServiceScope(
             (string) $ctx['customer_query'],
             $ctx['tenant_service_scope']
@@ -135,6 +159,47 @@ final class GeminiClient
             'used_service_scope' => $scope,
             'voice_profile_used' => $voicePersona,
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $recommendationSummary
+     * @param array<string, mixed>|null $batsIntent
+     * @return array<string, mixed>|null
+     */
+    private function buildRecommendationResponseDocument(
+        array $recommendationSummary,
+        ?array $batsIntent,
+        string $voicePersona
+    ): ?array {
+        if ($batsIntent !== null && ($batsIntent['clarification_required'] ?? false) === true) {
+            return null;
+        }
+
+        $resultCount = isset($recommendationSummary['result_count'])
+            ? max(0, (int) $recommendationSummary['result_count'])
+            : 0;
+
+        if ($resultCount > 0) {
+            return [
+                'reply_text' => $this->personaRuntime->composeProductRecommendation($recommendationSummary),
+                'reply_type' => 'normal_reply',
+                'used_fallback' => false,
+                'used_service_scope' => 'tour',
+                'voice_profile_used' => $voicePersona,
+            ];
+        }
+
+        if ($batsIntent !== null && $this->personaRuntime->isProductSearchIntent($batsIntent)) {
+            return [
+                'reply_text' => $this->personaRuntime->composeNoResultsMessage(),
+                'reply_type' => 'normal_reply',
+                'used_fallback' => false,
+                'used_service_scope' => 'tour',
+                'voice_profile_used' => $voicePersona,
+            ];
+        }
+
+        return null;
     }
 
     /**

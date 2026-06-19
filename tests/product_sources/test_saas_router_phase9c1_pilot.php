@@ -141,7 +141,20 @@ test_assert(
     'case2: no v2 context on clarification'
 );
 
-// Case 3: gate true + dated query → structured v2 path
+// Case 3: gate true + dated query → structured v2 path with product recommendation
+$capturedReplyText = '';
+$captureLineSender = static function (string $url, string $token, string $replyToken, string $text) use (&$capturedReplyText): array {
+    unset($url, $token);
+    $capturedReplyText = $text;
+    return [
+        'status' => 200,
+        'reply_token' => $replyToken,
+        'text_length' => mb_strlen($text),
+        'mock' => true,
+        'kind' => 'final',
+    ];
+};
+
 $resultSearch = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     $tenantTravelB,
     'BATS測試北海道7月',
@@ -153,7 +166,7 @@ $resultSearch = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     null,
     buildPilotMockSearchClient('北海道7月團'),
     $referenceDate,
-    $mockLineSender
+    $captureLineSender
 );
 test_assert(is_array($resultSearch), 'case3: searchable result array');
 test_assert(($resultSearch['phase_9c1']['clarification_required'] ?? true) === false, 'case3: not clarification');
@@ -166,6 +179,10 @@ test_assert(
     (int) ($resultSearch['phase_9c1']['reply_text_length'] ?? 0) > 0,
     'case3: reply text produced'
 );
+test_assert(mb_strpos($capturedReplyText, '超出') === false, 'case3: no out-of-scope reply');
+test_assert(mb_strpos($capturedReplyText, '您可以參考以下完整行程') !== false, 'case3: primary_url section present');
+test_assert(preg_match('#https?://#u', $capturedReplyText) === 1, 'case3: primary_url in reply');
+test_assert(mb_strpos($capturedReplyText, '北海道') !== false, 'case3: product recommendation content');
 
 // Case 4: travel_b without prefix → null
 test_assert(

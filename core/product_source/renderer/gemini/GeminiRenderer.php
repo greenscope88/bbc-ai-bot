@@ -61,6 +61,10 @@ final class GeminiRenderer implements ChannelRendererInterface
 
         if ($schemaVersion >= GeminiContextDocument::SCHEMA_VERSION_V2) {
             $document['bats_search_intent'] = $this->resolveBatsSearchIntent($mergedContext);
+            $recommendationSummary = $this->resolveRecommendationSummary($mergedContext);
+            if ($recommendationSummary !== null) {
+                $document['recommendation_summary'] = $recommendationSummary;
+            }
         }
 
         return $this->documentValidator->validate($document);
@@ -201,7 +205,7 @@ final class GeminiRenderer implements ChannelRendererInterface
                 '不亂承諾',
             ],
             'emoji_policy' => [
-                'allowed_emojis' => ['😊', '✈️', '🌸', '📌', '💡', '🧳'],
+                'allowed_emojis' => ['😊', '✈️', '🌸', '📌', '💡', '🧳', '♨️'],
                 'rules' => [
                     '不可過量',
                     '不可幼稚化',
@@ -343,5 +347,18 @@ final class GeminiRenderer implements ChannelRendererInterface
             'clarification_reason' => null,
             'confidence' => 0.0,
         ]);
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     * @return array<string, mixed>|null
+     */
+    private function resolveRecommendationSummary(array $context): ?array
+    {
+        if (!isset($context['recommendation_summary']) || !is_array($context['recommendation_summary'])) {
+            return null;
+        }
+
+        return GeminiContextDocument::normalizeRecommendationSummary($context['recommendation_summary']);
     }
 }

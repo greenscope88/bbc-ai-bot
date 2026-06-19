@@ -77,6 +77,7 @@ final class GeminiContextDocumentValidator
 
         if ($normalized['schema_version'] >= GeminiContextDocument::SCHEMA_VERSION_V2) {
             $violations = array_merge($violations, $this->collectBatsSearchIntentViolations($document, $normalized));
+            $violations = array_merge($violations, $this->collectRecommendationSummaryViolations($document, $normalized));
         }
 
         return $violations;
@@ -220,6 +221,40 @@ final class GeminiContextDocumentValidator
             if (!array_key_exists($key, $intent)) {
                 $violations[] = 'bats_search_intent.' . $key . ' is required';
             }
+        }
+
+        return $violations;
+    }
+
+    /**
+     * @param array<string, mixed> $document
+     * @param array<string, mixed> $normalized
+     * @return list<string>
+     */
+    private function collectRecommendationSummaryViolations(array $document, array $normalized): array
+    {
+        if (!array_key_exists('recommendation_summary', $document)) {
+            return [];
+        }
+
+        if (!is_array($document['recommendation_summary'])) {
+            return ['recommendation_summary must be an array when present'];
+        }
+
+        $summary = $normalized['recommendation_summary'];
+        if (!is_array($summary)) {
+            return ['recommendation_summary must be an array'];
+        }
+
+        $violations = [];
+        foreach (['result_count', 'top_products', 'primary_url', 'recommendation_reason'] as $key) {
+            if (!array_key_exists($key, $summary)) {
+                $violations[] = 'recommendation_summary.' . $key . ' is required';
+            }
+        }
+
+        if (isset($summary['top_products']) && !is_array($summary['top_products'])) {
+            $violations[] = 'recommendation_summary.top_products must be an array';
         }
 
         return $violations;

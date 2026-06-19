@@ -526,6 +526,19 @@ final class TourPromptContextService
             $items = [];
         }
 
+        $listingSearchUrl = isset($apiResult['search_url']) ? trim((string) $apiResult['search_url']) : '';
+        if ($listingSearchUrl !== '') {
+            foreach ($items as $index => $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+                if (!isset($item['primary_url']) && !isset($item['search_url']) && !isset($item['url'])) {
+                    $item['search_url'] = $listingSearchUrl;
+                }
+                $items[$index] = $item;
+            }
+        }
+
         return [
             'legacy_context' => $contextBuilder->build($apiResult, $buildOptions),
             'search_results' => array_values($items),

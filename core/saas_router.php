@@ -25,6 +25,7 @@ require_once __DIR__ . '/product_source/channel_publish_plan/ChannelPublishPlan.
 require_once __DIR__ . '/product_source/channel_publish_plan/ChannelPublishPlanValidator.php';
 require_once __DIR__ . '/product_source/renderer/gemini/GeminiRenderer.php';
 require_once __DIR__ . '/product_source/integration/GeminiClient.php';
+require_once __DIR__ . '/product_source/recommendation/ProductRecommendationBuilder.php';
 
 class SaaSRouter
 {
@@ -1102,11 +1103,19 @@ class SaaSRouter
                 }
 
                 $plan = self::buildGeminiPublishPlanFromSearchResults($structuredResult->getSearchResults());
+                $intentArray = $structuredResult->getIntent()->toArray();
+                $recommendationBuilder = new ProductRecommendationBuilder();
+                $recommendationSummary = $recommendationBuilder->build(
+                    $plan->getItems(),
+                    $intentArray,
+                    $queryText
+                );
                 $geminiContext = $renderer->renderDocument($plan, [
                     'schema_version' => GeminiContextDocument::SCHEMA_VERSION_V2,
                     'customer_query' => $queryText,
                     'tenant_name' => $tenantName,
-                    'bats_search_intent' => $structuredResult->getIntent()->toArray(),
+                    'bats_search_intent' => $intentArray,
+                    'recommendation_summary' => $recommendationSummary,
                 ]);
                 $geminiContextSchemaVersion = $geminiContext->getSchemaVersion();
                 $replyText = $client->generateResponse($geminiContext)->getReplyText();

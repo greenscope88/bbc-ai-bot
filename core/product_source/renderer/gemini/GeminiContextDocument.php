@@ -36,6 +36,9 @@ final class GeminiContextDocument
     /** @var array<string, mixed>|null */
     private ?array $batsSearchIntent;
 
+    /** @var array<string, mixed>|null */
+    private ?array $recommendationSummary;
+
     /**
      * @param list<array<string, mixed>> $searchResults
      * @param array<string, mixed> $voiceProfile
@@ -43,6 +46,7 @@ final class GeminiContextDocument
      * @param array<string, mixed> $guardPolicy
      * @param array<string, mixed> $fallbackPolicy
      * @param array<string, mixed>|null $batsSearchIntent
+     * @param array<string, mixed>|null $recommendationSummary
      */
     private function __construct(
         string $customerQuery,
@@ -53,7 +57,8 @@ final class GeminiContextDocument
         array $guardPolicy,
         array $fallbackPolicy,
         int $schemaVersion,
-        ?array $batsSearchIntent = null
+        ?array $batsSearchIntent = null,
+        ?array $recommendationSummary = null
     ) {
         $this->customerQuery = $customerQuery;
         $this->searchResults = $searchResults;
@@ -64,6 +69,7 @@ final class GeminiContextDocument
         $this->fallbackPolicy = $fallbackPolicy;
         $this->schemaVersion = $schemaVersion;
         $this->batsSearchIntent = $batsSearchIntent;
+        $this->recommendationSummary = $recommendationSummary;
     }
 
     /**
@@ -82,7 +88,8 @@ final class GeminiContextDocument
             $normalized['guard_policy'],
             $normalized['fallback_policy'],
             (int) $normalized['schema_version'],
-            $normalized['bats_search_intent']
+            $normalized['bats_search_intent'],
+            $normalized['recommendation_summary']
         );
     }
 
@@ -104,6 +111,10 @@ final class GeminiContextDocument
 
         if ($this->schemaVersion >= self::SCHEMA_VERSION_V2 && $this->batsSearchIntent !== null) {
             $document['bats_search_intent'] = $this->batsSearchIntent;
+        }
+
+        if ($this->schemaVersion >= self::SCHEMA_VERSION_V2 && $this->recommendationSummary !== null) {
+            $document['recommendation_summary'] = $this->recommendationSummary;
         }
 
         return $document;
@@ -128,6 +139,14 @@ final class GeminiContextDocument
     public function getSearchResults(): array
     {
         return $this->searchResults;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function getRecommendationSummary(): ?array
+    {
+        return $this->recommendationSummary;
     }
 
     /**
@@ -191,7 +210,66 @@ final class GeminiContextDocument
             $out['bats_search_intent'] = self::normalizeBatsSearchIntent($document['bats_search_intent']);
         }
 
+        $out['recommendation_summary'] = null;
+        if ($out['schema_version'] >= self::SCHEMA_VERSION_V2
+            && isset($document['recommendation_summary'])
+            && is_array($document['recommendation_summary'])
+        ) {
+            $out['recommendation_summary'] = self::normalizeRecommendationSummary($document['recommendation_summary']);
+        }
+
         return $out;
+    }
+
+    /**
+     * @param array<string, mixed> $summary
+     * @return array<string, mixed>
+     */
+    public static function normalizeRecommendationSummary(array $summary): array
+    {
+        $topProducts = [];
+        if (isset($summary['top_products']) && is_array($summary['top_products'])) {
+            foreach ($summary['top_products'] as $product) {
+                if (!is_array($product)) {
+                    continue;
+                }
+                $title = isset($product['title']) ? trim((string) $product['title']) : '';
+                if ($title === '') {
+                    continue;
+                }
+                $topProducts[] = [
+                    'title' => $title,
+                    'summary' => isset($product['summary']) && is_string($product['summary'])
+                        ? (trim($product['summary']) !== '' ? trim($product['summary']) : null)
+                        : null,
+                    'primary_url' => isset($product['primary_url']) ? trim((string) $product['primary_url']) : '',
+                    'display_emoji' => isset($product['display_emoji']) ? trim((string) $product['display_emoji']) : '✈️',
+                ];
+            }
+        }
+
+        $preferenceHints = [];
+        if (isset($summary['preference_hints']) && is_array($summary['preference_hints'])) {
+            foreach ($summary['preference_hints'] as $hint) {
+                if (!is_string($hint)) {
+                    continue;
+                }
+                $trimmed = trim($hint);
+                if ($trimmed !== '') {
+                    $preferenceHints[] = $trimmed;
+                }
+            }
+        }
+
+        return [
+            'result_count' => isset($summary['result_count']) ? max(0, (int) $summary['result_count']) : 0,
+            'top_products' => $topProducts,
+            'primary_url' => isset($summary['primary_url']) ? trim((string) $summary['primary_url']) : '',
+            'recommendation_reason' => isset($summary['recommendation_reason'])
+                ? trim((string) $summary['recommendation_reason'])
+                : '',
+            'preference_hints' => $preferenceHints,
+        ];
     }
 
     /**

@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'gemini_tour_context_builder.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'recommendation' . DIRECTORY_SEPARATOR . 'TravelConsultantPersonaFormatter.php';
 
 /**
  * LINE-friendly reply when Gemini fails but tour prompt context exists.
@@ -30,12 +31,16 @@ final class TourFallbackFormatter
     /**
      * Build a customer-visible message from tour context text (Gemini adjunct block).
      */
-    public static function formatFromTourContext(string $tourContext): string
-    {
+    public static function formatFromTourContext(
+        string $tourContext,
+        ?TravelConsultantPersonaFormatter $personaFormatter = null
+    ): string {
         $ctx = trim($tourContext);
         if ($ctx === '') {
             return '';
         }
+
+        $formatter = $personaFormatter ?? TravelConsultantPersonaFormatter::createRandomized();
 
         $body = self::stripInstructionBlock($ctx);
         $destination = self::extractSearchDestination($body);
@@ -44,9 +49,7 @@ final class TourFallbackFormatter
         $bodyForParse = self::stripSearchDestinationLine($bodyForParse);
         $url = self::extractSearchUrl($bodyForParse);
 
-        $lines = [];
-        $lines[] = '哈囉，您好～';
-        $lines[] = '我是旅遊 AI 客服，以下為您整理最新的出團資訊：';
+        $lines = $formatter->openingLines();
         $lines[] = '';
 
         $items = self::parseItemBlocks($bodyForParse);
@@ -89,7 +92,9 @@ final class TourFallbackFormatter
         }
 
         $lines[] = '';
-        $lines[] = '如需更多協助，歡迎再告訴我們。';
+        foreach ($formatter->closingLines() as $closingLine) {
+            $lines[] = $closingLine;
+        }
 
         return trim(implode("\n", $lines));
     }
