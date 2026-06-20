@@ -265,6 +265,10 @@ final class BdsXlsxReader
             }
         }
 
+        if ($rows === []) {
+            $rows[] = $this->combineRow($headers, array_fill(0, count($headers), ''));
+        }
+
         return $rows;
     }
 

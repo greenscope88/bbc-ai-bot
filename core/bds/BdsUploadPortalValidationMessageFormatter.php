@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'BdsWorksheetNameMapper.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'BdsHeaderContract.php';
 
 /**
  * Phase 6A — Upload Portal validation error display (Chinese UX).
@@ -12,60 +13,11 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'BdsWorksheetNameMapper.php';
  */
 final class BdsUploadPortalValidationMessageFormatter
 {
-    /**
-     * Canonical tab => allowed English snake_case field names (Contract §7).
-     *
-     * @var array<string, list<string>>
-     */
-    private const TAB_FIELD_NAMES = [
-        'company_profile' => [
-            'company_name',
-            'summary',
-            'phone',
-            'address',
-            'line_official',
-            'email',
-            'website',
-            'business_hours',
-        ],
-        'qa' => [
-            'question',
-            'answer',
-            'qa_id',
-            'category',
-            'enabled',
-            'sort_order',
-            'tags',
-        ],
-        'external_product_links' => [
-            'name',
-            'url',
-            'link_id',
-            'platform',
-            'description',
-            'enabled',
-            'sort_order',
-        ],
-        'service_items' => [
-            'service_id',
-            'name',
-            'description',
-            'category',
-            'price_amount',
-            'price_currency',
-            'price_unit',
-            'enabled',
-            'sort_order',
-        ],
-        'special_prices' => [
-            'item_name',
-            'price_amount',
-            'price_id',
-            'service_id',
-            'description',
-            'enabled',
-            'sort_order',
-        ],
+    /** @var list<string> */
+    private const HEADER_CONTRACT_ERROR_CODES = [
+        'BDC_INVALID_FIELD_NAME',
+        'BDC_HEADER_NOT_ALLOWED',
+        'BDC_REQUIRED_HEADER_MISSING',
     ];
 
     /**
@@ -92,9 +44,9 @@ final class BdsUploadPortalValidationMessageFormatter
      */
     public static function formatFromErrorReport(string $errorReportPath, string $cliReason = ''): ?string
     {
-        $invalidFieldErrors = self::loadErrorsByCode($errorReportPath, 'BDC_INVALID_FIELD_NAME');
-        if ($invalidFieldErrors !== []) {
-            return self::formatInvalidFieldNameErrors($invalidFieldErrors);
+        $headerErrors = self::loadHeaderContractErrors($errorReportPath);
+        if ($headerErrors !== []) {
+            return self::formatHeaderContractErrors($headerErrors);
         }
 
         if (self::isValidationFailureReason($cliReason)) {
@@ -102,6 +54,21 @@ final class BdsUploadPortalValidationMessageFormatter
         }
 
         return null;
+    }
+
+    /**
+     * @return list<array{code?: string, tab?: ?string, field?: ?string, row_index?: ?int, message?: string}>
+     */
+    public static function loadHeaderContractErrors(string $errorReportPath): array
+    {
+        $matched = [];
+        foreach (self::HEADER_CONTRACT_ERROR_CODES as $code) {
+            foreach (self::loadErrorsByCode($errorReportPath, $code) as $error) {
+                $matched[] = $error;
+            }
+        }
+
+        return $matched;
     }
 
     /**
@@ -141,56 +108,64 @@ final class BdsUploadPortalValidationMessageFormatter
     /**
      * @param list<array{code?: string, tab?: ?string, field?: ?string, row_index?: ?int, message?: string}> $errors
      */
-    public static function formatInvalidFieldNameErrors(array $errors): string
+    public static function formatHeaderContractErrors(array $errors): string
     {
         $blocks = [];
         $blocks[] = '本次上傳資料格式檢查未通過。';
         $blocks[] = '';
-        $blocks[] = '您修改了系統保留欄位名稱。';
+        $blocks[] = '您修改了系統保留欄位名稱，或缺少必要欄位。';
 
+        $grouped = [];
         foreach ($errors as $error) {
             $tab = isset($error['tab']) ? trim((string) $error['tab']) : '';
-            $invalidField = isset($error['field']) ? trim((string) $error['field']) : '';
-            if ($invalidField === '' && isset($error['message'])) {
-                $invalidField = self::extractInvalidFieldFromMessage((string) $error['message']);
+            if (!isset($grouped[$tab])) {
+                $grouped[$tab] = [];
             }
+            $grouped[$tab][] = $error;
+        }
 
+        foreach ($grouped as $tab => $tabErrors) {
             $blocks[] = '';
             $blocks[] = '分頁：';
             $blocks[] = self::tabDisplayName($tab);
             $blocks[] = '';
             $blocks[] = '錯誤欄位：';
-            $blocks[] = $invalidField !== '' ? $invalidField : '（無法辨識）';
-            $blocks[] = '';
 
-            $suggested = self::suggestCorrectFieldName($tab, $invalidField);
-            $tabFields = self::tabFieldNames($tab);
-
-            $blocks[] = '正確欄位名稱：';
-            $blocks[] = '';
-            if ($suggested !== null) {
-                $blocks[] = $suggested;
-            } elseif ($tabFields !== []) {
-                $blocks[] = implode("\n", $tabFields);
-            } else {
-                $blocks[] = '（請使用英文欄位名稱）';
+            $fields = [];
+            foreach ($tabErrors as $error) {
+                $field = isset($error['field']) ? trim((string) $error['field']) : '';
+                if ($field === '' && isset($error['message'])) {
+                    $field = self::extractFieldFromMessage((string) $error['message']);
+                }
+                if ($field !== '' && !in_array($field, $fields, true)) {
+                    $fields[] = $field;
+                }
             }
 
-            if ($tabFields !== [] && ($suggested === null || count($tabFields) > 1)) {
-                $blocks[] = '';
-                $blocks[] = '本分頁保留欄位名稱：';
-                $blocks[] = implode("\n", $tabFields);
-            }
+            $blocks[] = $fields !== [] ? implode("\n", $fields) : '（無法辨識）';
+            $blocks[] = '';
+            $blocks[] = '本分頁允許使用的欄位名稱：';
+
+            $allowed = self::tabFieldNames($tab);
+            $blocks[] = $allowed !== [] ? implode("\n", $allowed) : '（請使用英文欄位名稱）';
         }
 
         $blocks[] = '';
-        $blocks[] = '請勿修改系統保留欄位名稱。';
+        $blocks[] = '請勿自行新增、刪除或修改系統欄位名稱。';
         $blocks[] = '';
         $blocks[] = '只需修改第 2 列以後的資料即可。';
         $blocks[] = '';
         $blocks[] = '修正後請重新上傳。';
 
         return implode("\n", $blocks);
+    }
+
+    /**
+     * @param list<array{code?: string, tab?: ?string, field?: ?string, row_index?: ?int, message?: string}> $errors
+     */
+    public static function formatInvalidFieldNameErrors(array $errors): string
+    {
+        return self::formatHeaderContractErrors($errors);
     }
 
     public static function formatGenericValidationFailure(): string
@@ -211,6 +186,8 @@ final class BdsUploadPortalValidationMessageFormatter
         $patterns = [
             '/validation\s+failed/i',
             '/BDC_INVALID_FIELD_NAME/i',
+            '/BDC_HEADER_NOT_ALLOWED/i',
+            '/BDC_REQUIRED_HEADER_MISSING/i',
             '/Validation:\s*FAIL/i',
         ];
 
@@ -237,11 +214,7 @@ final class BdsUploadPortalValidationMessageFormatter
      */
     public static function tabFieldNames(string $canonicalTab): array
     {
-        if ($canonicalTab === '' || !isset(self::TAB_FIELD_NAMES[$canonicalTab])) {
-            return [];
-        }
-
-        return self::TAB_FIELD_NAMES[$canonicalTab];
+        return BdsHeaderContract::allowedHeaders($canonicalTab);
     }
 
     public static function suggestCorrectFieldName(string $canonicalTab, string $invalidField): ?string
@@ -272,9 +245,19 @@ final class BdsUploadPortalValidationMessageFormatter
         return null;
     }
 
-    private static function extractInvalidFieldFromMessage(string $message): string
+    private static function extractFieldFromMessage(string $message): string
     {
-        if (preg_match('/Field name must be English snake_case in v1:\s*(.+)$/u', trim($message), $matches) === 1) {
+        $message = trim($message);
+
+        if (preg_match('/Field name must be English snake_case in v1:\s*(.+)$/u', $message, $matches) === 1) {
+            return trim((string) $matches[1]);
+        }
+
+        if (preg_match('/header is not allowed:\s*(.+)$/u', $message, $matches) === 1) {
+            return trim((string) $matches[1]);
+        }
+
+        if (preg_match('/required header is missing:\s*(.+)$/u', $message, $matches) === 1) {
             return trim((string) $matches[1]);
         }
 

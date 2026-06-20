@@ -349,7 +349,7 @@ if ($isUploadMode) {
 }
 
 $normalized = $parser->parse($tenantSno, $tabs);
-$validation = $validator->validate($normalized);
+$validation = $validator->validate($normalized, $tabs);
 
 if (($validation['ok'] ?? false) !== true) {
     $writer->writeDryRun($tenantSno, $normalized, $validation, $sourceSheetId, $uploadSource);
