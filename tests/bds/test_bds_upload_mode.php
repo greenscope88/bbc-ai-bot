@@ -159,8 +159,8 @@ function build_valid_sheet_grids(): array
 {
     return [
         'company_profile' => [
-            ['company_name', 'summary'],
-            ['Upload Mode Travel', 'Dry-run demo'],
+            ['company_name', 'summary', 'phone', 'address', 'line_official', 'email', 'website', 'business_hours'],
+            ['Upload Mode Travel', 'Travel agency', '02-9999-8888', 'Taipei', '@travel_b', 'info@example.com', 'https://example.com', 'Mon-Fri 9-18'],
         ],
         'qa' => [
             ['question', 'answer'],
@@ -171,8 +171,8 @@ function build_valid_sheet_grids(): array
             ['Partner', 'https://example.com/partner'],
         ],
         'service_items' => [
-            ['name', 'price_amount'],
-            ['Visa Help', '1200'],
+            ['name'],
+            ['Visa Help'],
         ],
         'special_prices' => [
             ['item_name', 'price_amount'],
@@ -269,7 +269,7 @@ $tabs = $reader->readFile($xlsxPath);
 $parser = new BdsMockSheetParser();
 $validator = new BdsValidator();
 $normalized = $parser->parse($tenantSno, $tabs);
-$validation = $validator->validate($normalized);
+$validation = $validator->validate($normalized, $tabs);
 test_assert(($validation['ok'] ?? false) === true, 'F: valid excel passes validation');
 
 $knowledgeJson = BdsKnowledgeDocumentBuilder::fromNormalized($tenantSno, $normalized, null);

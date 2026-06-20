@@ -100,8 +100,7 @@ test_assert(has_error_code($missingUrlResult, 'BDC_REQUIRED_FIELD_MISSING', 'ext
 $missingServiceId = build_valid_normalized();
 unset($missingServiceId['service_items'][0]['service_id']);
 $missingServiceIdResult = $validator->validate($missingServiceId);
-test_assert($missingServiceIdResult['ok'] === false, 'missing service_items.service_id fails');
-test_assert(has_error_code($missingServiceIdResult, 'BDC_REQUIRED_FIELD_MISSING', 'service_items', 'service_id'), 'missing service_id error code');
+test_assert($missingServiceIdResult['ok'] === true, 'missing service_items.service_id still passes when name present');
 
 $missingPriceAmount = build_valid_normalized();
 unset($missingPriceAmount['special_prices'][0]['price_amount']);

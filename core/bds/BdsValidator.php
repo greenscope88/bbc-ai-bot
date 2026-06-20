@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'BdsHeaderContract.php';
+
 /**
  * BDS Phase 2 — Validator for normalized tenant_private_knowledge arrays.
  *
@@ -30,6 +32,7 @@ final class BdsValidator
 
   /**
    * @param array<string, mixed> $normalized Phase 1 parser output.
+   * @param array<string, list<array<string, mixed>>>|null $rawTabs Optional pre-parse tab rows for header contract checks.
    * @return array{
    *   ok: bool,
    *   errors: list<array{code: string, message: string, tab: ?string, row_index: ?int, field: ?string}>,
@@ -37,10 +40,14 @@ final class BdsValidator
    *   validated_at: string
    * }
    */
-  public function validate(array $normalized): array
+  public function validate(array $normalized, ?array $rawTabs = null): array
   {
     $errors = [];
     $warnings = [];
+
+    if ($rawTabs !== null) {
+      $this->validateHeaderContracts($rawTabs, $errors);
+    }
 
     $this->validateStructure($normalized, $errors);
     $this->validateCompanyProfile($normalized, $errors);
@@ -55,6 +62,92 @@ final class BdsValidator
       'warnings' => $warnings,
       'validated_at' => gmdate('Y-m-d\TH:i:s\Z'),
     ];
+  }
+
+  /**
+   * @param array<string, list<array<string, mixed>>> $rawTabs
+   * @param list<array{code: string, message: string, tab: ?string, row_index: ?int, field: ?string}> $errors
+   */
+  private function validateHeaderContracts(array $rawTabs, array &$errors): void
+  {
+    foreach (self::REQUIRED_BLOCKS as $tab) {
+      $headers = $this->extractTabHeaders(isset($rawTabs[$tab]) ? $rawTabs[$tab] : []);
+      $this->validateTabHeaderContract($tab, $headers, $errors);
+    }
+  }
+
+  /**
+   * @param list<array<string, mixed>> $rows
+   * @return list<string>
+   */
+  private function extractTabHeaders(array $rows): array
+  {
+    if ($rows === [] || !isset($rows[0]) || !is_array($rows[0])) {
+      return [];
+    }
+
+    $headers = [];
+    foreach (array_keys($rows[0]) as $field) {
+      if (is_string($field) && $field !== '') {
+        $headers[] = $field;
+      }
+    }
+
+    return $headers;
+  }
+
+  /**
+   * @param list<string> $headers
+   * @param list<array{code: string, message: string, tab: ?string, row_index: ?int, field: ?string}> $errors
+   */
+  private function validateTabHeaderContract(string $tab, array $headers, array &$errors): void
+  {
+    $allowed = BdsHeaderContract::allowedHeaders($tab);
+    $required = BdsHeaderContract::requiredHeaders($tab);
+
+    if ($allowed === []) {
+      return;
+    }
+
+    foreach ($headers as $field) {
+      if (in_array($field, $allowed, true)) {
+        continue;
+      }
+
+      if (!$this->isEnglishFieldName($field)) {
+        $this->addError(
+          $errors,
+          'BDC_INVALID_FIELD_NAME',
+          'Field name must be English snake_case in v1: ' . $field,
+          $tab,
+          null,
+          $field
+        );
+        continue;
+      }
+
+      $this->addError(
+        $errors,
+        'BDC_HEADER_NOT_ALLOWED',
+        $tab . ' header is not allowed: ' . $field,
+        $tab,
+        null,
+        $field
+      );
+    }
+
+    foreach ($required as $field) {
+      if (!in_array($field, $headers, true)) {
+        $this->addError(
+          $errors,
+          'BDC_REQUIRED_HEADER_MISSING',
+          $tab . ' required header is missing: ' . $field,
+          $tab,
+          null,
+          $field
+        );
+      }
+    }
   }
 
   /**
@@ -158,7 +251,7 @@ final class BdsValidator
       $errors,
       'service_items',
       $normalized['service_items'],
-      ['service_id', 'name']
+      ['name']
     );
   }
 
