@@ -27,4 +27,9 @@ interface TenantPrivateKnowledgeProviderInterface
      * @return array<string, mixed>
      */
     public function fetchServiceItemsDocument(): array;
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function fetchExternalProductLinksDocument(): array;
 }

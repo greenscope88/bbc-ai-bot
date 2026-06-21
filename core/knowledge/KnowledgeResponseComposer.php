@@ -63,6 +63,10 @@ final class KnowledgeResponseComposer
             "若還有其他服務項目想詢問，\n歡迎隨時告訴我們 ✈️",
             "如需更多服務資訊，\n歡迎再與我們聯繫 😊",
         ],
+        'external_product_links' => [
+            "若還有其他商品入口想詢問，\n歡迎隨時告訴我們 ✈️",
+            "如需更多旅遊商品資訊，\n歡迎再與我們聯繫 😊",
+        ],
     ];
 
     /** @var callable(string, int): int|null */
@@ -149,6 +153,44 @@ final class KnowledgeResponseComposer
             ? '目前提供的服務項目如下：'
             : '為您確認到以下服務項目：';
         $closing = $this->pickFromPool('service_items', self::CLOSING_POOL['service_items']);
+
+        return $opening . "\n\n"
+            . $label . "\n\n"
+            . $groundedFact . "\n\n"
+            . $closing;
+    }
+
+    /**
+     * @param list<array{name: string, url: string}> $links
+     */
+    public function composeExternalProductLinksReply(array $links, bool $isList = false): string
+    {
+        $links = array_values(array_filter(array_map(static function ($link): array {
+            if (!is_array($link)) {
+                return ['name' => '', 'url' => ''];
+            }
+
+            return [
+                'name' => trim((string) ($link['name'] ?? '')),
+                'url' => trim((string) ($link['url'] ?? '')),
+            ];
+        }, $links), static function (array $link): bool {
+            return ($link['name'] ?? '') !== '' && ($link['url'] ?? '') !== '';
+        }));
+
+        if ($links === []) {
+            return $this->composeEmptyFieldReply();
+        }
+
+        $groundedFact = implode("\n", array_map(static function (array $link): string {
+            return '• ' . $link['name'] . '：' . $link['url'];
+        }, $links));
+
+        $opening = $this->pickFromPool('opening', self::OPENING_POOL);
+        $label = $isList || count($links) > 1
+            ? '目前提供的商品入口如下：'
+            : '為您找到以下商品入口：';
+        $closing = $this->pickFromPool('external_product_links', self::CLOSING_POOL['external_product_links']);
 
         return $opening . "\n\n"
             . $label . "\n\n"

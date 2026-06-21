@@ -1,0 +1,30 @@
+{
+    "schema_version": "bds_data_contract.v1",
+    "data_category": "tenant_private_knowledge",
+    "tenant_sno": "5f99b8d665e8444d",
+    "source_tab": "special_prices",
+    "published_at": "2026-06-20T07:54:21Z",
+    "items": [
+        {
+            "price_id": "price_1",
+            "item_name": "護照代辦",
+            "price_amount": 1600,
+            "enabled": true,
+            "sort_order": 10
+        },
+        {
+            "price_id": "price_2",
+            "item_name": "台胞證",
+            "price_amount": 1900,
+            "enabled": true,
+            "sort_order": 20
+        },
+        {
+            "price_id": "price_3",
+            "item_name": "泰國簽證",
+            "price_amount": 1200,
+            "enabled": true,
+            "sort_order": 30
+        }
+    ]
+}

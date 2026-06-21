@@ -1,0 +1,39 @@
+{
+    "schema_version": "bds_data_contract.v1",
+    "data_category": "tenant_private_knowledge",
+    "tenant_sno": "5f99b8d665e8444d",
+    "source_tab": "service_items",
+    "published_at": "2026-06-20T07:54:21Z",
+    "items": [
+        {
+            "service_id": "svc_1",
+            "name": "機票代訂",
+            "enabled": true,
+            "sort_order": 10
+        },
+        {
+            "service_id": "svc_2",
+            "name": "代訂房",
+            "enabled": true,
+            "sort_order": 20
+        },
+        {
+            "service_id": "svc_3",
+            "name": "租車服務",
+            "enabled": true,
+            "sort_order": 30
+        },
+        {
+            "service_id": "svc_4",
+            "name": "代辦簽證",
+            "enabled": true,
+            "sort_order": 40
+        },
+        {
+            "service_id": "svc_5",
+            "name": "企業員工旅遊",
+            "enabled": true,
+            "sort_order": 50
+        }
+    ]
+}

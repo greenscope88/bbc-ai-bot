@@ -237,6 +237,69 @@ $petFallbackAfterItems = $noMatchRuntime->handle('可以帶寵物上飛機嗎？
 test_assert(($petFallbackAfterItems['final_route'] ?? '') === 'phase_9c2b3_knowledge_human_service', '39: pet fallback regression');
 test_assert(($detector->detect('北海道7月')['intent_type'] ?? '') === KnowledgeIntentDetector::INTENT_PRODUCT_SEARCH, '40: product_search regression');
 
+// 41–46. external_product_links acceptance cases
+$linkCases = [
+    41 => [
+        'question' => '請問有哪些旅遊商品入口？',
+        'contains' => ['東京旅遊', 'dayitravel.tourcenter.com.tw'],
+    ],
+    42 => [
+        'question' => '請問有哪些商品連結？',
+        'contains' => ['東京旅遊', 'dayitravel.tourcenter.com.tw'],
+    ],
+    43 => [
+        'question' => '東京旅遊',
+        'contains' => ['東京旅遊', 'dayitravel.tourcenter.com.tw'],
+    ],
+    44 => [
+        'question' => '請問有東京行程連結嗎？',
+        'contains' => ['東京旅遊', 'dayitravel.tourcenter.com.tw'],
+    ],
+    45 => [
+        'question' => '請問有北海道商品連結嗎？',
+        'fallback' => true,
+    ],
+];
+foreach ($linkCases as $caseNumber => $case) {
+    $linkResult = $runtime->handle($case['question']);
+    if (!empty($case['fallback'])) {
+        test_assert(($linkResult['grounded'] ?? true) === false, "{$caseNumber}: external_product_links fallback not grounded");
+        test_assert(($linkResult['final_route'] ?? '') === 'phase_9c2b3_knowledge_human_service', "{$caseNumber}: external_product_links human service route");
+        test_assert(strpos($linkResult['reply_text'], 'dayitravel.tourcenter.com.tw') === false, "{$caseNumber}: no hallucinated product link url");
+        continue;
+    }
+
+    test_assert(($linkResult['grounded'] ?? false) === true, "{$caseNumber}: external_product_links grounded");
+    test_assert(
+        ($linkResult['query_type'] ?? '') === TenantPrivateKnowledgeRuntime::QUERY_TYPE_EXTERNAL_PRODUCT_LINKS,
+        "{$caseNumber}: external_product_links query_type"
+    );
+    test_assert(($linkResult['final_route'] ?? '') === 'phase_9c2b6_external_product_links_runtime', "{$caseNumber}: external_product_links route");
+    foreach ($case['contains'] as $needle) {
+        test_assert(strpos($linkResult['reply_text'], $needle) !== false, "{$caseNumber}: contains {$needle}");
+    }
+}
+
+$emptyLinksFixtureRoot = dirname(__FILE__) . DIRECTORY_SEPARATOR . 'fixtures' . DIRECTORY_SEPARATOR . 'travel_b_empty_external_product_links';
+$emptyLinksProvider = new LocalTenantPrivateKnowledgeProvider('5f99b8d665e8444d', $emptyLinksFixtureRoot);
+$emptyLinksRuntime = new TenantPrivateKnowledgeRuntime($emptyLinksProvider, null, $composer);
+$emptyLinksResult = $emptyLinksRuntime->handle('請問有哪些商品連結？');
+test_assert(($emptyLinksResult['grounded'] ?? true) === false, '46: empty external_product_links fallback not grounded');
+test_assert(($emptyLinksResult['final_route'] ?? '') === 'phase_9c2b3_knowledge_human_service', '46: empty external_product_links human service route');
+test_assert(strpos($emptyLinksResult['reply_text'], 'dayitravel.tourcenter.com.tw') === false, '46: no hallucinated product link url');
+
+// 47–54. regression after external_product_links
+test_assert(strpos($runtime->handle('請問客服電話')['reply_text'], '07-5224856') !== false, '47: phone regression');
+test_assert(strpos($runtime->handle('國際線多久前報到？')['reply_text'], '飛機起飛前二個小時前') !== false, '48: service_qa regression');
+test_assert(strpos($runtime->handle('請問護照費用多少？')['reply_text'], '1600') !== false, '49: special_prices regression');
+test_assert(strpos($runtime->handle('請問你們有哪些服務？')['reply_text'], '代訂房') !== false, '50: service_items list regression');
+test_assert(strpos($runtime->handle('你們有代訂房嗎？')['reply_text'], '代訂房') !== false, '51: service_items single regression');
+$japanPriceAfterLinks = $runtime->handle('日本簽證多少錢？');
+test_assert(($japanPriceAfterLinks['final_route'] ?? '') === 'phase_9c2b3_knowledge_human_service', '52: japan visa price fallback regression');
+$petFallbackAfterLinks = $noMatchRuntime->handle('可以帶寵物上飛機嗎？', ['company_name' => '旅行蜜優惠']);
+test_assert(($petFallbackAfterLinks['final_route'] ?? '') === 'phase_9c2b3_knowledge_human_service', '53: pet fallback regression');
+test_assert(($detector->detect('北海道7月')['intent_type'] ?? '') === KnowledgeIntentDetector::INTENT_PRODUCT_SEARCH, '54: product_search regression');
+
 if ($failures === 0) {
     fwrite(STDOUT, "OK: test_tenant_private_knowledge_runtime (all passed)\n");
     exit(0);

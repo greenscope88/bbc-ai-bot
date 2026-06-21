@@ -55,6 +55,11 @@ final class LocalTenantPrivateKnowledgeProvider implements TenantPrivateKnowledg
         return $this->readJsonFile(TenantPrivateKnowledgeGcsPathConfig::SERVICE_ITEMS_FILE);
     }
 
+    public function fetchExternalProductLinksDocument(): array
+    {
+        return $this->readJsonFile(TenantPrivateKnowledgeGcsPathConfig::EXTERNAL_PRODUCT_LINKS_FILE);
+    }
+
     /**
      * @return array<string, mixed>
      */

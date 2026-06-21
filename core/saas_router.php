@@ -1117,6 +1117,9 @@ class SaaSRouter
                 if (!empty($knowledgeResult['service_id'])) {
                     $payload['knowledge_service_id'] = (string) $knowledgeResult['service_id'];
                 }
+                if (!empty($knowledgeResult['link_id'])) {
+                    $payload['knowledge_link_id'] = (string) $knowledgeResult['link_id'];
+                }
                 if (!empty($knowledgeResult['fallback_layer'])) {
                     $payload['knowledge_fallback_layer'] = (string) $knowledgeResult['fallback_layer'];
                 }

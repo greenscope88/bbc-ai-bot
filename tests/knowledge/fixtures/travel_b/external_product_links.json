@@ -1,0 +1,16 @@
+{
+    "schema_version": "bds_data_contract.v1",
+    "data_category": "tenant_private_knowledge",
+    "tenant_sno": "5f99b8d665e8444d",
+    "source_tab": "external_product_links",
+    "published_at": "2026-06-20T07:54:21Z",
+    "items": [
+        {
+            "link_id": "link_tokyo",
+            "name": "東京旅遊",
+            "url": "dayitravel.tourcenter.com.tw",
+            "enabled": true,
+            "sort_order": 10
+        }
+    ]
+}

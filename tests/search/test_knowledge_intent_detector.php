@@ -42,6 +42,29 @@ $cases = [
     ['請問台胞證多少', KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY, 'knowledge_query-legacy'],
     ['請問取消規定', KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY, 'knowledge_query-legacy'],
 
+    // external product links -> knowledge_query (Phase 9-C-2B-6A)
+    ['請問有哪些旅遊商品入口？', KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY, 'external_product_links'],
+    ['請問有哪些商品連結？', KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY, 'external_product_links'],
+    ['有哪些商品入口？', KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY, 'external_product_links'],
+    ['有哪些商品連結？', KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY, 'external_product_links'],
+    ['東京行程連結', KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY, 'external_product_links'],
+    ['東京旅遊入口', KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY, 'external_product_links'],
+    ['東京旅遊商品入口', KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY, 'external_product_links'],
+    ['請問東京旅遊連結', KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY, 'external_product_links'],
+
+    // regression: company / qa / price / service / fallback
+    ['請問營業時間', KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY, 'knowledge_regression'],
+    ['國際線多久前報到', KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY, 'knowledge_regression'],
+    ['護照費用多少', KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY, 'knowledge_regression'],
+    ['有哪些服務', KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY, 'knowledge_regression'],
+    ['有代訂房嗎', KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY, 'knowledge_regression'],
+    ['可以帶寵物上飛機嗎', KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY, 'knowledge_regression'],
+
+    // product_search regression
+    ['東京暑假', KnowledgeIntentDetector::INTENT_PRODUCT_SEARCH, 'product_search_regression'],
+    ['大阪自由行', KnowledgeIntentDetector::INTENT_PRODUCT_SEARCH, 'product_search_regression'],
+    ['日本賞楓', KnowledgeIntentDetector::INTENT_PRODUCT_SEARCH, 'product_search_regression'],
+
     // ambiguous
     ['我要去日本', KnowledgeIntentDetector::INTENT_AMBIGUOUS, 'ambiguous'],
     ['想出去玩', KnowledgeIntentDetector::INTENT_AMBIGUOUS, 'ambiguous'],

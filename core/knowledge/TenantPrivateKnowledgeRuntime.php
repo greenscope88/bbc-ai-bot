@@ -18,13 +18,15 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'SpecialPriceMatcher.php';
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'ServiceItemsMatcher.php';
 
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'ExternalProductLinkMatcher.php';
+
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'KnowledgeFallbackResolver.php';
 
 
 
 /**
 
- * Tenant private knowledge runtime (Phase 9-C-2B-2A company_profile + 9-C-2B-3 service_qa + 9-C-2B-4 special_prices + 9-C-2B-5 service_items).
+ * Tenant private knowledge runtime (Phase 9-C-2B-2A company_profile + 9-C-2B-3 service_qa + 9-C-2B-4 special_prices + 9-C-2B-5 service_items + 9-C-2B-6 external_product_links).
 
  *
 
@@ -42,6 +44,8 @@ final class TenantPrivateKnowledgeRuntime
 
     public const QUERY_TYPE_SERVICE_ITEMS = 'service_items';
 
+    public const QUERY_TYPE_EXTERNAL_PRODUCT_LINKS = 'external_product_links';
+
 
 
     private TenantPrivateKnowledgeProviderInterface $provider;
@@ -55,6 +59,8 @@ final class TenantPrivateKnowledgeRuntime
     private SpecialPriceMatcher $specialPriceMatcher;
 
     private ServiceItemsMatcher $serviceItemsMatcher;
+
+    private ExternalProductLinkMatcher $externalProductLinkMatcher;
 
     private KnowledgeFallbackResolver $fallbackResolver;
 
@@ -75,6 +81,8 @@ final class TenantPrivateKnowledgeRuntime
         ?SpecialPriceMatcher $specialPriceMatcher = null,
 
         ?ServiceItemsMatcher $serviceItemsMatcher = null,
+
+        ?ExternalProductLinkMatcher $externalProductLinkMatcher = null,
 
         ?KnowledgeFallbackResolver $fallbackResolver = null
 
@@ -111,6 +119,8 @@ final class TenantPrivateKnowledgeRuntime
         $this->specialPriceMatcher = $specialPriceMatcher ?? new SpecialPriceMatcher();
 
         $this->serviceItemsMatcher = $serviceItemsMatcher ?? new ServiceItemsMatcher();
+
+        $this->externalProductLinkMatcher = $externalProductLinkMatcher ?? new ExternalProductLinkMatcher();
 
         $this->fallbackResolver = $fallbackResolver ?? new KnowledgeFallbackResolver();
 
@@ -241,6 +251,48 @@ final class TenantPrivateKnowledgeRuntime
                 null,
 
                 isset($itemsMatch['service_id']) ? (string) $itemsMatch['service_id'] : null
+
+            );
+
+        }
+
+
+
+        $linkMatch = $this->externalProductLinkMatcher->match(
+
+            $message,
+
+            $this->extractItems($this->provider->fetchExternalProductLinksDocument())
+
+        );
+
+        if ($linkMatch !== null) {
+
+            return $this->buildResult(
+
+                $this->responseComposer->composeExternalProductLinksReply(
+
+                    $linkMatch['links'] ?? [],
+
+                    ($linkMatch['match_type'] ?? '') === 'list'
+
+                ),
+
+                true,
+
+                self::QUERY_TYPE_EXTERNAL_PRODUCT_LINKS,
+
+                'phase_9c2b6_external_product_links_runtime',
+
+                null,
+
+                null,
+
+                null,
+
+                null,
+
+                isset($linkMatch['link_id']) ? (string) $linkMatch['link_id'] : null
 
             );
 
@@ -498,7 +550,9 @@ final class TenantPrivateKnowledgeRuntime
 
         ?string $priceId = null,
 
-        ?string $serviceId = null
+        ?string $serviceId = null,
+
+        ?string $linkId = null
 
     ): array {
 
@@ -535,6 +589,14 @@ final class TenantPrivateKnowledgeRuntime
         if ($serviceId !== null && $serviceId !== '') {
 
             $result['service_id'] = $serviceId;
+
+        }
+
+
+
+        if ($linkId !== null && $linkId !== '') {
+
+            $result['link_id'] = $linkId;
 
         }
 

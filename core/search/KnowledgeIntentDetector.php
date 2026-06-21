@@ -26,6 +26,22 @@ final class KnowledgeIntentDetector
         '護照代辦',
     ];
 
+    /**
+     * External product link list queries (Phase 9-C-2B-6A).
+     *
+     * @var list<string>
+     */
+    private const EXTERNAL_PRODUCT_LINK_KNOWLEDGE_MARKERS = [
+        '有哪些旅遊商品入口',
+        '哪些旅遊商品入口',
+        '有哪些商品連結',
+        '哪些商品連結',
+        '有哪些商品入口',
+        '哪些商品入口',
+        '旅遊商品入口',
+        '旅遊商品連結',
+    ];
+
     /** @var list<string> */
     private const AMBIGUOUS_PHRASE_MARKERS = [
         '想出去玩',
@@ -128,6 +144,49 @@ final class KnowledgeIntentDetector
             && (mb_strpos($text, '護照', 0, 'UTF-8') !== false
                 || mb_strpos($text, '台胞證', 0, 'UTF-8') !== false)) {
             return true;
+        }
+
+        if ($this->matchesExternalProductLinkKnowledge($text)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * External product link / portal queries should route to knowledge runtime (Phase 9-C-2B-6A).
+     */
+    private function matchesExternalProductLinkKnowledge(string $text): bool
+    {
+        foreach (self::EXTERNAL_PRODUCT_LINK_KNOWLEDGE_MARKERS as $marker) {
+            if (mb_strpos($text, $marker, 0, 'UTF-8') !== false) {
+                return true;
+            }
+        }
+
+        if (preg_match('/(哪些|什麼|提供).*(商品|旅遊).*(入口|連結|链接)/u', $text) === 1) {
+            return true;
+        }
+
+        if (preg_match('/(哪些|什麼).*(商品入口|商品連結|商品链接|旅遊商品)/u', $text) === 1) {
+            return true;
+        }
+
+        if (!$this->hasExternalProductLinkIntent($text)) {
+            return false;
+        }
+
+        return mb_strpos($text, '商品', 0, 'UTF-8') !== false
+            || mb_strpos($text, '旅遊', 0, 'UTF-8') !== false
+            || mb_strpos($text, '行程', 0, 'UTF-8') !== false;
+    }
+
+    private function hasExternalProductLinkIntent(string $text): bool
+    {
+        foreach (['連結', '链接', '入口', '網址', '网址'] as $marker) {
+            if (mb_strpos($text, $marker, 0, 'UTF-8') !== false) {
+                return true;
+            }
         }
 
         return false;
