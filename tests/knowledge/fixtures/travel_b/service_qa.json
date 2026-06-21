@@ -1,0 +1,17 @@
+{
+    "schema_version": "bds_data_contract.v1",
+    "data_category": "tenant_private_knowledge",
+    "tenant_sno": "5f99b8d665e8444d",
+    "source_tab": "qa",
+    "published_at": "2026-06-20T08:44:27Z",
+    "items": [
+        {
+            "qa_id": "qa_checkin_intl",
+            "question": "搭機前往國外，航空公司櫃台要多久前辦理報到",
+            "answer": "飛機起飛前二個小時前",
+            "category": "搭機須知",
+            "enabled": true,
+            "sort_order": 10
+        }
+    ]
+}

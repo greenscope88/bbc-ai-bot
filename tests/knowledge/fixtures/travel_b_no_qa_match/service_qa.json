@@ -1,0 +1,18 @@
+{
+    "schema_version": "bds_data_contract.v1",
+    "data_category": "tenant_private_knowledge",
+    "tenant_sno": "5f99b8d665e8444d",
+    "source_tab": "qa",
+    "published_at": "2026-06-20T08:44:27Z",
+    "items": [
+        {
+            "qa_id": "qa_passport_fee",
+            "question": "護照代辦怎麼收費？",
+            "answer": "本社護照代辦費用 NT$1,600，約 7 個工作天。",
+            "category": "護照代辦",
+            "enabled": true,
+            "sort_order": 10,
+            "tags": "護照,代辦"
+        }
+    ]
+}

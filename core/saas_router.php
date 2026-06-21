@@ -26,6 +26,9 @@ require_once __DIR__ . '/product_source/channel_publish_plan/ChannelPublishPlanV
 require_once __DIR__ . '/product_source/renderer/gemini/GeminiRenderer.php';
 require_once __DIR__ . '/product_source/integration/GeminiClient.php';
 require_once __DIR__ . '/product_source/recommendation/ProductRecommendationBuilder.php';
+require_once __DIR__ . '/search/KnowledgeIntentDetector.php';
+require_once __DIR__ . '/knowledge/TenantPrivateKnowledgeRuntime.php';
+require_once __DIR__ . '/knowledge/TenantPrivateKnowledgeProviderInterface.php';
 
 class SaaSRouter
 {
@@ -996,7 +999,9 @@ class SaaSRouter
         ?GeminiClient $geminiClient = null,
         ?string $conversationId = null,
         ?ConversationStatusResolver $conversationStatusResolver = null,
-        $ackReplySender = null
+        $ackReplySender = null,
+        ?TenantPrivateKnowledgeProviderInterface $knowledgeProvider = null,
+        ?KnowledgeIntentDetector $knowledgeIntentDetector = null
     ): ?array {
         $tenantSno = trim((string) ($tenant['sno'] ?? ''));
         if (!Phase9C1FeatureGate::isEnabled([
@@ -1046,6 +1051,76 @@ class SaaSRouter
                     'ok' => true,
                     'message' => 'phase_9c1_structured_pilot_blocked',
                     'phase_9c1' => $blockedPayload,
+                ];
+            }
+
+            $intentDetector = $knowledgeIntentDetector ?? new KnowledgeIntentDetector();
+            $intentDetection = $intentDetector->detect($queryText);
+            if (($intentDetection['intent_type'] ?? '') === KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY) {
+                $knowledgeRuntime = $knowledgeProvider !== null
+                    ? new TenantPrivateKnowledgeRuntime($knowledgeProvider)
+                    : new TenantPrivateKnowledgeRuntime(null, null, null, $tenantSno);
+                $knowledgeResult = $knowledgeRuntime->handle($queryText, [
+                    'tenant_key' => trim((string) ($tenant['tenant_key'] ?? '')),
+                    'company_name' => trim((string) ($tenant['company_name'] ?? '')),
+                ]);
+                $replyText = trim((string) ($knowledgeResult['reply_text'] ?? ''));
+
+                $finalGate = FinalReplyGate::evaluate($statusResolver->resolveStatus($conversationKey, $now));
+                if (!$finalGate['allowed']) {
+                    $blockedPayload = [
+                        'trace_id' => $traceId,
+                        'tenant_sno' => $tenantSno,
+                        'conversation_id' => $conversationKey,
+                        'conversation_status' => $finalGate['conversation_status'],
+                        'blocked' => true,
+                        'block_reason' => $finalGate['block_reason'],
+                        'knowledge_query_type' => $knowledgeResult['query_type'] ?? null,
+                        'reply_text_length' => mb_strlen($replyText),
+                        'final_route' => 'phase_9c2b_knowledge_runtime_blocked',
+                    ];
+                    Logger::log('saas_router.log', 'phase_9c2b_knowledge_runtime_blocked', $blockedPayload);
+                    self::appendWebhookLog('phase_9c2b_knowledge_runtime_blocked', $blockedPayload);
+
+                    return [
+                        'ok' => true,
+                        'message' => 'phase_9c2b_knowledge_runtime_blocked',
+                        'phase_9c1' => $blockedPayload,
+                    ];
+                }
+
+                $replyRes = null;
+                if (is_callable($lineReplySender)) {
+                    $replyRes = $lineReplySender($lineReplyUrl, $lineToken, $replyToken, $replyText);
+                } else {
+                    $replyRes = LineService::replyToLine($lineReplyUrl, $lineToken, $replyToken, $replyText);
+                }
+
+                $payload = [
+                    'trace_id' => $traceId,
+                    'tenant_sno' => $tenantSno,
+                    'conversation_id' => $conversationKey,
+                    'conversation_status' => $finalGate['conversation_status'],
+                    'intent_type' => KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY,
+                    'knowledge_query_type' => $knowledgeResult['query_type'] ?? null,
+                    'knowledge_grounded' => (bool) ($knowledgeResult['grounded'] ?? false),
+                    'reply_text_length' => mb_strlen($replyText),
+                    'line_reply' => $replyRes,
+                    'final_route' => (string) ($knowledgeResult['final_route'] ?? 'phase_9c2b_knowledge_runtime'),
+                ];
+                if (!empty($knowledgeResult['qa_id'])) {
+                    $payload['knowledge_qa_id'] = (string) $knowledgeResult['qa_id'];
+                }
+                if (!empty($knowledgeResult['fallback_layer'])) {
+                    $payload['knowledge_fallback_layer'] = (string) $knowledgeResult['fallback_layer'];
+                }
+                Logger::log('saas_router.log', 'phase_9c2b_knowledge_runtime_reply', $payload);
+                self::appendWebhookLog('phase_9c2b_knowledge_runtime_reply', $payload);
+
+                return [
+                    'ok' => true,
+                    'message' => (string) ($knowledgeResult['final_route'] ?? 'phase_9c2b_knowledge_runtime'),
+                    'phase_9c1' => $payload,
                 ];
             }
 

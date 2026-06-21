@@ -1,0 +1,17 @@
+{
+    "schema_version": "bds_tenant_private_knowledge.v1",
+    "data_category": "tenant_private_knowledge",
+    "tenant_sno": "5f99b8d665e8444d",
+    "source_tab": "company_profile",
+    "published_at": "2026-06-20T08:44:27Z",
+    "profile": {
+        "company_name": "旅行蜜優惠",
+        "summary": "旅行蜜優惠專營日本、韓國、東南亞及歐洲旅遊行程。",
+        "phone": "07-5224856",
+        "address": "高雄市三民區綏遠二街101號",
+        "line_official": "@travel_b",
+        "website": "https://www.travel-b.example.com",
+        "business_hours": "週一至週五\n09:00-18:00",
+        "email": ""
+    }
+}
