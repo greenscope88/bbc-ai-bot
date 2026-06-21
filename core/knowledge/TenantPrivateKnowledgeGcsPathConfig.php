@@ -9,6 +9,7 @@ final class TenantPrivateKnowledgeGcsPathConfig
     public const COMPANY_PROFILE_FILE = 'company_profile.json';
     public const SERVICE_QA_FILE = 'service_qa.json';
     public const SPECIAL_PRICES_FILE = 'special_prices.json';
+    public const SERVICE_ITEMS_FILE = 'service_items.json';
 
     public static function resolveObjectPath(string $tenantSno, string $filename): string
     {

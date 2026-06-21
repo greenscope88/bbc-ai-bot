@@ -1111,6 +1111,12 @@ class SaaSRouter
                 if (!empty($knowledgeResult['qa_id'])) {
                     $payload['knowledge_qa_id'] = (string) $knowledgeResult['qa_id'];
                 }
+                if (!empty($knowledgeResult['price_id'])) {
+                    $payload['knowledge_price_id'] = (string) $knowledgeResult['price_id'];
+                }
+                if (!empty($knowledgeResult['service_id'])) {
+                    $payload['knowledge_service_id'] = (string) $knowledgeResult['service_id'];
+                }
                 if (!empty($knowledgeResult['fallback_layer'])) {
                     $payload['knowledge_fallback_layer'] = (string) $knowledgeResult['fallback_layer'];
                 }

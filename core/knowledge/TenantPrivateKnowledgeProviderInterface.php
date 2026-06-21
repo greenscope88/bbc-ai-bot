@@ -17,4 +17,14 @@ interface TenantPrivateKnowledgeProviderInterface
      * @return array<string, mixed>
      */
     public function fetchServiceQaDocument(): array;
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function fetchSpecialPricesDocument(): array;
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function fetchServiceItemsDocument(): array;
 }

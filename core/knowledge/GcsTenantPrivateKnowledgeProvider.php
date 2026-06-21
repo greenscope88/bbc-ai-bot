@@ -42,6 +42,16 @@ final class GcsTenantPrivateKnowledgeProvider implements TenantPrivateKnowledgeP
         return $this->fetchDocument(TenantPrivateKnowledgeGcsPathConfig::SERVICE_QA_FILE);
     }
 
+    public function fetchSpecialPricesDocument(): array
+    {
+        return $this->fetchDocument(TenantPrivateKnowledgeGcsPathConfig::SPECIAL_PRICES_FILE);
+    }
+
+    public function fetchServiceItemsDocument(): array
+    {
+        return $this->fetchDocument(TenantPrivateKnowledgeGcsPathConfig::SERVICE_ITEMS_FILE);
+    }
+
     /**
      * @return array<string, mixed>
      */

@@ -14,13 +14,17 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'KnowledgeResponseComposer.php';
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'ServiceQaMatcher.php';
 
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'SpecialPriceMatcher.php';
+
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'ServiceItemsMatcher.php';
+
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'KnowledgeFallbackResolver.php';
 
 
 
 /**
 
- * Tenant private knowledge runtime (Phase 9-C-2B-2A company_profile + 9-C-2B-3 service_qa).
+ * Tenant private knowledge runtime (Phase 9-C-2B-2A company_profile + 9-C-2B-3 service_qa + 9-C-2B-4 special_prices + 9-C-2B-5 service_items).
 
  *
 
@@ -34,6 +38,10 @@ final class TenantPrivateKnowledgeRuntime
 
     public const QUERY_TYPE_SERVICE_QA = 'service_qa';
 
+    public const QUERY_TYPE_SPECIAL_PRICES = 'special_prices';
+
+    public const QUERY_TYPE_SERVICE_ITEMS = 'service_items';
+
 
 
     private TenantPrivateKnowledgeProviderInterface $provider;
@@ -43,6 +51,10 @@ final class TenantPrivateKnowledgeRuntime
     private KnowledgeResponseComposer $responseComposer;
 
     private ServiceQaMatcher $serviceQaMatcher;
+
+    private SpecialPriceMatcher $specialPriceMatcher;
+
+    private ServiceItemsMatcher $serviceItemsMatcher;
 
     private KnowledgeFallbackResolver $fallbackResolver;
 
@@ -59,6 +71,10 @@ final class TenantPrivateKnowledgeRuntime
         ?string $tenantSno = null,
 
         ?ServiceQaMatcher $serviceQaMatcher = null,
+
+        ?SpecialPriceMatcher $specialPriceMatcher = null,
+
+        ?ServiceItemsMatcher $serviceItemsMatcher = null,
 
         ?KnowledgeFallbackResolver $fallbackResolver = null
 
@@ -92,6 +108,10 @@ final class TenantPrivateKnowledgeRuntime
 
         $this->serviceQaMatcher = $serviceQaMatcher ?? new ServiceQaMatcher();
 
+        $this->specialPriceMatcher = $specialPriceMatcher ?? new SpecialPriceMatcher();
+
+        $this->serviceItemsMatcher = $serviceItemsMatcher ?? new ServiceItemsMatcher();
+
         $this->fallbackResolver = $fallbackResolver ?? new KnowledgeFallbackResolver();
 
     }
@@ -102,7 +122,7 @@ final class TenantPrivateKnowledgeRuntime
 
      * @param array{tenant_key?: string|null, company_name?: string|null} $context
 
-     * @return array{reply_text: string, grounded: bool, query_type: ?string, final_route: string, qa_id?: string|null, fallback_layer?: string|null}
+     * @return array{reply_text: string, grounded: bool, query_type: ?string, final_route: string, qa_id?: string|null, price_id?: string|null, service_id?: string|null, fallback_layer?: string|null}
 
      */
 
@@ -143,6 +163,84 @@ final class TenantPrivateKnowledgeRuntime
                 isset($qaMatch['qa_id']) ? (string) $qaMatch['qa_id'] : null,
 
                 null
+
+            );
+
+        }
+
+
+
+        $priceMatch = $this->specialPriceMatcher->match(
+
+            $message,
+
+            $this->extractItems($this->provider->fetchSpecialPricesDocument())
+
+        );
+
+        if ($priceMatch !== null) {
+
+            return $this->buildResult(
+
+                $this->responseComposer->composeSpecialPriceReply(
+
+                    (string) ($priceMatch['item_name'] ?? ''),
+
+                    $priceMatch['price_amount'] ?? null
+
+                ),
+
+                true,
+
+                self::QUERY_TYPE_SPECIAL_PRICES,
+
+                'phase_9c2b4_special_prices_runtime',
+
+                null,
+
+                null,
+
+                isset($priceMatch['price_id']) ? (string) $priceMatch['price_id'] : null
+
+            );
+
+        }
+
+
+
+        $itemsMatch = $this->serviceItemsMatcher->match(
+
+            $message,
+
+            $this->extractItems($this->provider->fetchServiceItemsDocument())
+
+        );
+
+        if ($itemsMatch !== null) {
+
+            return $this->buildResult(
+
+                $this->responseComposer->composeServiceItemsReply(
+
+                    $itemsMatch['service_names'] ?? [],
+
+                    ($itemsMatch['match_type'] ?? '') === 'list'
+
+                ),
+
+                true,
+
+                self::QUERY_TYPE_SERVICE_ITEMS,
+
+                'phase_9c2b5_service_items_runtime',
+
+                null,
+
+                null,
+
+                null,
+
+                isset($itemsMatch['service_id']) ? (string) $itemsMatch['service_id'] : null
 
             );
 
@@ -380,7 +478,7 @@ final class TenantPrivateKnowledgeRuntime
 
     /**
 
-     * @return array{reply_text: string, grounded: bool, query_type: ?string, final_route: string, qa_id?: string|null, fallback_layer?: string|null}
+     * @return array{reply_text: string, grounded: bool, query_type: ?string, final_route: string, qa_id?: string|null, price_id?: string|null, service_id?: string|null, fallback_layer?: string|null}
 
      */
 
@@ -396,7 +494,11 @@ final class TenantPrivateKnowledgeRuntime
 
         ?string $qaId,
 
-        ?string $fallbackLayer
+        ?string $fallbackLayer,
+
+        ?string $priceId = null,
+
+        ?string $serviceId = null
 
     ): array {
 
@@ -417,6 +519,22 @@ final class TenantPrivateKnowledgeRuntime
         if ($qaId !== null && $qaId !== '') {
 
             $result['qa_id'] = $qaId;
+
+        }
+
+
+
+        if ($priceId !== null && $priceId !== '') {
+
+            $result['price_id'] = $priceId;
+
+        }
+
+
+
+        if ($serviceId !== null && $serviceId !== '') {
+
+            $result['service_id'] = $serviceId;
 
         }
 

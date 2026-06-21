@@ -55,6 +55,14 @@ final class KnowledgeResponseComposer
             "若還有其他旅遊相關問題，\n歡迎隨時詢問 ✈️",
             "如需更多協助，\n歡迎再告訴我們 😊",
         ],
+        'special_prices' => [
+            "若還有其他代辦或簽證費用問題，\n歡迎隨時詢問 ✈️",
+            "如需更多報價資訊，\n歡迎再告訴我們 😊",
+        ],
+        'service_items' => [
+            "若還有其他服務項目想詢問，\n歡迎隨時告訴我們 ✈️",
+            "如需更多服務資訊，\n歡迎再與我們聯繫 😊",
+        ],
     ];
 
     /** @var callable(string, int): int|null */
@@ -115,6 +123,81 @@ final class KnowledgeResponseComposer
             . $label . "\n\n"
             . $groundedFact . "\n\n"
             . $closing;
+    }
+
+    /**
+     * @param list<string> $serviceNames
+     */
+    public function composeServiceItemsReply(array $serviceNames, bool $isList = false): string
+    {
+        $serviceNames = array_values(array_filter(array_map(static function ($name): string {
+            return trim((string) $name);
+        }, $serviceNames), static function (string $name): bool {
+            return $name !== '';
+        }));
+
+        if ($serviceNames === []) {
+            return $this->composeEmptyFieldReply();
+        }
+
+        $groundedFact = implode("\n", array_map(static function (string $name): string {
+            return '• ' . $name;
+        }, $serviceNames));
+
+        $opening = $this->pickFromPool('opening', self::OPENING_POOL);
+        $label = $isList || count($serviceNames) > 1
+            ? '目前提供的服務項目如下：'
+            : '為您確認到以下服務項目：';
+        $closing = $this->pickFromPool('service_items', self::CLOSING_POOL['service_items']);
+
+        return $opening . "\n\n"
+            . $label . "\n\n"
+            . $groundedFact . "\n\n"
+            . $closing;
+    }
+
+    /**
+     * @param int|float|string|null $priceAmount
+     */
+    public function composeSpecialPriceReply(string $itemName, $priceAmount): string
+    {
+        $itemName = trim($itemName);
+        $priceText = $this->formatPriceAmount($priceAmount);
+        if ($itemName === '' || $priceText === '') {
+            return $this->composeEmptyFieldReply();
+        }
+
+        $groundedFact = $itemName . '：' . $priceText . '元';
+        $opening = $this->pickFromPool('opening', self::OPENING_POOL);
+        $closing = $this->pickFromPool('special_prices', self::CLOSING_POOL['special_prices']);
+
+        return $opening . "\n\n"
+            . '為您整理以下報價：' . "\n\n"
+            . $groundedFact . "\n\n"
+            . $closing;
+    }
+
+    /**
+     * @param int|float|string|null $priceAmount
+     */
+    private function formatPriceAmount($priceAmount): string
+    {
+        if (!is_int($priceAmount) && !is_float($priceAmount)) {
+            if (!is_string($priceAmount) || !is_numeric($priceAmount)) {
+                return '';
+            }
+        }
+
+        $numeric = (float) $priceAmount;
+        if ($numeric < 0) {
+            return '';
+        }
+
+        if (abs($numeric - (int) $numeric) < 0.00001) {
+            return (string) (int) $numeric;
+        }
+
+        return rtrim(rtrim(number_format($numeric, 2, '.', ''), '0'), '.');
     }
 
     private function serviceQaLabel(?string $category): string

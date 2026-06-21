@@ -137,6 +137,106 @@ foreach ($fallbackCases as $caseNumber => $question) {
     test_assert(strpos($noMatch['reply_text'], '飛機起飛前二個小時前') === false, "{$caseNumber}: no hallucinated QA fact");
 }
 
+// 18–22. special_prices acceptance cases
+$priceCases = [
+    18 => ['question' => '請問護照費用多少？', 'item' => '護照代辦', 'price' => '1600'],
+    19 => ['question' => '護照代辦多少錢？', 'item' => '護照代辦', 'price' => '1600'],
+    20 => ['question' => '台胞證費用多少？', 'item' => '台胞證', 'price' => '1900'],
+    21 => ['question' => '泰國簽證多少錢？', 'item' => '泰國簽證', 'price' => '1200'],
+    22 => ['question' => '日本簽證多少錢？', 'fallback' => true],
+];
+foreach ($priceCases as $caseNumber => $case) {
+    $priceResult = $runtime->handle($case['question']);
+    if (!empty($case['fallback'])) {
+        test_assert(($priceResult['grounded'] ?? true) === false, "{$caseNumber}: japan visa fallback not grounded");
+        test_assert(($priceResult['final_route'] ?? '') === 'phase_9c2b3_knowledge_human_service', "{$caseNumber}: japan visa human service route");
+        test_assert(strpos($priceResult['reply_text'], '1200') === false, "{$caseNumber}: no thailand visa price hallucination");
+        continue;
+    }
+
+    test_assert(($priceResult['grounded'] ?? false) === true, "{$caseNumber}: special_prices grounded");
+    test_assert(($priceResult['query_type'] ?? '') === TenantPrivateKnowledgeRuntime::QUERY_TYPE_SPECIAL_PRICES, "{$caseNumber}: special_prices query_type");
+    test_assert(($priceResult['final_route'] ?? '') === 'phase_9c2b4_special_prices_runtime', "{$caseNumber}: special_prices route");
+    test_assert(strpos($priceResult['reply_text'], $case['item']) !== false, "{$caseNumber}: item_name present");
+    test_assert(strpos($priceResult['reply_text'], $case['price']) !== false, "{$caseNumber}: price present");
+}
+
+// 23–25. regression after special_prices
+$phoneAgain = $runtime->handle('請問客服電話');
+test_assert(strpos($phoneAgain['reply_text'], '07-5224856') !== false, '23: phone regression');
+
+$qaAgain = $runtime->handle('國際線多久前報到？');
+test_assert(strpos($qaAgain['reply_text'], '飛機起飛前二個小時前') !== false, '24: service_qa regression');
+
+$petFallback = $noMatchRuntime->handle('可以帶寵物上飛機嗎？', ['company_name' => '旅行蜜優惠']);
+test_assert(($petFallback['final_route'] ?? '') === 'phase_9c2b3_knowledge_human_service', '25: pet fallback regression');
+
+// 26–36. service_items acceptance cases
+$serviceItemCases = [
+    26 => [
+        'question' => '請問你們有哪些服務？',
+        'contains' => ['機票代訂', '代訂房', '租車服務', '代辦簽證', '企業員工旅遊'],
+    ],
+    27 => [
+        'question' => '你們有代訂房嗎？',
+        'contains' => ['代訂房'],
+    ],
+    28 => [
+        'question' => '你們有租車嗎？',
+        'contains' => ['租車服務'],
+    ],
+    29 => [
+        'question' => '你們有辦簽證嗎？',
+        'contains' => ['代辦簽證'],
+    ],
+    30 => [
+        'question' => '你們有企業旅遊嗎？',
+        'contains' => ['企業員工旅遊'],
+    ],
+    31 => [
+        'question' => '你們有哪些代辦服務？',
+        'contains' => ['代辦簽證', '機票代訂', '代訂房'],
+    ],
+    32 => [
+        'question' => '你們有美國簽證嗎？',
+        'fallback' => true,
+    ],
+];
+foreach ($serviceItemCases as $caseNumber => $case) {
+    $serviceResult = $runtime->handle($case['question']);
+    if (!empty($case['fallback'])) {
+        test_assert(($serviceResult['grounded'] ?? true) === false, "{$caseNumber}: service_items fallback not grounded");
+        test_assert(($serviceResult['final_route'] ?? '') === 'phase_9c2b3_knowledge_human_service', "{$caseNumber}: service_items human service route");
+        test_assert(strpos($serviceResult['reply_text'], '代辦簽證') === false, "{$caseNumber}: no visa item hallucination");
+        continue;
+    }
+
+    test_assert(($serviceResult['grounded'] ?? false) === true, "{$caseNumber}: service_items grounded");
+    test_assert(($serviceResult['query_type'] ?? '') === TenantPrivateKnowledgeRuntime::QUERY_TYPE_SERVICE_ITEMS, "{$caseNumber}: service_items query_type");
+    test_assert(($serviceResult['final_route'] ?? '') === 'phase_9c2b5_service_items_runtime', "{$caseNumber}: service_items route");
+    foreach ($case['contains'] as $needle) {
+        test_assert(strpos($serviceResult['reply_text'], $needle) !== false, "{$caseNumber}: contains {$needle}");
+    }
+}
+
+$emptyItemsFixtureRoot = dirname(__FILE__) . DIRECTORY_SEPARATOR . 'fixtures' . DIRECTORY_SEPARATOR . 'travel_b_empty_service_items';
+$emptyItemsProvider = new LocalTenantPrivateKnowledgeProvider('5f99b8d665e8444d', $emptyItemsFixtureRoot);
+$emptyItemsRuntime = new TenantPrivateKnowledgeRuntime($emptyItemsProvider, null, $composer);
+$emptyItemsResult = $emptyItemsRuntime->handle('請問你們有哪些服務？');
+test_assert(($emptyItemsResult['grounded'] ?? true) === false, '33: empty service_items fallback not grounded');
+test_assert(($emptyItemsResult['final_route'] ?? '') === 'phase_9c2b3_knowledge_human_service', '33: empty service_items human service route');
+
+// 34–40. regression after service_items
+test_assert(strpos($runtime->handle('請問客服電話')['reply_text'], '07-5224856') !== false, '34: phone regression');
+test_assert(strpos($runtime->handle('請問公司地址')['reply_text'], '高雄市三民區綏遠二街101號') !== false, '35: address regression');
+test_assert(strpos($runtime->handle('國際線多久前報到？')['reply_text'], '飛機起飛前二個小時前') !== false, '36: service_qa regression');
+test_assert(strpos($runtime->handle('請問護照費用多少？')['reply_text'], '1600') !== false, '37: special_prices regression');
+$japanPrice = $runtime->handle('日本簽證多少錢？');
+test_assert(($japanPrice['final_route'] ?? '') === 'phase_9c2b3_knowledge_human_service', '38: japan visa price fallback regression');
+$petFallbackAfterItems = $noMatchRuntime->handle('可以帶寵物上飛機嗎？', ['company_name' => '旅行蜜優惠']);
+test_assert(($petFallbackAfterItems['final_route'] ?? '') === 'phase_9c2b3_knowledge_human_service', '39: pet fallback regression');
+test_assert(($detector->detect('北海道7月')['intent_type'] ?? '') === KnowledgeIntentDetector::INTENT_PRODUCT_SEARCH, '40: product_search regression');
+
 if ($failures === 0) {
     fwrite(STDOUT, "OK: test_tenant_private_knowledge_runtime (all passed)\n");
     exit(0);
