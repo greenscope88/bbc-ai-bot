@@ -308,7 +308,9 @@ final class TenantPrivateKnowledgeRuntime
 
             isset($context['tenant_key']) ? (string) $context['tenant_key'] : null,
 
-            $companyName
+            $companyName,
+
+            isset($context['industry_code']) ? (string) $context['industry_code'] : null
 
         );
 

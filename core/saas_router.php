@@ -1061,8 +1061,10 @@ class SaaSRouter
                     ? new TenantPrivateKnowledgeRuntime($knowledgeProvider)
                     : new TenantPrivateKnowledgeRuntime(null, null, null, $tenantSno);
                 $knowledgeResult = $knowledgeRuntime->handle($queryText, [
+                    'tenant_sno' => $tenantSno,
                     'tenant_key' => trim((string) ($tenant['tenant_key'] ?? '')),
                     'company_name' => trim((string) ($tenant['company_name'] ?? '')),
+                    'industry_code' => trim((string) ($tenant['industry_code'] ?? '')),
                 ]);
                 $replyText = trim((string) ($knowledgeResult['reply_text'] ?? ''));
 

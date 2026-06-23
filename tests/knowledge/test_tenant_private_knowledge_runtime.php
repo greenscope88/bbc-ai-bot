@@ -7,6 +7,14 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPA
     . DIRECTORY_SEPARATOR . 'TenantPrivateKnowledgeRuntime.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'knowledge'
     . DIRECTORY_SEPARATOR . 'KnowledgeResponseComposer.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'knowledge'
+    . DIRECTORY_SEPARATOR . 'KnowledgeFallbackResolver.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'knowledge'
+    . DIRECTORY_SEPARATOR . 'IndustrySharedKnowledgeRuntime.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'knowledge'
+    . DIRECTORY_SEPARATOR . 'LocalIndustrySharedKnowledgeProvider.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'knowledge'
+    . DIRECTORY_SEPARATOR . 'HumanServiceResponseComposer.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search'
     . DIRECTORY_SEPARATOR . 'KnowledgeIntentDetector.php';
 
@@ -28,6 +36,14 @@ $missingProfileFixtureRoot = dirname(__FILE__) . DIRECTORY_SEPARATOR . 'fixtures
 $composer = new KnowledgeResponseComposer(static function (string $poolKey, int $count): int {
     return 0;
 });
+$sharedFixtureRoot = dirname(__FILE__) . DIRECTORY_SEPARATOR . 'fixtures' . DIRECTORY_SEPARATOR . 'shared';
+$humanComposer = new HumanServiceResponseComposer(static function (string $poolKey, int $count): int {
+    return 0;
+});
+$sharedRuntime = new IndustrySharedKnowledgeRuntime(null, $composer, static function (string $industryCode) use ($sharedFixtureRoot): LocalIndustrySharedKnowledgeProvider {
+    return new LocalIndustrySharedKnowledgeProvider($industryCode, $sharedFixtureRoot . DIRECTORY_SEPARATOR . $industryCode);
+});
+$sharedFallbackResolver = new KnowledgeFallbackResolver($humanComposer, $sharedRuntime);
 $provider = new LocalTenantPrivateKnowledgeProvider('5f99b8d665e8444d', $fixtureRoot);
 $runtime = new TenantPrivateKnowledgeRuntime($provider, null, $composer);
 
@@ -123,19 +139,33 @@ foreach ($qaCases as $index => $question) {
 // 15–17. no QA match -> human service fallback
 $noMatchFixtureRoot = dirname(__FILE__) . DIRECTORY_SEPARATOR . 'fixtures' . DIRECTORY_SEPARATOR . 'travel_b_no_qa_match';
 $noMatchProvider = new LocalTenantPrivateKnowledgeProvider('5f99b8d665e8444d', $noMatchFixtureRoot);
-$noMatchRuntime = new TenantPrivateKnowledgeRuntime($noMatchProvider, null, $composer);
+$noMatchRuntime = new TenantPrivateKnowledgeRuntime(
+    $noMatchProvider,
+    null,
+    $composer,
+    null,
+    null,
+    null,
+    null,
+    null,
+    $sharedFallbackResolver
+);
 $fallbackCases = [
     15 => '可以帶寵物上飛機嗎？',
     16 => '飛機上可以帶液體嗎？',
-    17 => '行李超重怎麼辦？',
 ];
 foreach ($fallbackCases as $caseNumber => $question) {
-    $noMatch = $noMatchRuntime->handle($question, ['company_name' => '旅行蜜優惠']);
+    $noMatch = $noMatchRuntime->handle($question, ['company_name' => '旅行蜜優惠', 'tenant_key' => 'travel_b', 'industry_code' => 'travel']);
     test_assert(($noMatch['grounded'] ?? true) === false, "{$caseNumber}: fallback not grounded");
     test_assert(($noMatch['final_route'] ?? '') === 'phase_9c2b3_knowledge_human_service', "{$caseNumber}: human service route");
     test_assert(strpos($noMatch['reply_text'], '人工客服') !== false, "{$caseNumber}: human service reply");
     test_assert(strpos($noMatch['reply_text'], '飛機起飛前二個小時前') === false, "{$caseNumber}: no hallucinated QA fact");
 }
+
+$baggageShared = $noMatchRuntime->handle('行李超重怎麼辦？', ['company_name' => '旅行蜜優惠', 'tenant_key' => 'travel_b', 'industry_code' => 'travel']);
+test_assert(($baggageShared['grounded'] ?? false) === true, '17: shared baggage grounded');
+test_assert(($baggageShared['final_route'] ?? '') === 'phase_9c2d_industry_shared_runtime', '17: shared baggage route');
+test_assert(strpos($baggageShared['reply_text'], '依航空公司規定加購行李額度。') !== false, '17: shared baggage content');
 
 // 18–22. special_prices acceptance cases
 $priceCases = [
@@ -299,6 +329,38 @@ test_assert(($japanPriceAfterLinks['final_route'] ?? '') === 'phase_9c2b3_knowle
 $petFallbackAfterLinks = $noMatchRuntime->handle('可以帶寵物上飛機嗎？', ['company_name' => '旅行蜜優惠']);
 test_assert(($petFallbackAfterLinks['final_route'] ?? '') === 'phase_9c2b3_knowledge_human_service', '53: pet fallback regression');
 test_assert(($detector->detect('北海道7月')['intent_type'] ?? '') === KnowledgeIntentDetector::INTENT_PRODUCT_SEARCH, '54: product_search regression');
+
+// 55–59. industry shared runtime acceptance (tenant miss -> L2 shared / human)
+$sharedAcceptanceRuntime = new TenantPrivateKnowledgeRuntime(
+    $noMatchProvider,
+    null,
+    $composer,
+    null,
+    null,
+    null,
+    null,
+    null,
+    $sharedFallbackResolver
+);
+$sharedCase1 = $sharedAcceptanceRuntime->handle('BATS測試國際線多久前到機場', ['tenant_key' => 'travel_b', 'industry_code' => 'travel']);
+test_assert(($sharedCase1['grounded'] ?? false) === true, '55: shared airport timing grounded');
+test_assert(($sharedCase1['final_route'] ?? '') === 'phase_9c2d_industry_shared_runtime', '55: shared airport timing route');
+test_assert(strpos($sharedCase1['reply_text'], '建議於航班起飛前二至三小時抵達機場辦理報到與安檢。') !== false, '55: shared airport timing content');
+
+$sharedCase3 = $sharedAcceptanceRuntime->handle('BATS測試來不及搭機怎麼退票', ['tenant_key' => 'travel_b', 'industry_code' => 'travel']);
+test_assert(($sharedCase3['final_route'] ?? '') === 'phase_9c2d_industry_shared_runtime', '56: shared refund route');
+test_assert(strpos($sharedCase3['reply_text'], '若透過旅行社購票') !== false, '56: shared refund content');
+
+$tenantPriority = $runtime->handle('國際線多久前報到？');
+test_assert(($tenantPriority['final_route'] ?? '') === 'phase_9c2b3_qa_knowledge_runtime', '57: tenant QA priority route');
+test_assert(strpos($tenantPriority['reply_text'], '飛機起飛前二個小時前') !== false, '57: tenant QA priority content');
+test_assert(strpos($tenantPriority['reply_text'], '建議於航班起飛前二至三小時') === false, '57: no shared downgrade');
+
+$sharedCase5 = $sharedAcceptanceRuntime->handle('BATS測試可以帶寵物上飛機嗎', ['tenant_key' => 'travel_b', 'company_name' => '旅行蜜優惠', 'industry_code' => 'travel']);
+test_assert(($sharedCase5['final_route'] ?? '') === 'phase_9c2b3_knowledge_human_service', '58: pet human service route');
+test_assert(($sharedCase5['fallback_layer'] ?? '') === 'human_service', '58: pet human service layer');
+
+test_assert(strpos($runtime->handle('請問客服電話')['reply_text'], '07-5224856') !== false, '59: phone regression after shared');
 
 if ($failures === 0) {
     fwrite(STDOUT, "OK: test_tenant_private_knowledge_runtime (all passed)\n");

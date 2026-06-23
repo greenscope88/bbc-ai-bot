@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR . 'BdsSourceRegistryLoader.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'logger.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'tenant' . DIRECTORY_SEPARATOR . 'ConfigTenantRegistry.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'tenant' . DIRECTORY_SEPARATOR . 'ResolvedTenant.php';
@@ -69,14 +70,14 @@ class TenantResolver
                 if ($mappedSno !== '') {
                     self::logRegistryResolve($channelId, false, null, 'legacy_map');
 
-                    return [
+                    return self::enrichTenantContext([
                         'sno' => $mappedSno,
                         'company_name' => isset($entry['company_name']) ? (string) $entry['company_name'] : '旅行社客服',
                         'ai_tone' => isset($entry['ai_tone']) ? (string) $entry['ai_tone'] : '親切',
                         'travel_specialties' => isset($entry['travel_specialties']) ? (string) $entry['travel_specialties'] : '綜合旅遊',
                         'price_catalog_json' => isset($entry['price_catalog_json']) ? (string) $entry['price_catalog_json'] : '{}',
                         'channel_id' => $channelId,
-                    ];
+                    ]);
                 }
             }
         }
@@ -96,14 +97,14 @@ class TenantResolver
         if ($stmt === false) {
             self::logRegistryResolve($channelId, false, null, 'legacy_db_prepare_failed');
 
-            return [
+            return self::enrichTenantContext([
                 'sno' => '',
                 'company_name' => '旅行社客服',
                 'ai_tone' => '親切',
                 'travel_specialties' => '綜合旅遊',
                 'price_catalog_json' => '{}',
                 'channel_id' => $channelId,
-            ];
+            ]);
         }
 
         $stmt->bindValue(':channel_id', $channelId, PDO::PARAM_STR);
@@ -113,19 +114,19 @@ class TenantResolver
         if (!is_array($row)) {
             self::logRegistryResolve($channelId, false, null, 'legacy_empty');
 
-            return [
+            return self::enrichTenantContext([
                 'sno' => '',
                 'company_name' => '旅行社客服',
                 'ai_tone' => '親切',
                 'travel_specialties' => '綜合旅遊',
                 'price_catalog_json' => '{}',
                 'channel_id' => $channelId,
-            ];
+            ]);
         }
 
         self::logRegistryResolve($channelId, false, null, 'legacy_db');
 
-        return $row;
+        return self::enrichTenantContext($row);
     }
 
     /**
@@ -135,14 +136,42 @@ class TenantResolver
     {
         $profile = $resolved->getProfile();
 
-        return [
+        return self::enrichTenantContext([
             'sno' => $resolved->getSno(),
             'company_name' => isset($profile['company_name']) ? (string) $profile['company_name'] : '旅行社客服',
             'ai_tone' => isset($profile['ai_tone']) ? (string) $profile['ai_tone'] : '親切',
             'travel_specialties' => isset($profile['travel_specialties']) ? (string) $profile['travel_specialties'] : '綜合旅遊',
             'price_catalog_json' => isset($profile['price_catalog_json']) ? (string) $profile['price_catalog_json'] : '{}',
             'channel_id' => $channelId !== '' ? $channelId : $resolved->getLineChannelId(),
-        ];
+        ], $resolved->getTenantKey());
+    }
+
+    /**
+     * @param array<string, mixed> $tenant
+     * @return array<string, mixed>
+     */
+    private static function enrichTenantContext(array $tenant, string $tenantKey = ''): array
+    {
+        $tenant['tenant_key'] = trim($tenantKey);
+        $sno = isset($tenant['sno']) ? trim((string) $tenant['sno']) : '';
+        $tenant['industry_code'] = self::resolveIndustryCodeBySno($sno);
+
+        return $tenant;
+    }
+
+    private static function resolveIndustryCodeBySno(string $sno): string
+    {
+        $sno = trim($sno);
+        if ($sno === '') {
+            return '';
+        }
+
+        $entry = BdsSourceRegistryLoader::loadBySno($sno);
+        if ($entry === null) {
+            return '';
+        }
+
+        return trim((string) ($entry['industry_code'] ?? ''));
     }
 
     private static function logRegistryResolve(
