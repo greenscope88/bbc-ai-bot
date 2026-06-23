@@ -1,0 +1,15 @@
+vendor/
+logs/
+runtime/
+backups/
+var/
+debug/
+node_modules/
+cache/
+tmp/
+vectorstore/
+embeddings/
+runtime-logs/
+secrets/
+.env
+.env.*
