@@ -67,6 +67,10 @@ final class KnowledgeResponseComposer
             "若還有其他商品入口想詢問，\n歡迎隨時告訴我們 ✈️",
             "如需更多旅遊商品資訊，\n歡迎再與我們聯繫 😊",
         ],
+        'shared_faq' => [
+            "若還有其他常見問題想詢問，\n歡迎隨時告訴我們 ✈️",
+            "如需更多協助，\n歡迎再與我們聯繫 😊",
+        ],
     ];
 
     /** @var callable(string, int): int|null */
@@ -122,6 +126,23 @@ final class KnowledgeResponseComposer
         $opening = $this->pickFromPool('opening', self::OPENING_POOL);
         $label = $this->serviceQaLabel($category);
         $closing = $this->pickFromPool('service_qa', self::CLOSING_POOL['service_qa']);
+
+        return $opening . "\n\n"
+            . $label . "\n\n"
+            . $groundedFact . "\n\n"
+            . $closing;
+    }
+
+    public function composeSharedFaqReply(string $groundedFact, ?string $category = null): string
+    {
+        $groundedFact = trim($groundedFact);
+        if ($groundedFact === '') {
+            return $this->composeEmptyFieldReply();
+        }
+
+        $opening = $this->pickFromPool('opening', self::OPENING_POOL);
+        $label = $this->sharedFaqLabel($category);
+        $closing = $this->pickFromPool('shared_faq', self::CLOSING_POOL['shared_faq']);
 
         return $opening . "\n\n"
             . $label . "\n\n"
@@ -250,6 +271,16 @@ final class KnowledgeResponseComposer
         }
 
         return '為您整理以下資訊：';
+    }
+
+    private function sharedFaqLabel(?string $category): string
+    {
+        $category = trim((string) $category);
+        if ($category !== '') {
+            return '關於' . $category . '，為您整理如下：';
+        }
+
+        return '為您整理以下常見問題：';
     }
 
     private function fieldLabel(string $field, string $companyName): string

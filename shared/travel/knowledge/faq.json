@@ -1,0 +1,34 @@
+{
+    "schema_version": "bats_shared_knowledge.v1",
+    "data_category": "shared_knowledge",
+    "owner_scope": "industry",
+    "industry_code": "travel",
+    "published_at": "2026-06-21T09:14:27Z",
+    "source_type": "sheet",
+    "items": [
+        {
+            "item_id": "travel-faq-refund-missed-flight",
+            "category": "faq",
+            "item_type": "standard",
+            "title": "如果來不及搭乘飛機，該如何辦理退票",
+            "content": "若透過旅行社購票： 請立即聯繫原購票的旅行社客服，索取退票申請單。若向航空公司官網或櫃檯購票： 請直接聯繫航空公司客服，或前往機場櫃檯辦理。部分航空公司（如中華航空）也開放直接在官網申請退票。退票重要須知依航線與票種而定： 各家航空公司的退票規範不同，若機票未於起飛前取消訂位，起飛後申請退票通常需支付較高的誤機費（部分可能高達票價的 50%）。稅金退還： 如果是購買廉價航空或部分傳統航空的特價機票，可能已無機票殘值，但通常仍可申請退還機場稅等未使用的稅金。",
+            "enabled": true
+        },
+        {
+            "item_id": "travel-faq-baggage-overweight",
+            "category": "faq",
+            "item_type": "standard",
+            "title": "行李超重怎麼辦",
+            "content": "依航空公司規定加購行李額度",
+            "enabled": true
+        },
+        {
+            "item_id": "travel-faq-airport-intl-timing",
+            "category": "faq",
+            "item_type": "standard",
+            "title": "國際線多久前到機場",
+            "content": "建議於航班起飛前二至三小時抵達機場辦理報到與安檢。",
+            "enabled": true
+        }
+    ]
+}
