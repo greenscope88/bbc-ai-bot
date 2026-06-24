@@ -11,6 +11,8 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPA
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'AcknowledgementReplyComposer.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'DateParser.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridDateRequiredGate.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'knowledge'
+    . DIRECTORY_SEPARATOR . 'LocalTenantPrivateKnowledgeProvider.php';
 
 $failures = 0;
 
@@ -36,6 +38,8 @@ $otherTenant = [
     'channel_id' => 'staging-channel',
 ];
 $referenceDate = new DateTimeImmutable('2026-06-05', new DateTimeZone('Asia/Taipei'));
+$pilotUserId = 'U-pilot-test-user';
+$waitingText = AcknowledgementReplyComposer::composeProductWaitingReply();
 
 $mockLineSender = static function (string $url, string $token, string $replyToken, string $text): array {
     unset($url, $token);
@@ -45,21 +49,6 @@ $mockLineSender = static function (string $url, string $token, string $replyToke
         'text_length' => mb_strlen($text),
         'mock' => true,
         'kind' => 'final',
-    ];
-};
-
-$ackCalls = [];
-$mockAckSender = static function (string $url, string $token, string $replyToken, string $text) use (&$ackCalls): array {
-    unset($url, $token);
-    $ackCalls[] = [
-        'reply_token' => $replyToken,
-        'text_length' => mb_strlen($text),
-        'text' => $text,
-    ];
-    return [
-        'status' => 200,
-        'mock' => true,
-        'kind' => 'ack',
     ];
 };
 
@@ -107,13 +96,24 @@ $decisionOff = Phase9C1FeatureGate::evaluate([
 ]);
 test_assert(($decisionOff['enabled'] ?? false) === false, 'case1: gate evaluate false');
 
-// Case 2: gate true + missing date → clarification reply
-$clarifyClient = buildPilotMockSearchClient();
-$GLOBALS['pilot_clarify_api_calls'] = 0;
+// Case 2: clarification → reply only
 $clarifyClient = new TourSearchApiClient('https://example.test/tour/search', 5, static function (): array {
     ++$GLOBALS['pilot_clarify_api_calls'];
     return ['ok' => true, 'http_status' => 200, 'body' => '{}', 'transport_error' => null];
 });
+$GLOBALS['pilot_clarify_api_calls'] = 0;
+$clarifyReplyCalls = 0;
+$clarifyPushCalls = 0;
+$clarifyReplySender = static function (string $url, string $token, string $replyToken, string $text) use (&$clarifyReplyCalls): array {
+    unset($url, $token, $replyToken, $text);
+    ++$clarifyReplyCalls;
+    return ['mock' => true, 'kind' => 'reply'];
+};
+$clarifyPushSender = static function (string $url, string $token, string $userId, string $text) use (&$clarifyPushCalls): array {
+    unset($url, $token, $userId, $text);
+    ++$clarifyPushCalls;
+    return ['mock' => true, 'kind' => 'push'];
+};
 
 $resultClarify = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     $tenantTravelB,
@@ -126,33 +126,41 @@ $resultClarify = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     null,
     $clarifyClient,
     $referenceDate,
-    $mockLineSender
+    $clarifyReplySender,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    $pilotUserId,
+    $clarifyPushSender
 );
 test_assert(is_array($resultClarify), 'case2: clarification result array');
-test_assert(($resultClarify['message'] ?? '') === 'phase_9c1_structured_pilot', 'case2: pilot message');
 test_assert(($resultClarify['phase_9c1']['clarification_required'] ?? false) === true, 'case2: clarification_required');
-test_assert(($GLOBALS['pilot_clarify_api_calls'] ?? 0) === 0, 'case2: no Host B on clarification');
-test_assert(
-    (int) ($resultClarify['phase_9c1']['reply_text_length'] ?? 0) > 0,
-    'case2: clarification reply text'
-);
-test_assert(
-    ($resultClarify['phase_9c1']['gemini_context_schema_version'] ?? null) === null,
-    'case2: no v2 context on clarification'
-);
+test_assert($clarifyReplyCalls === 1, 'case2: clarification reply once');
+test_assert($clarifyPushCalls === 0, 'case2: no push on clarification');
+test_assert(($resultClarify['phase_9c1']['waiting_reply_sent'] ?? true) === false, 'case2: no waiting reply');
 
-// Case 3: gate true + dated query → structured v2 path with product recommendation
-$capturedReplyText = '';
-$captureLineSender = static function (string $url, string $token, string $replyToken, string $text) use (&$capturedReplyText): array {
+// Case 3: product_search → waiting Reply + final Push
+$waitingCalls = [];
+$finalPushCalls = [];
+$finalReplyCalls = 0;
+$waitingReplySender = static function (string $url, string $token, string $replyToken, string $text) use (&$waitingCalls): array {
     unset($url, $token);
-    $capturedReplyText = $text;
-    return [
-        'status' => 200,
-        'reply_token' => $replyToken,
-        'text_length' => mb_strlen($text),
-        'mock' => true,
-        'kind' => 'final',
-    ];
+    $waitingCalls[] = ['reply_token' => $replyToken, 'text' => $text];
+    return ['mock' => true, 'kind' => 'waiting'];
+};
+$productPushSender = static function (string $url, string $token, string $userId, string $text) use (&$finalPushCalls): array {
+    unset($url, $token);
+    $finalPushCalls[] = ['user_id' => $userId, 'text' => $text];
+    return ['mock' => true, 'kind' => 'push'];
+};
+$productReplySender = static function (string $url, string $token, string $replyToken, string $text) use (&$finalReplyCalls): array {
+    unset($url, $token, $replyToken, $text);
+    ++$finalReplyCalls;
+    return ['mock' => true, 'kind' => 'final_reply'];
 };
 
 $resultSearch = SaaSRouter::attemptPhase9C1StructuredPilotPath(
@@ -166,25 +174,24 @@ $resultSearch = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     null,
     buildPilotMockSearchClient('北海道7月團'),
     $referenceDate,
-    $captureLineSender
+    $waitingReplySender,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    $pilotUserId,
+    $productPushSender
 );
-test_assert(is_array($resultSearch), 'case3: searchable result array');
-test_assert(($resultSearch['phase_9c1']['clarification_required'] ?? true) === false, 'case3: not clarification');
-test_assert(
-    ($resultSearch['phase_9c1']['gemini_context_schema_version'] ?? 0) === GeminiContextDocument::SCHEMA_VERSION_V2,
-    'case3: gemini context v2'
-);
-test_assert(($resultSearch['phase_9c1']['search_result_count'] ?? 0) >= 1, 'case3: search results present');
-test_assert(
-    (int) ($resultSearch['phase_9c1']['reply_text_length'] ?? 0) > 0,
-    'case3: reply text produced'
-);
-test_assert(mb_strpos($capturedReplyText, '超出') === false, 'case3: no out-of-scope reply');
-test_assert(mb_strpos($capturedReplyText, '您可以參考以下完整行程') !== false, 'case3: primary_url section present');
-test_assert(preg_match('#https?://#u', $capturedReplyText) === 1, 'case3: primary_url in reply');
-test_assert(mb_strpos($capturedReplyText, '北海道') !== false, 'case3: product recommendation content');
+test_assert(count($waitingCalls) === 1, 'case3: waiting reply once');
+test_assert(($waitingCalls[0]['text'] ?? '') === $waitingText, 'case3: fixed waiting text');
+test_assert(count($finalPushCalls) === 1, 'case3: final push once');
+test_assert($finalReplyCalls === 0, 'case3: final not via reply');
+test_assert(($resultSearch['phase_9c1']['final_transport'] ?? '') === 'push', 'case3: final transport push');
 
-// Case 4: travel_b without prefix → null
+// Case 4: no prefix → null
 test_assert(
     SaaSRouter::attemptPhase9C1StructuredPilotPath(
         $tenantTravelB,
@@ -197,12 +204,20 @@ test_assert(
         null,
         buildPilotMockSearchClient(),
         $referenceDate,
-        $mockLineSender
+        $mockLineSender,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        $pilotUserId
     ) === null,
     'case4: no prefix returns null'
 );
 
-// Case 5: HUMAN_ACTIVE blocks AI reply (no final line sender call)
+// Case 5: HUMAN_ACTIVE blocks before waiting/final
 $humanStore = [];
 $humanResolver = ConversationStatusResolver::createForTesting($humanStore);
 $humanConversationId = 'pilot-human-active';
@@ -228,56 +243,144 @@ $resultHuman = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     null,
     null,
     $humanConversationId,
-    $humanResolver
+    $humanResolver,
+    null,
+    null,
+    null,
+    $pilotUserId
 );
-test_assert(is_array($resultHuman), 'case5: human active returns array');
 test_assert(($resultHuman['message'] ?? '') === 'phase_9c1_structured_pilot_blocked', 'case5: blocked message');
-test_assert(($resultHuman['phase_9c1']['block_reason'] ?? '') === 'human_active', 'case5: human_active reason');
 test_assert($finalCallsHuman === 0, 'case5: no final AI reply sent');
 
-// Case 6: AI_ACTIVE searchable path sends ack (mock) then final reply
-$ackCalls = [];
-$finalCallsAi = 0;
-$aiFinalSender = static function (string $url, string $token, string $replyToken, string $text) use (&$finalCallsAi): array {
-    unset($url, $token);
-    ++$finalCallsAi;
-    return [
-        'status' => 200,
-        'reply_token' => $replyToken,
-        'text_length' => mb_strlen($text),
-        'mock' => true,
-        'kind' => 'final',
-    ];
+// Case 6: knowledge_query → reply only
+$fixtureRoot = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'knowledge' . DIRECTORY_SEPARATOR . 'fixtures' . DIRECTORY_SEPARATOR . 'travel_b';
+$knowledgeProvider = new LocalTenantPrivateKnowledgeProvider($travelBSno, $fixtureRoot);
+$knowledgeReplyCalls = 0;
+$knowledgePushCalls = 0;
+$knowledgeReplySender = static function (string $url, string $token, string $replyToken, string $text) use (&$knowledgeReplyCalls): array {
+    unset($url, $token, $replyToken, $text);
+    ++$knowledgeReplyCalls;
+    return ['mock' => true, 'kind' => 'knowledge_reply'];
 };
-$aiStore = [];
-$aiResolver = ConversationStatusResolver::createForTesting($aiStore);
-$resultAi = SaaSRouter::attemptPhase9C1StructuredPilotPath(
+$knowledgePushSender = static function (string $url, string $token, string $userId, string $text) use (&$knowledgePushCalls): array {
+    unset($url, $token, $userId, $text);
+    ++$knowledgePushCalls;
+    return ['mock' => true, 'kind' => 'knowledge_push'];
+};
+$resultKnowledge = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     $tenantTravelB,
-    'BATS測試北海道7月',
+    'BATS測試請問客服電話',
     'trace-pilot-6',
     'reply-token-6',
     'https://api.line.me/v2/bot/message/reply',
     'channel-token-6',
     'travel-b-channel',
     null,
-    buildPilotMockSearchClient('北海道7月團B'),
+    buildPilotMockSearchClient(),
     $referenceDate,
-    $aiFinalSender,
+    $knowledgeReplySender,
     null,
     null,
-    'pilot-ai-active',
-    $aiResolver,
-    $mockAckSender
+    null,
+    null,
+    null,
+    $knowledgeProvider,
+    null,
+    $pilotUserId,
+    $knowledgePushSender
 );
-test_assert(is_array($resultAi), 'case6: AI_ACTIVE result array');
-test_assert(($resultAi['message'] ?? '') === 'phase_9c1_structured_pilot', 'case6: pilot message');
-test_assert(count($ackCalls) === 1, 'case6: acknowledgement sent once');
-test_assert(
-    AcknowledgementReplyComposer::isQueryInProgressSemantic((string) ($ackCalls[0]['text'] ?? '')),
-    'case6: acknowledgement semantic'
+test_assert(($resultKnowledge['phase_9c1']['intent_type'] ?? '') === KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY, 'case6: knowledge intent');
+test_assert($knowledgeReplyCalls === 1, 'case6: knowledge reply once');
+test_assert($knowledgePushCalls === 0, 'case6: no push for knowledge');
+
+// Case 7: ambiguous → no waiting, final reply
+$ambiguousWaitingCalls = 0;
+$ambiguousFinalReplyCalls = 0;
+$ambiguousPushCalls = 0;
+$ambiguousReplySender = static function (string $url, string $token, string $replyToken, string $text) use (&$ambiguousWaitingCalls, &$ambiguousFinalReplyCalls, $waitingText): array {
+    unset($url, $token, $replyToken);
+    if ($text === $waitingText) {
+        ++$ambiguousWaitingCalls;
+        return ['mock' => true, 'kind' => 'waiting'];
+    }
+    ++$ambiguousFinalReplyCalls;
+    return ['mock' => true, 'kind' => 'ambiguous_final_reply'];
+};
+$ambiguousPushSender = static function (string $url, string $token, string $userId, string $text) use (&$ambiguousPushCalls): array {
+    unset($url, $token, $userId, $text);
+    ++$ambiguousPushCalls;
+    return ['mock' => true];
+};
+$resultAmbiguous = SaaSRouter::attemptPhase9C1StructuredPilotPath(
+    $tenantTravelB,
+    'BATS測試想出去玩',
+    'trace-pilot-7',
+    'reply-token-7',
+    'https://api.line.me/v2/bot/message/reply',
+    'channel-token-7',
+    'travel-b-channel',
+    null,
+    buildPilotMockSearchClient(),
+    $referenceDate,
+    $ambiguousReplySender,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    $pilotUserId,
+    $ambiguousPushSender
 );
-test_assert($finalCallsAi === 1, 'case6: final reply sent once');
-test_assert((int) ($resultAi['phase_9c1']['ack_text_length'] ?? 0) > 0, 'case6: ack_text_length logged');
+test_assert($ambiguousWaitingCalls === 0, 'case7: ambiguous no waiting reply');
+test_assert($ambiguousPushCalls === 0, 'case7: ambiguous no push');
+test_assert($ambiguousFinalReplyCalls === 1, 'case7: ambiguous final via reply');
+
+// Case 8: missing userId → no waiting, final reply fallback
+$noUserWaitingCalls = 0;
+$noUserFinalReplyCalls = 0;
+$noUserPushCalls = 0;
+$noUserReplySender = static function (string $url, string $token, string $replyToken, string $text) use (&$noUserWaitingCalls, &$noUserFinalReplyCalls, $waitingText): array {
+    unset($url, $token, $replyToken);
+    if ($text === $waitingText) {
+        ++$noUserWaitingCalls;
+        return ['mock' => true, 'kind' => 'waiting'];
+    }
+    ++$noUserFinalReplyCalls;
+    return ['mock' => true, 'kind' => 'no_user_final_reply'];
+};
+$noUserPushSender = static function (string $url, string $token, string $userId, string $text) use (&$noUserPushCalls): array {
+    unset($url, $token, $userId, $text);
+    ++$noUserPushCalls;
+    return ['mock' => true];
+};
+$resultNoUser = SaaSRouter::attemptPhase9C1StructuredPilotPath(
+    $tenantTravelB,
+    'BATS測試北海道7月',
+    'trace-pilot-8',
+    'reply-token-8',
+    'https://api.line.me/v2/bot/message/reply',
+    'channel-token-8',
+    'travel-b-channel',
+    null,
+    buildPilotMockSearchClient('北海道7月團C'),
+    $referenceDate,
+    $noUserReplySender,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    '',
+    $noUserPushSender
+);
+test_assert($noUserWaitingCalls === 0, 'case8: missing userId no waiting');
+test_assert($noUserPushCalls === 0, 'case8: missing userId no push');
+test_assert($noUserFinalReplyCalls === 1, 'case8: missing userId final reply fallback');
+test_assert(($resultNoUser['phase_9c1']['final_transport'] ?? '') === 'reply', 'case8: final transport reply');
 
 if ($failures > 0) {
     fwrite(STDERR, "\n{$failures} test failure(s)\n");

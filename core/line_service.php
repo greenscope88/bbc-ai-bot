@@ -33,6 +33,27 @@ class LineService
         return self::reply($replyApiUrl, $token, $replyToken, $text);
     }
 
+    public static function push(string $pushApiUrl, string $token, string $userId, string $message): array
+    {
+        $payload = [
+            'to' => $userId,
+            'messages' => [
+                ['type' => 'text', 'text' => $message],
+            ],
+        ];
+
+        return self::postJson(
+            $pushApiUrl,
+            $payload,
+            ['Authorization: Bearer ' . $token]
+        );
+    }
+
+    public static function pushToLine(string $pushApiUrl, string $token, string $userId, string $text): array
+    {
+        return self::push($pushApiUrl, $token, $userId, $text);
+    }
+
     public static function postJson(string $url, array $payload, array $headers): array
     {
         $ch = curl_init($url);

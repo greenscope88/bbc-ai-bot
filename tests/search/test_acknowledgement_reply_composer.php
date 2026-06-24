@@ -32,6 +32,13 @@ test_assert($composed === $composed2, 'same seed yields same acknowledgement');
 $composed3 = $composer->compose('seed-ack-2');
 test_assert($composed3 !== '', 'alternate seed not empty');
 
+$waitingReply = AcknowledgementReplyComposer::composeProductWaitingReply();
+test_assert($waitingReply === '請稍後，我將立刻為您查詢 😊', 'product waiting reply fixed text');
+test_assert(
+    AcknowledgementReplyComposer::isQueryInProgressSemantic($waitingReply),
+    'product waiting reply semantic'
+);
+
 if ($failures > 0) {
     fwrite(STDERR, "\n{$failures} test failure(s)\n");
     exit(1);

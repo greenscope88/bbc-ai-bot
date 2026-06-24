@@ -27,6 +27,7 @@ require_once __DIR__ . '/product_source/renderer/gemini/GeminiRenderer.php';
 require_once __DIR__ . '/product_source/integration/GeminiClient.php';
 require_once __DIR__ . '/product_source/recommendation/ProductRecommendationBuilder.php';
 require_once __DIR__ . '/search/KnowledgeIntentDetector.php';
+require_once __DIR__ . '/search/BatsSearchIntentBuilder.php';
 require_once __DIR__ . '/knowledge/TenantPrivateKnowledgeRuntime.php';
 require_once __DIR__ . '/knowledge/TenantPrivateKnowledgeProviderInterface.php';
 
@@ -217,6 +218,12 @@ class SaaSRouter
                 'trace_id' => $traceId,
             ]));
             if (($phase9C1Decision['enabled'] ?? false) === true) {
+                $lineUserId = '';
+                if (isset($firstEvent['source']) && is_array($firstEvent['source'])) {
+                    $lineUserId = isset($firstEvent['source']['userId'])
+                        ? trim((string) $firstEvent['source']['userId'])
+                        : '';
+                }
                 $phase9C1Result = self::attemptPhase9C1StructuredPilotPath(
                     $tenant,
                     $userMessage,
@@ -224,7 +231,19 @@ class SaaSRouter
                     $replyToken,
                     $lineReplyUrl,
                     $lineToken,
-                    (string) ($tenant['channel_id'] ?? '')
+                    (string) ($tenant['channel_id'] ?? ''),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    $lineUserId
                 );
                 if (is_array($phase9C1Result)) {
                     return $phase9C1Result;
@@ -981,6 +1000,7 @@ class SaaSRouter
      *
      * @param array<string, mixed> $tenant
      * @param callable|null $lineReplySender fn(string $url, string $token, string $replyToken, string $text): array
+     * @param callable|null $linePushSender fn(string $url, string $token, string $userId, string $text): array
      * @return array<string, mixed>|null
      */
     public static function attemptPhase9C1StructuredPilotPath(
@@ -1001,7 +1021,9 @@ class SaaSRouter
         ?ConversationStatusResolver $conversationStatusResolver = null,
         $ackReplySender = null,
         ?TenantPrivateKnowledgeProviderInterface $knowledgeProvider = null,
-        ?KnowledgeIntentDetector $knowledgeIntentDetector = null
+        ?KnowledgeIntentDetector $knowledgeIntentDetector = null,
+        string $userId = '',
+        $linePushSender = null
     ): ?array {
         $tenantSno = trim((string) ($tenant['sno'] ?? ''));
         if (!Phase9C1FeatureGate::isEnabled([
@@ -1154,11 +1176,52 @@ class SaaSRouter
                 $contextParams['searchClient'] = $searchClient;
             }
 
+            $intentType = (string) ($intentDetection['intent_type'] ?? '');
+            $waitingReplySent = false;
+            $ackText = '';
+            $ackReply = null;
+            $linePushApiUrl = self::resolveLinePushApiUrl($lineReplyUrl);
+            $trimmedUserId = trim($userId);
+
+            if ($intentType === KnowledgeIntentDetector::INTENT_PRODUCT_SEARCH) {
+                $preflightIntent = (new BatsSearchIntentBuilder())->parse($queryText, [
+                    'reference_date' => $now,
+                    'merge_legacy_keyword' => true,
+                ]);
+                $preflightGate = FinalReplyGate::evaluate($statusResolver->resolveStatus($conversationKey, $now));
+                if (
+                    !$preflightIntent->isClarificationRequired()
+                    && ($preflightGate['allowed'] ?? false) === true
+                    && $trimmedUserId !== ''
+                ) {
+                    $ackText = AcknowledgementReplyComposer::composeProductWaitingReply();
+                    if ($ackText !== '') {
+                        if (is_callable($lineReplySender)) {
+                            $ackReply = $lineReplySender($lineReplyUrl, $lineToken, $replyToken, $ackText);
+                        } else {
+                            $ackReply = LineService::replyToLine($lineReplyUrl, $lineToken, $replyToken, $ackText);
+                        }
+                        $waitingReplySent = true;
+                        Logger::log('saas_router.log', 'phase_9c1_waiting_reply_sent', [
+                            'trace_id' => $traceId,
+                            'conversation_id' => $conversationKey,
+                            'intent_type' => $intentType,
+                            'ack_text_length' => mb_strlen($ackText),
+                            'user_id_present' => true,
+                        ]);
+                        self::appendWebhookLog('phase_9c1_waiting_reply_sent', [
+                            'trace_id' => $traceId,
+                            'conversation_id' => $conversationKey,
+                            'intent_type' => $intentType,
+                            'ack_text_length' => mb_strlen($ackText),
+                        ]);
+                    }
+                }
+            }
+
             $structuredResult = $service->buildTourContextResult($contextParams);
             $geminiContextSchemaVersion = null;
             $replyText = '';
-            $ackText = '';
-            $ackReply = null;
 
             if ($structuredResult->isClarificationRequired()) {
                 $replyText = DateClarificationLineFormatter::formatFromTourContext(
@@ -1168,19 +1231,6 @@ class SaaSRouter
                     $replyText = '您好 😊 請問您預計什麼時候出發呢？我會依照您的出發時間幫您查詢適合的行程。';
                 }
             } else {
-                $ackComposer = new AcknowledgementReplyComposer();
-                $ackText = $ackComposer->compose($traceId);
-                if ($ackText !== '' && is_callable($ackReplySender)) {
-                    $ackReply = $ackReplySender($lineReplyUrl, $lineToken, $replyToken, $ackText);
-                } elseif ($ackText !== '') {
-                    Logger::log('saas_router.log', 'phase_9c1_ack_pending_push', [
-                        'trace_id' => $traceId,
-                        'conversation_id' => $conversationKey,
-                        'ack_text_length' => mb_strlen($ackText),
-                        'reason' => 'reply_token_reserved_for_final_reply',
-                    ]);
-                }
-
                 $renderer = $geminiRenderer ?? new GeminiRenderer();
                 $client = $geminiClient ?? new GeminiClient();
                 $tenantName = trim((string) ($tenant['company_name'] ?? ''));
@@ -1236,10 +1286,19 @@ class SaaSRouter
             }
 
             $replyRes = null;
-            if (is_callable($lineReplySender)) {
-                $replyRes = $lineReplySender($lineReplyUrl, $lineToken, $replyToken, $replyText);
+            $pushRes = null;
+            if ($waitingReplySent && !$structuredResult->isClarificationRequired()) {
+                if (is_callable($linePushSender)) {
+                    $pushRes = $linePushSender($linePushApiUrl, $lineToken, $trimmedUserId, $replyText);
+                } else {
+                    $pushRes = LineService::pushToLine($linePushApiUrl, $lineToken, $trimmedUserId, $replyText);
+                }
             } else {
-                $replyRes = LineService::replyToLine($lineReplyUrl, $lineToken, $replyToken, $replyText);
+                if (is_callable($lineReplySender)) {
+                    $replyRes = $lineReplySender($lineReplyUrl, $lineToken, $replyToken, $replyText);
+                } else {
+                    $replyRes = LineService::replyToLine($lineReplyUrl, $lineToken, $replyToken, $replyText);
+                }
             }
 
             $payload = [
@@ -1247,14 +1306,18 @@ class SaaSRouter
                 'tenant_sno' => $tenantSno,
                 'conversation_id' => $conversationKey,
                 'conversation_status' => $finalGate['conversation_status'],
+                'intent_type' => $intentType,
                 'clarification_required' => $structuredResult->isClarificationRequired(),
                 'clarification_reason' => $structuredResult->getClarificationReason(),
                 'gemini_context_schema_version' => $geminiContextSchemaVersion,
                 'search_result_count' => count($structuredResult->getSearchResults()),
+                'waiting_reply_sent' => $waitingReplySent,
                 'ack_text_length' => $ackText !== '' ? mb_strlen($ackText) : 0,
                 'ack_line_reply' => $ackReply,
                 'reply_text_length' => mb_strlen($replyText),
                 'line_reply' => $replyRes,
+                'line_push' => $pushRes,
+                'final_transport' => ($waitingReplySent && !$structuredResult->isClarificationRequired()) ? 'push' : 'reply',
                 'final_route' => 'phase_9c1_structured_pilot',
             ];
             Logger::log('saas_router.log', 'phase_9c1_structured_pilot_reply', $payload);
@@ -1281,6 +1344,16 @@ class SaaSRouter
 
             return null;
         }
+    }
+
+    private static function resolveLinePushApiUrl(string $lineReplyUrl): string
+    {
+        $lineReplyUrl = trim($lineReplyUrl);
+        if ($lineReplyUrl !== '' && preg_match('/\/reply\/?$/i', $lineReplyUrl) === 1) {
+            return preg_replace('/\/reply\/?$/i', '/push', $lineReplyUrl) ?? 'https://api.line.me/v2/bot/message/push';
+        }
+
+        return 'https://api.line.me/v2/bot/message/push';
     }
 
     /**
