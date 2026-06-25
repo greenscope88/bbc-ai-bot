@@ -30,6 +30,7 @@ require_once __DIR__ . '/search/KnowledgeIntentDetector.php';
 require_once __DIR__ . '/search/BatsSearchIntentBuilder.php';
 require_once __DIR__ . '/knowledge/TenantPrivateKnowledgeRuntime.php';
 require_once __DIR__ . '/knowledge/TenantPrivateKnowledgeProviderInterface.php';
+require_once __DIR__ . '/response/GroundedResponseComposer.php';
 
 class SaaSRouter
 {
@@ -1088,7 +1089,19 @@ class SaaSRouter
                     'company_name' => trim((string) ($tenant['company_name'] ?? '')),
                     'industry_code' => trim((string) ($tenant['industry_code'] ?? '')),
                 ]);
-                $replyText = trim((string) ($knowledgeResult['reply_text'] ?? ''));
+
+                // Phase 9-C-2C-1: present knowledge reply through unified Grounded
+                // Response Composer (thin wrapper; reply text unchanged).
+                $groundedOutput = (new GroundedResponseComposer())->composeFromKnowledgeResult(
+                    $knowledgeResult,
+                    [
+                        'tenant_sno' => $tenantSno,
+                        'tenant_key' => trim((string) ($tenant['tenant_key'] ?? '')),
+                        'company_name' => trim((string) ($tenant['company_name'] ?? '')),
+                        'industry_code' => trim((string) ($tenant['industry_code'] ?? '')),
+                    ]
+                );
+                $replyText = $groundedOutput->getText();
 
                 $finalGate = FinalReplyGate::evaluate($statusResolver->resolveStatus($conversationKey, $now));
                 if (!$finalGate['allowed']) {
@@ -1131,7 +1144,13 @@ class SaaSRouter
                     'reply_text_length' => mb_strlen($replyText),
                     'line_reply' => $replyRes,
                     'final_route' => (string) ($knowledgeResult['final_route'] ?? 'phase_9c2b_knowledge_runtime'),
+                    'grounded_source_type' => $groundedOutput->getSourceType(),
+                    'grounded_used_facts_count' => $groundedOutput->getUsedFactsCount(),
+                    'grounded_human_service_required' => $groundedOutput->isHumanServiceRequired(),
                 ];
+                if ($groundedOutput->getSafetyNotes() !== []) {
+                    $payload['grounded_safety_notes'] = $groundedOutput->getSafetyNotes();
+                }
                 if (!empty($knowledgeResult['qa_id'])) {
                     $payload['knowledge_qa_id'] = (string) $knowledgeResult['qa_id'];
                 }
