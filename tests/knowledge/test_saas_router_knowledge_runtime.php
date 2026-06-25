@@ -171,6 +171,52 @@ test_assert(($resultQa['phase_9c1']['knowledge_grounded'] ?? false) === true, 'r
 test_assert(strpos((string) ($lineCalls[0]['text'] ?? ''), '飛機起飛前二個小時前') !== false, 'router: service_qa grounded fact');
 test_assert(strpos((string) ($lineCalls[0]['text'] ?? ''), '搭機須知') !== false, 'router: service_qa persona label');
 
+// Phase 9-C-1Z: no legacy prefix required for BATS-enabled tenant
+$lineCalls = [];
+$resultKnowledgeNoPrefix = SaaSRouter::attemptPhase9C1StructuredPilotPath(
+    $tenantTravelB,
+    '請問客服電話',
+    'trace-knowledge-phone-no-prefix',
+    'reply-token-knowledge-no-prefix',
+    'https://api.line.me/v2/bot/message/reply',
+    'channel-token-knowledge-no-prefix',
+    'travel-b-channel',
+    null,
+    buildPilotMockSearchClient(),
+    $referenceDate,
+    $mockLineSender,
+    null,
+    null,
+    null,
+    null,
+    null,
+    $knowledgeProvider
+);
+test_assert(($resultKnowledgeNoPrefix['message'] ?? '') === 'phase_9c2b2a_knowledge_runtime', 'router: knowledge without prefix');
+test_assert(strpos((string) ($lineCalls[0]['text'] ?? ''), '07-5224856') !== false, 'router: phone without prefix');
+
+$lineCalls = [];
+$resultSearchNoPrefix = SaaSRouter::attemptPhase9C1StructuredPilotPath(
+    $tenantTravelB,
+    '北海道7月',
+    'trace-knowledge-search-no-prefix',
+    'reply-token-search-no-prefix',
+    'https://api.line.me/v2/bot/message/reply',
+    'channel-token-search-no-prefix',
+    'travel-b-channel',
+    null,
+    buildPilotMockSearchClient(),
+    $referenceDate,
+    $mockLineSender,
+    null,
+    null,
+    null,
+    null,
+    null,
+    $knowledgeProvider
+);
+test_assert(($resultSearchNoPrefix['message'] ?? '') === 'phase_9c1_structured_pilot', 'router: product search without prefix');
+
 if ($failures === 0) {
     fwrite(STDOUT, "OK: test_saas_router_knowledge_runtime (all passed)\n");
     exit(0);

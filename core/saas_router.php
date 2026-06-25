@@ -206,7 +206,7 @@ class SaaSRouter
 
             $batsFeatureConfig = self::loadBatsFeatureConfig();
 
-            // Phase 9-C-1d-β1: structured pilot (travel_b + BATS測試 prefix only).
+            // Phase 9-C-1Z: BATS-enabled tenant gate (travel_b first production tenant).
             $phase9C1Decision = Phase9C1FeatureGate::evaluate([
                 'sno' => (string) ($tenant['sno'] ?? ''),
                 'userMessage' => $userMessage,
@@ -996,7 +996,7 @@ class SaaSRouter
     }
 
     /**
-     * Phase 9-C-1d-β1: structured pilot path (travel_b + BATS測試 prefix).
+     * Phase 9-C-1Z: structured BATS Runtime path (BATS-enabled tenant gate).
      *
      * @param array<string, mixed> $tenant
      * @param callable|null $lineReplySender fn(string $url, string $token, string $replyToken, string $text): array
@@ -1357,6 +1357,26 @@ class SaaSRouter
     }
 
     /**
+     * Aligns with GeminiTourContextBuilder title field fallbacks (legacy tour list).
+     *
+     * @param array<string, mixed> $row
+     */
+    private static function resolvePublishPlanItemTitle(array $row): string
+    {
+        foreach (['title', 'couponName', 'name', '行程名稱'] as $key) {
+            if (!isset($row[$key])) {
+                continue;
+            }
+            $value = trim((string) $row[$key]);
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return '';
+    }
+
+    /**
      * @param list<array<string, mixed>> $searchResults
      */
     private static function buildGeminiPublishPlanFromSearchResults(array $searchResults): ChannelPublishPlan
@@ -1366,7 +1386,7 @@ class SaaSRouter
             if (!is_array($row)) {
                 continue;
             }
-            $title = isset($row['title']) ? trim((string) $row['title']) : '';
+            $title = self::resolvePublishPlanItemTitle($row);
             if ($title === '') {
                 continue;
             }

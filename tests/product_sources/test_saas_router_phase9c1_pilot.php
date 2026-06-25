@@ -74,6 +74,28 @@ function buildPilotMockSearchClient(string $title = '北海道夏季團'): TourS
     });
 }
 
+function buildPilotMockSearchClientCouponNameOnly(string $couponName): TourSearchApiClient
+{
+    return new TourSearchApiClient('https://example.test/tour/search', 5, static function () use ($couponName): array {
+        $body = json_encode([
+            'success' => true,
+            'pagination' => ['total' => 1],
+            'items' => [
+                ['couponName' => $couponName, 'tourDate' => '2026-07-10', 'price' => 45000],
+            ],
+            'search_url' => 'https://example.test/search',
+            'error' => null,
+        ], JSON_UNESCAPED_UNICODE);
+
+        return [
+            'ok' => true,
+            'http_status' => 200,
+            'body' => $body !== false ? $body : '',
+            'transport_error' => null,
+        ];
+    });
+}
+
 // Case 1: gate false → path returns null (legacy unchanged)
 $resultOff = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     $otherTenant,
@@ -191,16 +213,42 @@ test_assert(count($finalPushCalls) === 1, 'case3: final push once');
 test_assert($finalReplyCalls === 0, 'case3: final not via reply');
 test_assert(($resultSearch['phase_9c1']['final_transport'] ?? '') === 'push', 'case3: final transport push');
 
-// Case 4: no prefix → null
+// Case 4: BATS-enabled tenant without prefix → enters pilot path
+$resultNoPrefix = SaaSRouter::attemptPhase9C1StructuredPilotPath(
+    $tenantTravelB,
+    '北海道7月',
+    'trace-pilot-4',
+    'reply-token-4',
+    'https://api.line.me/v2/bot/message/reply',
+    'channel-token-4',
+    'travel-b-channel',
+    null,
+    buildPilotMockSearchClient('北海道7月團D'),
+    $referenceDate,
+    $waitingReplySender,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    $pilotUserId,
+    $productPushSender
+);
+test_assert(is_array($resultNoPrefix), 'case4: enabled tenant without prefix enters pilot');
+test_assert(($resultNoPrefix['message'] ?? '') === 'phase_9c1_structured_pilot', 'case4: pilot message without prefix');
+
+// Case 4b: non-enabled tenant → null
 test_assert(
     SaaSRouter::attemptPhase9C1StructuredPilotPath(
-        $tenantTravelB,
+        $otherTenant,
         '北海道7月',
-        'trace-pilot-4',
-        'reply-token-4',
+        'trace-pilot-4b',
+        'reply-token-4b',
         'https://api.line.me/v2/bot/message/reply',
-        'channel-token-4',
-        'travel-b-channel',
+        'channel-token-4b',
+        'staging-channel',
         null,
         buildPilotMockSearchClient(),
         $referenceDate,
@@ -214,7 +262,7 @@ test_assert(
         null,
         $pilotUserId
     ) === null,
-    'case4: no prefix returns null'
+    'case4b: non-enabled tenant returns null'
 );
 
 // Case 5: HUMAN_ACTIVE blocks before waiting/final
@@ -381,6 +429,43 @@ test_assert($noUserWaitingCalls === 0, 'case8: missing userId no waiting');
 test_assert($noUserPushCalls === 0, 'case8: missing userId no push');
 test_assert($noUserFinalReplyCalls === 1, 'case8: missing userId final reply fallback');
 test_assert(($resultNoUser['phase_9c1']['final_transport'] ?? '') === 'reply', 'case8: final transport reply');
+
+// Case 9: Host B row with couponName only (no title) → product recommendation, not no-results
+$couponNameTitle = '東京近期五日精選';
+$couponNamePushCalls = [];
+$couponNamePushSender = static function (string $url, string $token, string $userId, string $text) use (&$couponNamePushCalls, $couponNameTitle): array {
+    unset($url, $token, $userId);
+    $couponNamePushCalls[] = ['text' => $text];
+    return ['mock' => true, 'kind' => 'push'];
+};
+$resultCouponName = SaaSRouter::attemptPhase9C1StructuredPilotPath(
+    $tenantTravelB,
+    '近期東京',
+    'trace-pilot-9',
+    'reply-token-9',
+    'https://api.line.me/v2/bot/message/reply',
+    'channel-token-9',
+    'travel-b-channel',
+    null,
+    buildPilotMockSearchClientCouponNameOnly($couponNameTitle),
+    $referenceDate,
+    $waitingReplySender,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    $pilotUserId,
+    $couponNamePushSender
+);
+$pushText = (string) ($couponNamePushCalls[0]['text'] ?? '');
+test_assert(is_array($resultCouponName), 'case9: couponName-only result array');
+test_assert(($resultCouponName['phase_9c1']['search_result_count'] ?? 0) >= 1, 'case9: search_result_count >= 1');
+test_assert(count($couponNamePushCalls) === 1, 'case9: final push once');
+test_assert(mb_strpos($pushText, $couponNameTitle) !== false, 'case9: push includes couponName title');
+test_assert(mb_strpos($pushText, '目前尚未找到符合條件的商品') === false, 'case9: push not no-results message');
 
 if ($failures > 0) {
     fwrite(STDERR, "\n{$failures} test failure(s)\n");
