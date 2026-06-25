@@ -1241,6 +1241,9 @@ class SaaSRouter
             $structuredResult = $service->buildTourContextResult($contextParams);
             $geminiContextSchemaVersion = null;
             $replyText = '';
+            $groundedReplyType = null;
+            $groundedLayoutProfile = null;
+            $groundedUsedFactsCount = null;
 
             if ($structuredResult->isClarificationRequired()) {
                 $replyText = DateClarificationLineFormatter::formatFromTourContext(
@@ -1274,6 +1277,33 @@ class SaaSRouter
                 ]);
                 $geminiContextSchemaVersion = $geminiContext->getSchemaVersion();
                 $replyText = $client->generateResponse($geminiContext)->getReplyText();
+
+                // Phase 9-C-2C-2: present the Product Runtime reply through the
+                // unified GroundedResponseComposer. The recommendation copy is
+                // NOT regenerated here — the composer only normalizes grounded
+                // presentation metadata and passes the reply text through.
+                $productResultCount = isset($recommendationSummary['result_count'])
+                    ? (int) $recommendationSummary['result_count']
+                    : count($structuredResult->getSearchResults());
+                $productProductList = isset($recommendationSummary['top_products']) && is_array($recommendationSummary['top_products'])
+                    ? $recommendationSummary['top_products']
+                    : [];
+                $groundedOutput = (new GroundedResponseComposer())->composeProductReply(
+                    [
+                        'reply_text' => $replyText,
+                        'grounded' => $productResultCount > 0,
+                        'recommendation_summary' => $recommendationSummary,
+                        'product_list' => $productProductList,
+                    ],
+                    is_array($tenant) ? $tenant : []
+                );
+                $composedReplyText = $groundedOutput->getReplyText();
+                if ($composedReplyText !== '') {
+                    $replyText = $composedReplyText;
+                }
+                $groundedReplyType = $groundedOutput->getReplyType();
+                $groundedLayoutProfile = $groundedOutput->getLayoutProfile();
+                $groundedUsedFactsCount = $groundedOutput->getUsedFactsCount();
             }
 
             if ($replyText === '') {
@@ -1334,6 +1364,9 @@ class SaaSRouter
                 'ack_text_length' => $ackText !== '' ? mb_strlen($ackText) : 0,
                 'ack_line_reply' => $ackReply,
                 'reply_text_length' => mb_strlen($replyText),
+                'grounded_reply_type' => $groundedReplyType,
+                'grounded_layout_profile' => $groundedLayoutProfile,
+                'grounded_used_facts_count' => $groundedUsedFactsCount,
                 'line_reply' => $replyRes,
                 'line_push' => $pushRes,
                 'final_transport' => ($waitingReplySent && !$structuredResult->isClarificationRequired()) ? 'push' : 'reply',

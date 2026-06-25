@@ -12,6 +12,15 @@ declare(strict_types=1);
  */
 final class GroundedOutput
 {
+    public const REPLY_TYPE_NORMAL = 'normal_reply';
+    public const REPLY_TYPE_NO_RESULTS = 'no_results';
+    public const REPLY_TYPE_CLARIFICATION = 'clarification';
+    public const REPLY_TYPE_HUMAN_FALLBACK = 'human_agent_fallback';
+
+    public const LAYOUT_PRODUCT_RICH = 'product_rich_v1';
+    public const LAYOUT_KNOWLEDGE_STANDARD = 'knowledge_standard_v1';
+    public const LAYOUT_MINIMAL = 'minimal_v1';
+
     private string $text;
 
     private bool $grounded;
@@ -25,6 +34,10 @@ final class GroundedOutput
     /** @var list<string> */
     private array $safetyNotes;
 
+    private string $replyType;
+
+    private string $layoutProfile;
+
     /**
      * @param list<string> $safetyNotes
      */
@@ -34,7 +47,9 @@ final class GroundedOutput
         int $usedFactsCount,
         string $sourceType,
         bool $humanServiceRequired,
-        array $safetyNotes = []
+        array $safetyNotes = [],
+        string $replyType = self::REPLY_TYPE_NORMAL,
+        string $layoutProfile = self::LAYOUT_KNOWLEDGE_STANDARD
     ) {
         $this->text = $text;
         $this->grounded = $grounded;
@@ -42,11 +57,31 @@ final class GroundedOutput
         $this->sourceType = $sourceType;
         $this->humanServiceRequired = $humanServiceRequired;
         $this->safetyNotes = $safetyNotes;
+        $this->replyType = $replyType;
+        $this->layoutProfile = $layoutProfile;
     }
 
     public function getText(): string
     {
         return $this->text;
+    }
+
+    /**
+     * SSOT contract alias for getText(); reply_text is the canonical field name.
+     */
+    public function getReplyText(): string
+    {
+        return $this->text;
+    }
+
+    public function getReplyType(): string
+    {
+        return $this->replyType;
+    }
+
+    public function getLayoutProfile(): string
+    {
+        return $this->layoutProfile;
     }
 
     public function isGrounded(): bool
@@ -84,6 +119,9 @@ final class GroundedOutput
     {
         return [
             'text' => $this->text,
+            'reply_text' => $this->text,
+            'reply_type' => $this->replyType,
+            'layout_profile' => $this->layoutProfile,
             'grounded' => $this->grounded,
             'used_facts_count' => $this->usedFactsCount,
             'source_type' => $this->sourceType,
