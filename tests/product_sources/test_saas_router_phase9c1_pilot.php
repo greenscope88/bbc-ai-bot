@@ -96,6 +96,43 @@ function buildPilotMockSearchClientCouponNameOnly(string $couponName): TourSearc
     });
 }
 
+// P1 Product Layout Fix: multi-item Host B payload (title/date/price/origin/schedule)
+// so the restored fixed BBC product layout (TourFallbackFormatter) can be asserted.
+function buildPilotMockSearchClientRichLayout(): TourSearchApiClient
+{
+    return new TourSearchApiClient('https://example.test/tour/search', 5, static function (): array {
+        $body = json_encode([
+            'success' => true,
+            'pagination' => ['total' => 2],
+            'items' => [
+                [
+                    'title' => '東京賞櫻五日',
+                    'tourDate' => '2026-07-12',
+                    'price' => 38800,
+                    'departureStr' => '台北出發',
+                    'schLinks' => [['schLinkName' => '行程表', 'schLink' => 'https://example.test/sch/tokyo-a']],
+                ],
+                [
+                    'title' => '東京自由行四日',
+                    'tourDate' => '2026-07-20',
+                    'price' => 29800,
+                    'departureStr' => '高雄出發',
+                    'schLinks' => [['schLinkName' => '行程表', 'schLink' => 'https://example.test/sch/tokyo-b']],
+                ],
+            ],
+            'search_url' => 'https://example.test/search',
+            'error' => null,
+        ], JSON_UNESCAPED_UNICODE);
+
+        return [
+            'ok' => true,
+            'http_status' => 200,
+            'body' => $body !== false ? $body : '',
+            'transport_error' => null,
+        ];
+    });
+}
+
 // Case 1: gate false → path returns null (legacy unchanged)
 $resultOff = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     $otherTenant,
@@ -466,6 +503,100 @@ test_assert(($resultCouponName['phase_9c1']['search_result_count'] ?? 0) >= 1, '
 test_assert(count($couponNamePushCalls) === 1, 'case9: final push once');
 test_assert(mb_strpos($pushText, $couponNameTitle) !== false, 'case9: push includes couponName title');
 test_assert(mb_strpos($pushText, '目前尚未找到符合條件的商品') === false, 'case9: push not no-results message');
+
+// Case 10: P1 Product Layout Fix — 近期東京 → Waiting Reply first, then a fixed
+// BBC product layout (TourFallbackFormatter) on push (🚩 / 📅 / 💰 / 🛫 / 🗓️ + separator).
+$layoutWaitingCalls10 = [];
+$layoutPushCalls10 = [];
+$layoutWaitingSender10 = static function (string $url, string $token, string $replyToken, string $text) use (&$layoutWaitingCalls10): array {
+    unset($url, $token, $replyToken);
+    $layoutWaitingCalls10[] = ['text' => $text];
+    return ['mock' => true, 'kind' => 'waiting'];
+};
+$layoutPushSender10 = static function (string $url, string $token, string $userId, string $text) use (&$layoutPushCalls10): array {
+    unset($url, $token, $userId);
+    $layoutPushCalls10[] = ['text' => $text];
+    return ['mock' => true, 'kind' => 'push'];
+};
+$resultLayout10 = SaaSRouter::attemptPhase9C1StructuredPilotPath(
+    $tenantTravelB,
+    '近期東京',
+    'trace-pilot-10',
+    'reply-token-10',
+    'https://api.line.me/v2/bot/message/reply',
+    'channel-token-10',
+    'travel-b-channel',
+    null,
+    buildPilotMockSearchClientRichLayout(),
+    $referenceDate,
+    $layoutWaitingSender10,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    $pilotUserId,
+    $layoutPushSender10
+);
+$layoutPushText10 = (string) ($layoutPushCalls10[0]['text'] ?? '');
+test_assert(is_array($resultLayout10), 'case10: layout result array');
+test_assert(count($layoutWaitingCalls10) === 1, 'case10: waiting reply once');
+test_assert(($layoutWaitingCalls10[0]['text'] ?? '') === $waitingText, 'case10: fixed waiting text');
+test_assert(count($layoutPushCalls10) === 1, 'case10: final push once');
+test_assert(($resultLayout10['phase_9c1']['final_transport'] ?? '') === 'push', 'case10: final transport push');
+test_assert(mb_strpos($layoutPushText10, '🚩') !== false, 'case10: push has 🚩 title flag');
+test_assert(mb_strpos($layoutPushText10, '📅 最近出團：') !== false, 'case10: push has 📅 departure');
+test_assert(mb_strpos($layoutPushText10, '💰 售價：') !== false, 'case10: push has 💰 price');
+test_assert(mb_strpos($layoutPushText10, '🛫 出發地：') !== false, 'case10: push has 🛫 origin');
+test_assert(mb_strpos($layoutPushText10, '🗓️ 行程表：') !== false, 'case10: push has 🗓️ schedule');
+test_assert(mb_strpos($layoutPushText10, '──────────────') !== false, 'case10: push has item separator');
+test_assert(mb_strpos($layoutPushText10, '東京賞櫻五日') !== false, 'case10: push has product title');
+
+// Case 11: P1 Product Layout Fix — 最近東京五天 → Waiting Reply first, fixed product layout.
+$layoutWaitingCalls11 = [];
+$layoutPushCalls11 = [];
+$layoutWaitingSender11 = static function (string $url, string $token, string $replyToken, string $text) use (&$layoutWaitingCalls11): array {
+    unset($url, $token, $replyToken);
+    $layoutWaitingCalls11[] = ['text' => $text];
+    return ['mock' => true, 'kind' => 'waiting'];
+};
+$layoutPushSender11 = static function (string $url, string $token, string $userId, string $text) use (&$layoutPushCalls11): array {
+    unset($url, $token, $userId);
+    $layoutPushCalls11[] = ['text' => $text];
+    return ['mock' => true, 'kind' => 'push'];
+};
+$resultLayout11 = SaaSRouter::attemptPhase9C1StructuredPilotPath(
+    $tenantTravelB,
+    '最近東京五天',
+    'trace-pilot-11',
+    'reply-token-11',
+    'https://api.line.me/v2/bot/message/reply',
+    'channel-token-11',
+    'travel-b-channel',
+    null,
+    buildPilotMockSearchClientRichLayout(),
+    $referenceDate,
+    $layoutWaitingSender11,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    $pilotUserId,
+    $layoutPushSender11
+);
+$layoutPushText11 = (string) ($layoutPushCalls11[0]['text'] ?? '');
+test_assert(is_array($resultLayout11), 'case11: layout result array');
+test_assert(count($layoutWaitingCalls11) === 1, 'case11: waiting reply once');
+test_assert(count($layoutPushCalls11) === 1, 'case11: final push once');
+test_assert(mb_strpos($layoutPushText11, '🚩') !== false, 'case11: push has 🚩 title flag');
+test_assert(mb_strpos($layoutPushText11, '📅 最近出團：') !== false, 'case11: push has 📅 departure');
+test_assert(mb_strpos($layoutPushText11, '💰 售價：') !== false, 'case11: push has 💰 price');
+test_assert(mb_strpos($layoutPushText11, '🛫 出發地：') !== false, 'case11: push has 🛫 origin');
 
 if ($failures > 0) {
     fwrite(STDERR, "\n{$failures} test failure(s)\n");

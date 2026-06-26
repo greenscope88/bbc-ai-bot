@@ -1276,7 +1276,22 @@ class SaaSRouter
                     'recommendation_summary' => $recommendationSummary,
                 ]);
                 $geminiContextSchemaVersion = $geminiContext->getSchemaVersion();
-                $replyText = $client->generateResponse($geminiContext)->getReplyText();
+                $geminiReplyText = $client->generateResponse($geminiContext)->getReplyText();
+
+                // P1 Product Layout Fix: restore the original fixed BBC product
+                // layout via TourFallbackFormatter, sourced from the already-built
+                // legacy context. The fixed layout is only applied when the search
+                // returned results; with zero results the existing reply (the
+                // no-results message) is preserved unchanged.
+                $replyText = $geminiReplyText;
+                if (count($structuredResult->getSearchResults()) > 0) {
+                    $fixedProductLayout = TourFallbackFormatter::formatFromTourContext(
+                        $structuredResult->getLegacyContext()
+                    );
+                    if (trim($fixedProductLayout) !== '') {
+                        $replyText = $fixedProductLayout;
+                    }
+                }
 
                 // Phase 9-C-2C-2: present the Product Runtime reply through the
                 // unified GroundedResponseComposer. The recommendation copy is
