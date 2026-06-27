@@ -32,6 +32,7 @@ require_once __DIR__ . '/knowledge/TenantPrivateKnowledgeRuntime.php';
 require_once __DIR__ . '/knowledge/TenantPrivateKnowledgeProviderInterface.php';
 require_once __DIR__ . '/response/GroundedResponseComposer.php';
 require_once __DIR__ . '/conversation/ConversationRuntimeShadowProbe.php';
+require_once __DIR__ . '/conversation/ConversationReplyGateCompareProbe.php';
 
 class SaaSRouter
 {
@@ -1059,6 +1060,16 @@ class SaaSRouter
             $conversationStatus = $statusResolver->resolveStatus($conversationKey, $now);
 
             if ($conversationStatus === ConversationStatusResolver::STATUS_HUMAN_ACTIVE) {
+                self::recordReplyGateCompare(
+                    ConversationReplyGateCompareProbe::GATE_POINT_EARLY_BLOCK,
+                    $tenantSno,
+                    $conversationKey,
+                    $conversationStatus,
+                    FinalReplyGate::maySendAiReply($conversationStatus),
+                    $traceId,
+                    $now
+                );
+
                 $blockedPayload = [
                     'trace_id' => $traceId,
                     'tenant_sno' => $tenantSno,
@@ -1128,6 +1139,15 @@ class SaaSRouter
                 $replyText = $groundedOutput->getText();
 
                 $finalGate = FinalReplyGate::evaluate($statusResolver->resolveStatus($conversationKey, $now));
+                self::recordReplyGateCompare(
+                    ConversationReplyGateCompareProbe::GATE_POINT_KNOWLEDGE_FINAL,
+                    $tenantSno,
+                    $conversationKey,
+                    (string) $finalGate['conversation_status'],
+                    (bool) $finalGate['allowed'],
+                    $traceId,
+                    $now
+                );
                 if (!$finalGate['allowed']) {
                     $blockedPayload = [
                         'trace_id' => $traceId,
@@ -1232,6 +1252,15 @@ class SaaSRouter
                     'merge_legacy_keyword' => true,
                 ]);
                 $preflightGate = FinalReplyGate::evaluate($statusResolver->resolveStatus($conversationKey, $now));
+                self::recordReplyGateCompare(
+                    ConversationReplyGateCompareProbe::GATE_POINT_PRODUCT_PREFLIGHT,
+                    $tenantSno,
+                    $conversationKey,
+                    (string) $preflightGate['conversation_status'],
+                    (bool) $preflightGate['allowed'],
+                    $traceId,
+                    $now
+                );
                 if (
                     !$preflightIntent->isClarificationRequired()
                     && ($preflightGate['allowed'] ?? false) === true
@@ -1350,6 +1379,15 @@ class SaaSRouter
             }
 
             $finalGate = FinalReplyGate::evaluate($statusResolver->resolveStatus($conversationKey, $now));
+            self::recordReplyGateCompare(
+                ConversationReplyGateCompareProbe::GATE_POINT_PRODUCT_FINAL,
+                $tenantSno,
+                $conversationKey,
+                (string) $finalGate['conversation_status'],
+                (bool) $finalGate['allowed'],
+                $traceId,
+                $now
+            );
             if (!$finalGate['allowed']) {
                 $blockedPayload = [
                     'trace_id' => $traceId,
@@ -1549,6 +1587,43 @@ class SaaSRouter
         $path = 'C:/bbc-ai-bot/logs/webhook.log';
         $line = '[' . date('Y-m-d H:i:s') . '][' . $step . '] ' . json_encode($context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL;
         @file_put_contents($path, $line, FILE_APPEND);
+    }
+
+    /**
+     * Phase 2-B Step 4-C-1: Dual Gate Compare (flag default OFF).
+     *
+     * Compare-only — records ConversationReplyGate (Owner-based) parity against
+     * the legacy FinalReplyGate result passed in by the caller. The legacy gate
+     * remains the SOLE authority; this helper never changes any allow/block
+     * decision, reply text, route, transport, or Product/Knowledge Runtime, and
+     * never throws (any failure is swallowed after logging).
+     */
+    private static function recordReplyGateCompare(
+        string $gatePoint,
+        string $tenantSno,
+        string $conversationKey,
+        string $legacyStatus,
+        bool $legacyAllowed,
+        string $traceId,
+        ?\DateTimeImmutable $now
+    ): void {
+        try {
+            ConversationReplyGateCompareProbe::compare([
+                'tenant_sno' => $tenantSno,
+                'conversation_id' => $conversationKey,
+                'gate_point' => $gatePoint,
+                'legacy_status' => $legacyStatus,
+                'legacy_allowed' => $legacyAllowed,
+                'trace_id' => $traceId,
+                'now' => $now,
+            ]);
+        } catch (\Throwable $compareError) {
+            Logger::log('saas_router.log', 'conversation_reply_gate_compare_error', [
+                'trace_id' => $traceId,
+                'gate_point' => $gatePoint,
+                'message' => $compareError->getMessage(),
+            ]);
+        }
     }
 }
 

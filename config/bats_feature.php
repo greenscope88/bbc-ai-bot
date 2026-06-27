@@ -29,6 +29,14 @@ return [
     'conversation_runtime_shadow_tenant_snos' => [
         '5f99b8d665e8444d', // travel_b pilot
     ],
+    // Phase 2-B Step 4-C-1 Dual Gate Compare (safe default OFF).
+    // Compare-only: evaluates ConversationReplyGate (Owner-based) alongside the
+    // legacy FinalReplyGate and logs parity. Legacy FinalReplyGate remains the
+    // sole authority; this never changes reply behavior.
+    'conversation_reply_gate_compare_enabled' => false,
+    'conversation_reply_gate_compare_tenant_snos' => [
+        '5f99b8d665e8444d', // travel_b pilot
+    ],
     'tenants' => [
         // Pilot tenant (dry_run only — no LINE / Gemini from BATS hook in 4B)
         '5f99b8d665e8444d' => [
