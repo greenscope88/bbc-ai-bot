@@ -31,6 +31,7 @@ require_once __DIR__ . '/search/BatsSearchIntentBuilder.php';
 require_once __DIR__ . '/knowledge/TenantPrivateKnowledgeRuntime.php';
 require_once __DIR__ . '/knowledge/TenantPrivateKnowledgeProviderInterface.php';
 require_once __DIR__ . '/response/GroundedResponseComposer.php';
+require_once __DIR__ . '/conversation/ConversationRuntimeShadowProbe.php';
 
 class SaaSRouter
 {
@@ -1079,6 +1080,29 @@ class SaaSRouter
 
             $intentDetector = $knowledgeIntentDetector ?? new KnowledgeIntentDetector();
             $intentDetection = $intentDetector->detect($queryText);
+
+            // Phase 2-B Step 4-B: Conversation Runtime shadow probe (flag default OFF).
+            // Shadow-only — observes ConversationRuntimeFacade decision and logs parity
+            // vs the legacy FinalReplyGate. Never changes reply text, route, transport,
+            // Product/Knowledge Runtime, or LineService behavior; never throws.
+            try {
+                $shadowLegacyStatus = $statusResolver->resolveStatus($conversationKey, $now);
+                ConversationRuntimeShadowProbe::run([
+                    'tenant_sno' => $tenantSno,
+                    'conversation_id' => $conversationKey,
+                    'intent_type' => (string) ($intentDetection['intent_type'] ?? ''),
+                    'legacy_conversation_status' => $shadowLegacyStatus,
+                    'legacy_allowed' => FinalReplyGate::maySendAiReply($shadowLegacyStatus),
+                    'trace_id' => $traceId,
+                    'now' => $now,
+                ]);
+            } catch (\Throwable $shadowProbeError) {
+                Logger::log('saas_router.log', 'conversation_runtime_shadow_probe_error', [
+                    'trace_id' => $traceId,
+                    'message' => $shadowProbeError->getMessage(),
+                ]);
+            }
+
             if (($intentDetection['intent_type'] ?? '') === KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY) {
                 $knowledgeRuntime = $knowledgeProvider !== null
                     ? new TenantPrivateKnowledgeRuntime($knowledgeProvider)

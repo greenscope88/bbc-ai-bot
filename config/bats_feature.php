@@ -22,6 +22,13 @@ return [
     'controlled_real_reply_tenant_sno' => '5f99b8d665e8444d',
     'controlled_real_reply_tenant_key' => 'travel_b',
     'controlled_real_reply_keyword_prefix' => 'BATS測試',
+    // Phase 2-B Step 4-B Conversation Runtime shadow probe (safe default OFF).
+    // Shadow-only: observes ConversationRuntimeFacade decisions and logs parity
+    // against the legacy FinalReplyGate. Never changes reply behavior.
+    'conversation_runtime_shadow_enabled' => false,
+    'conversation_runtime_shadow_tenant_snos' => [
+        '5f99b8d665e8444d', // travel_b pilot
+    ],
     'tenants' => [
         // Pilot tenant (dry_run only — no LINE / Gemini from BATS hook in 4B)
         '5f99b8d665e8444d' => [
