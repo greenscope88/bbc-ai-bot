@@ -37,6 +37,19 @@ return [
     'conversation_reply_gate_compare_tenant_snos' => [
         '5f99b8d665e8444d', // travel_b pilot
     ],
+    // Phase 2-B Step 2-B-2 Event Source Integration (safe default OFF).
+    // Parse: LINE webhook event -> Canonical Descriptor (log only).
+    // Dispatch: Canonical Event -> ConversationRuntimeFacade (writes the runtime's
+    // own conversation_state / conversation_memory; isolated from legacy state).
+    // Dispatch only takes effect when parse is also enabled for the tenant.
+    'conversation_event_parse_enabled' => false,
+    'conversation_event_parse_tenant_snos' => [
+        '5f99b8d665e8444d', // travel_b pilot
+    ],
+    'conversation_event_dispatch_enabled' => false,
+    'conversation_event_dispatch_tenant_snos' => [
+        '5f99b8d665e8444d', // travel_b pilot
+    ],
     'tenants' => [
         // Pilot tenant (dry_run only — no LINE / Gemini from BATS hook in 4B)
         '5f99b8d665e8444d' => [

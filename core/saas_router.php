@@ -33,6 +33,8 @@ require_once __DIR__ . '/knowledge/TenantPrivateKnowledgeProviderInterface.php';
 require_once __DIR__ . '/response/GroundedResponseComposer.php';
 require_once __DIR__ . '/conversation/ConversationRuntimeShadowProbe.php';
 require_once __DIR__ . '/conversation/ConversationReplyGateCompareProbe.php';
+require_once __DIR__ . '/conversation/ConversationEventIngestProbe.php';
+require_once __DIR__ . '/conversation/event/ConversationIdentityBuilder.php';
 
 class SaaSRouter
 {
@@ -246,7 +248,9 @@ class SaaSRouter
                     null,
                     null,
                     null,
-                    $lineUserId
+                    $lineUserId,
+                    null,
+                    $event
                 );
                 if (is_array($phase9C1Result)) {
                     return $phase9C1Result;
@@ -1026,7 +1030,8 @@ class SaaSRouter
         ?TenantPrivateKnowledgeProviderInterface $knowledgeProvider = null,
         ?KnowledgeIntentDetector $knowledgeIntentDetector = null,
         string $userId = '',
-        $linePushSender = null
+        $linePushSender = null,
+        ?array $rawLineEvent = null
     ): ?array {
         $tenantSno = trim((string) ($tenant['sno'] ?? ''));
         if (!Phase9C1FeatureGate::isEnabled([
@@ -1055,6 +1060,15 @@ class SaaSRouter
             $conversationKey = $conversationId ?? ($tenantSno . ':' . ($channelId !== '' ? $channelId : 'unknown'));
             $statusResolver = $conversationStatusResolver ?? new ConversationStatusResolver();
 
+            // Phase 2-B Step 2-B-2: per-user Conversation Runtime id (tenantSno:line:userId).
+            // The Conversation Runtime (Owner / State / Memory) is keyed per end-user;
+            // the legacy $conversationKey (per-OA) is left untouched for the legacy
+            // ConversationStatusResolver and existing webhook logs.
+            $runtimeUserId = trim($userId);
+            $runtimeConversationId = $runtimeUserId !== ''
+                ? ConversationIdentityBuilder::forLine($tenantSno, $runtimeUserId)
+                : $conversationKey;
+
             $queryText = Phase9C1FeatureGate::stripPilotQueryPrefix($userMessage);
             $statusResolver->recordCustomerMessage($conversationKey, $queryText, $now);
             $conversationStatus = $statusResolver->resolveStatus($conversationKey, $now);
@@ -1063,7 +1077,7 @@ class SaaSRouter
                 self::recordReplyGateCompare(
                     ConversationReplyGateCompareProbe::GATE_POINT_EARLY_BLOCK,
                     $tenantSno,
-                    $conversationKey,
+                    $runtimeConversationId,
                     $conversationStatus,
                     FinalReplyGate::maySendAiReply($conversationStatus),
                     $traceId,
@@ -1100,7 +1114,7 @@ class SaaSRouter
                 $shadowLegacyStatus = $statusResolver->resolveStatus($conversationKey, $now);
                 ConversationRuntimeShadowProbe::run([
                     'tenant_sno' => $tenantSno,
-                    'conversation_id' => $conversationKey,
+                    'conversation_id' => $runtimeConversationId,
                     'intent_type' => (string) ($intentDetection['intent_type'] ?? ''),
                     'legacy_conversation_status' => $shadowLegacyStatus,
                     'legacy_allowed' => FinalReplyGate::maySendAiReply($shadowLegacyStatus),
@@ -1111,6 +1125,29 @@ class SaaSRouter
                 Logger::log('saas_router.log', 'conversation_runtime_shadow_probe_error', [
                     'trace_id' => $traceId,
                     'message' => $shadowProbeError->getMessage(),
+                ]);
+            }
+
+            // Phase 2-B Step 2-B-2: Event Source ingest (parse + optional dispatch).
+            // flags default OFF. Parse-only logs canonical descriptors; dispatch (when
+            // also enabled) feeds ConversationRuntimeFacade's own isolated state/memory.
+            // Never changes reply text, route, transport, Product/Knowledge Runtime, or
+            // LineService behavior; never throws. Out of scope: Human Takeover (Owner
+            // stays AI), Gate switch, legacy resolver.
+            try {
+                if (is_array($rawLineEvent) && $rawLineEvent !== []) {
+                    ConversationEventIngestProbe::run([
+                        'tenant_sno' => $tenantSno,
+                        'channel' => ConversationEventIngestProbe::CHANNEL_LINE,
+                        'raw_envelope' => $rawLineEvent,
+                        'trace_id' => $traceId,
+                        'now' => $now,
+                    ]);
+                }
+            } catch (\Throwable $ingestError) {
+                Logger::log('saas_router.log', 'conversation_event_ingest_error', [
+                    'trace_id' => $traceId,
+                    'message' => $ingestError->getMessage(),
                 ]);
             }
 
@@ -1142,7 +1179,7 @@ class SaaSRouter
                 self::recordReplyGateCompare(
                     ConversationReplyGateCompareProbe::GATE_POINT_KNOWLEDGE_FINAL,
                     $tenantSno,
-                    $conversationKey,
+                    $runtimeConversationId,
                     (string) $finalGate['conversation_status'],
                     (bool) $finalGate['allowed'],
                     $traceId,
@@ -1255,7 +1292,7 @@ class SaaSRouter
                 self::recordReplyGateCompare(
                     ConversationReplyGateCompareProbe::GATE_POINT_PRODUCT_PREFLIGHT,
                     $tenantSno,
-                    $conversationKey,
+                    $runtimeConversationId,
                     (string) $preflightGate['conversation_status'],
                     (bool) $preflightGate['allowed'],
                     $traceId,
@@ -1382,7 +1419,7 @@ class SaaSRouter
             self::recordReplyGateCompare(
                 ConversationReplyGateCompareProbe::GATE_POINT_PRODUCT_FINAL,
                 $tenantSno,
-                $conversationKey,
+                $runtimeConversationId,
                 (string) $finalGate['conversation_status'],
                 (bool) $finalGate['allowed'],
                 $traceId,
