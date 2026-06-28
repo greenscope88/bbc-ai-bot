@@ -141,9 +141,12 @@ final class ConversationEventAdapter
 
                 return $this->dispatchEnvelope($event, true, false, 'dispatched_customer_message', $runtimeResult);
             case ConversationEventType::HUMAN_AGENT_MESSAGE:
-                // Reserved: real human-takeover source is out of scope this step;
-                // a parsed event must never flip Owner here (Owner First Principle).
-                return $this->dispatchEnvelope($event, false, false, 'human_agent_message_reserved_not_dispatched', null);
+                // Phase 2-C Step 2-C-2: Human Takeover (CA-005). The Facade delegates
+                // Owner transfer to ConversationStateRuntime (Owner First); the Adapter
+                // never sets Owner itself. Caller opts in via the human dispatch flag.
+                $runtimeResult = $facade->handleHumanAgentMessage($event->getConversationId(), $now);
+
+                return $this->dispatchEnvelope($event, true, false, 'dispatched_human_agent_message', $runtimeResult);
             case ConversationEventType::SYSTEM:
                 return $this->dispatchEnvelope($event, false, false, 'system_event_not_dispatched', null);
             default:

@@ -50,6 +50,20 @@ return [
     'conversation_event_dispatch_tenant_snos' => [
         '5f99b8d665e8444d', // travel_b pilot
     ],
+    // Phase 2-C Step 2-C-2 Human Service Runtime event ingest (safe default OFF).
+    // Parse: backend/CRM human agent event -> human_agent_message descriptor (log only).
+    // Dispatch: human_agent_message -> ConversationRuntimeFacade::handleHumanAgentMessage()
+    // (Human Takeover, CA-005; Owner transfer performed by ConversationStateRuntime).
+    // Independent of the customer event flags; dispatch only takes effect when human
+    // parse is also enabled for the tenant.
+    'conversation_human_event_parse_enabled' => false,
+    'conversation_human_event_parse_tenant_snos' => [
+        '5f99b8d665e8444d', // travel_b pilot
+    ],
+    'conversation_human_event_dispatch_enabled' => false,
+    'conversation_human_event_dispatch_tenant_snos' => [
+        '5f99b8d665e8444d', // travel_b pilot
+    ],
     'tenants' => [
         // Pilot tenant (dry_run only — no LINE / Gemini from BATS hook in 4B)
         '5f99b8d665e8444d' => [

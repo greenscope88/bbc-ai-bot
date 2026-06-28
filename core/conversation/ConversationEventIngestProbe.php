@@ -7,6 +7,8 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'event'
     . DIRECTORY_SEPARATOR . 'ConversationChannelParserInterface.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'event'
     . DIRECTORY_SEPARATOR . 'LineConversationChannelParser.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'event'
+    . DIRECTORY_SEPARATOR . 'BackendHumanConversationChannelParser.php';
 
 /**
  * Phase 2-B Step 2-B-2 — Conversation Event Ingest Probe.
@@ -42,7 +44,14 @@ final class ConversationEventIngestProbe
     public const FLAG_DISPATCH_ENABLED = 'conversation_event_dispatch_enabled';
     public const FLAG_DISPATCH_TENANTS = 'conversation_event_dispatch_tenant_snos';
 
+    // Phase 2-C Step 2-C-2: Human Service Runtime flags (independent of customer flags).
+    public const FLAG_HUMAN_PARSE_ENABLED = 'conversation_human_event_parse_enabled';
+    public const FLAG_HUMAN_PARSE_TENANTS = 'conversation_human_event_parse_tenant_snos';
+    public const FLAG_HUMAN_DISPATCH_ENABLED = 'conversation_human_event_dispatch_enabled';
+    public const FLAG_HUMAN_DISPATCH_TENANTS = 'conversation_human_event_dispatch_tenant_snos';
+
     public const CHANNEL_LINE = 'line';
+    public const CHANNEL_BACKEND_HUMAN = 'backend_human';
 
     /**
      * @param array<string, mixed> $config
@@ -58,6 +67,22 @@ final class ConversationEventIngestProbe
     public static function isDispatchEnabled(array $config, string $tenantSno): bool
     {
         return self::flagOnForTenant($config, self::FLAG_DISPATCH_ENABLED, self::FLAG_DISPATCH_TENANTS, $tenantSno);
+    }
+
+    /**
+     * @param array<string, mixed> $config
+     */
+    public static function isHumanParseEnabled(array $config, string $tenantSno): bool
+    {
+        return self::flagOnForTenant($config, self::FLAG_HUMAN_PARSE_ENABLED, self::FLAG_HUMAN_PARSE_TENANTS, $tenantSno);
+    }
+
+    /**
+     * @param array<string, mixed> $config
+     */
+    public static function isHumanDispatchEnabled(array $config, string $tenantSno): bool
+    {
+        return self::flagOnForTenant($config, self::FLAG_HUMAN_DISPATCH_ENABLED, self::FLAG_HUMAN_DISPATCH_TENANTS, $tenantSno);
     }
 
     /**
@@ -186,6 +211,137 @@ final class ConversationEventIngestProbe
             ];
         } catch (\Throwable $e) {
             self::emit('conversation_event_ingest_error', [
+                'trace_id' => (string) ($params['trace_id'] ?? ''),
+                'message' => $e->getMessage(),
+            ], $logger);
+
+            return ['executed' => false, 'reason' => 'exception'];
+        }
+    }
+
+    /**
+     * Phase 2-C Step 2-C-2 — Human Service Runtime ingest（parse + optional dispatch），永不 throw.
+     *
+     * 與 run()（customer route）對稱但**完全獨立**：使用 human flags 與
+     * BackendHumanConversationChannelParser，dispatch 走 human_agent_message →
+     * ConversationRuntimeFacade::handleHumanAgentMessage()（Owner First：Owner 轉移
+     * 由 State Runtime 執行）。本方法**不改變** customer route 任何行為。
+     *
+     *   $params = [
+     *     'tenant_sno'   => string
+     *     'raw_envelope' => array   // 後台 / CRM human event（扁平或 { events: [...] }）
+     *     'trace_id'     => string
+     *     'now'          => ?\DateTimeImmutable
+     *     'config'       => ?array
+     *   ]
+     *
+     * @param array<string, mixed>                    $params
+     * @param ConversationChannelParserInterface|null $parser  測試可注入
+     * @param ConversationEventAdapter|null           $adapter 測試可注入
+     * @param ConversationRuntimeFacade|null          $facade  測試可注入（dispatch 用）
+     * @param callable|null                           $logger  fn(string, array): void（測試用）
+     * @return array{
+     *   executed: bool,
+     *   reason: string,
+     *   parse_enabled?: bool,
+     *   dispatch_enabled?: bool,
+     *   parsed?: int,
+     *   dispatched?: int,
+     *   results?: list<array<string, mixed>>
+     * }
+     */
+    public static function runHuman(
+        array $params,
+        ?ConversationChannelParserInterface $parser = null,
+        ?ConversationEventAdapter $adapter = null,
+        ?ConversationRuntimeFacade $facade = null,
+        ?callable $logger = null
+    ): array {
+        try {
+            $config = isset($params['config']) && is_array($params['config'])
+                ? $params['config']
+                : self::loadDefaultConfig();
+
+            $tenantSno = trim((string) ($params['tenant_sno'] ?? ''));
+            if (!self::isHumanParseEnabled($config, $tenantSno)) {
+                return ['executed' => false, 'reason' => 'human_parse_disabled_or_tenant_unmatched'];
+            }
+
+            $rawEnvelope = (isset($params['raw_envelope']) && is_array($params['raw_envelope']))
+                ? $params['raw_envelope']
+                : [];
+            if ($rawEnvelope === []) {
+                return ['executed' => false, 'reason' => 'missing_raw_envelope'];
+            }
+
+            $traceId = (string) ($params['trace_id'] ?? '');
+            $now = ($params['now'] ?? null) instanceof \DateTimeImmutable
+                ? $params['now']
+                : new \DateTimeImmutable('now', new \DateTimeZone('Asia/Taipei'));
+
+            $parser = $parser ?? new BackendHumanConversationChannelParser();
+
+            $descriptors = $parser->parse($rawEnvelope, [
+                'tenant_sno' => $tenantSno,
+                'trace_id' => $traceId,
+            ]);
+
+            $dispatchEnabled = self::isHumanDispatchEnabled($config, $tenantSno);
+            $adapter = $adapter ?? new ConversationEventAdapter();
+            if ($dispatchEnabled && $facade === null) {
+                $facade = new ConversationRuntimeFacade();
+            }
+
+            $parsed = 0;
+            $dispatched = 0;
+            $results = [];
+            foreach ($descriptors as $descriptor) {
+                if (!is_array($descriptor)) {
+                    continue;
+                }
+                ++$parsed;
+
+                if ($dispatchEnabled && $facade !== null) {
+                    $envelope = $adapter->dispatchDescriptor($descriptor, $facade, [], $now);
+                } else {
+                    $envelope = $adapter->acceptDescriptor($descriptor);
+                }
+
+                if (!empty($envelope['dispatched_to_runtime'])) {
+                    ++$dispatched;
+                }
+
+                $results[] = [
+                    'type' => (string) ($descriptor['type'] ?? ''),
+                    'conversation_id' => (string) ($descriptor['conversation_id'] ?? ''),
+                    'duplicate' => (bool) ($envelope['duplicate'] ?? false),
+                    'dispatched_to_runtime' => (bool) ($envelope['dispatched_to_runtime'] ?? false),
+                    'reason' => (string) ($envelope['reason'] ?? ''),
+                ];
+            }
+
+            self::emit('conversation_human_event_ingest', [
+                'trace_id' => $traceId,
+                'tenant_sno' => $tenantSno,
+                'channel' => self::CHANNEL_BACKEND_HUMAN,
+                'parse_enabled' => true,
+                'dispatch_enabled' => $dispatchEnabled,
+                'parsed' => $parsed,
+                'dispatched' => $dispatched,
+                'results' => $results,
+            ], $logger);
+
+            return [
+                'executed' => true,
+                'reason' => 'ingested',
+                'parse_enabled' => true,
+                'dispatch_enabled' => $dispatchEnabled,
+                'parsed' => $parsed,
+                'dispatched' => $dispatched,
+                'results' => $results,
+            ];
+        } catch (\Throwable $e) {
+            self::emit('conversation_human_event_ingest_error', [
                 'trace_id' => (string) ($params['trace_id'] ?? ''),
                 'message' => $e->getMessage(),
             ], $logger);
