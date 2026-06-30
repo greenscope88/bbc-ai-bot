@@ -23,7 +23,7 @@ test_assert(class_exists('AiIntentUnderstandingRuntime'), 'ABI: runtime class ex
 
 $runtime = new AiIntentUnderstandingRuntime();
 test_assert($runtime instanceof AiIntentUnderstandingRuntimeInterface, 'ABI: runtime implements interface');
-test_assert(AiIntentUnderstandingRuntime::PHASE === '2-D-1', 'skeleton: phase marker 2-D-1');
+test_assert(is_string(AiIntentUnderstandingRuntime::PHASE) && AiIntentUnderstandingRuntime::PHASE !== '', 'ABI: phase marker present');
 
 // ============================================================================
 // 2. Method signature stability (ABI) via reflection
@@ -47,20 +47,22 @@ test_assert(
 );
 
 // ============================================================================
-// 3. Skeleton carries NO runtime logic (must signal not-implemented)
+// 3. understand() returns a contract object (Phase 2-D-2 logic implemented)
 // ============================================================================
-$threw = false;
-$isBadCall = false;
-try {
-    $runtime->understand('hello', ['tenant_sno' => '5f99b8d665e8444d', 'trace_id' => 't1']);
-} catch (\BadMethodCallException $e) {
-    $threw = true;
-    $isBadCall = true;
-} catch (\Throwable $e) {
-    $threw = true;
-}
-test_assert($threw, 'skeleton: understand() does not silently execute');
-test_assert($isBadCall, 'skeleton: throws BadMethodCallException (no runtime logic)');
+$runtimeT = AiIntentUnderstandingRuntime::createForTesting();
+$out = $runtimeT->understand('hello', ['tenant_sno' => '5f99b8d665e8444d', 'trace_id' => 't1']);
+test_assert($out instanceof AiIntentUnderstandingResult, 'logic: understand() returns AiIntentUnderstandingResult');
+test_assert(array_keys($out->toArray()) === [
+    'intent',
+    'entity',
+    'context_snapshot',
+    'owner_snapshot',
+    'conversation_stage',
+    'resume_context',
+    'clarification',
+    'dispatch_plan',
+    'execution_hint',
+], 'logic: result carries 9 frozen contract keys');
 
 // ----------------------------------------------------------------------------
 if ($failures === 0) {
