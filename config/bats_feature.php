@@ -64,14 +64,19 @@ return [
     'conversation_human_event_dispatch_tenant_snos' => [
         '5f99b8d665e8444d', // travel_b pilot
     ],
-    // Phase 2-D Step 2-D-3-1 AI Intent Understanding Shadow Probe (safe default OFF).
+    // Phase 2-D Step 2-D-3-1 AI Intent Understanding Shadow Probe.
     // Shadow-only: runs AiIntentUnderstandingRuntime in parallel with the legacy
     // KnowledgeIntentDetector and logs intent / dispatch_plan / execution_hint /
     // owner_snapshot parity. Never changes reply text, route, transport, Knowledge /
     // Product / Human Runtime, or LineService behavior; never throws.
-    'intent_understanding_shadow_enabled' => false,
+    //
+    // Phase 2-D Step 2-D-3-2B Live Shadow Validation (travel_b): master switch ON,
+    // but strictly tenant-scoped via the allowlist below — only travel_b runs live
+    // shadow; every non-allowlisted tenant remains effectively OFF (default-deny).
+    // Reversible in one line (set back to false). Production reply flow unaffected.
+    'intent_understanding_shadow_enabled' => true,
     'intent_understanding_shadow_tenant_snos' => [
-        '5f99b8d665e8444d', // travel_b pilot
+        '5f99b8d665e8444d', // travel_b pilot (Live Shadow Validation)
     ],
     'tenants' => [
         // Pilot tenant (dry_run only — no LINE / Gemini from BATS hook in 4B)
