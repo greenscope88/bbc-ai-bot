@@ -80,6 +80,9 @@ final class AiIntentUnderstandingShadowProbe
      *   dispatch_plan?: string,
      *   execution_hint?: string|null,
      *   owner_snapshot?: string,
+     *   clarification_required?: bool,
+     *   clarification_reason?: string,
+     *   message_hash?: string,
      *   parity?: bool
      * }
      */
@@ -127,6 +130,8 @@ final class AiIntentUnderstandingShadowProbe
             $dispatchPlan = $result->getDispatchPlan();
             $executionHint = $result->getExecutionHint();
             $ownerSnapshot = $result->getOwnerSnapshot();
+            $clarificationRequired = $result->isClarificationRequired();
+            $clarificationReason = $result->getClarificationReason();
             $parity = self::isParity($legacyIntentType, $aiuIntent);
 
             $logContext = [
@@ -138,6 +143,11 @@ final class AiIntentUnderstandingShadowProbe
                 'dispatch_plan' => $dispatchPlan,
                 'execution_hint' => $executionHint,
                 'owner_snapshot' => $ownerSnapshot,
+                // Additive (Phase 2-D-3-2A): Routing / Clarification parity inputs.
+                'clarification_required' => $clarificationRequired,
+                'clarification_reason' => $clarificationReason,
+                // Reproducible, privacy-safe message identifier (no raw content).
+                'message_hash' => self::messageHash($message),
                 'parity' => $parity,
                 'shadow_mode' => true,
             ];
@@ -152,6 +162,9 @@ final class AiIntentUnderstandingShadowProbe
                 'dispatch_plan' => $dispatchPlan,
                 'execution_hint' => $executionHint,
                 'owner_snapshot' => $ownerSnapshot,
+                'clarification_required' => $clarificationRequired,
+                'clarification_reason' => $clarificationReason,
+                'message_hash' => self::messageHash($message),
                 'parity' => $parity,
             ];
         } catch (\Throwable $e) {
@@ -186,6 +199,21 @@ final class AiIntentUnderstandingShadowProbe
         }
 
         return $mapped === $aiuIntent;
+    }
+
+    /**
+     * Privacy-safe, reproducible message identifier for mismatch triage.
+     *
+     * Returns a truncated SHA-256 hex of the raw message — never the raw content
+     * (資料保護原則). Empty message → '' (stable, distinguishable).
+     */
+    private static function messageHash(string $message): string
+    {
+        if ($message === '') {
+            return '';
+        }
+
+        return substr(hash('sha256', $message), 0, 16);
     }
 
     /**

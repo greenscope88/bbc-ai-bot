@@ -108,10 +108,18 @@ test_assert($resOn['dispatch_plan'] === DispatchPlan::PRODUCT, 'flag on: dispatc
 test_assert($resOn['execution_hint'] === ExecutionHint::PRODUCT_SEARCH, 'flag on: execution_hint product_search');
 test_assert($resOn['owner_snapshot'] === 'AI', 'flag on: owner_snapshot AI');
 test_assert($resOn['parity'] === true, 'flag on: parity true (product matches)');
+test_assert($resOn['clarification_required'] === false, 'flag on: clarification_required false (product complete)');
+test_assert($resOn['message_hash'] !== '' && strlen($resOn['message_hash']) === 16, 'flag on: message_hash present (16 hex)');
 test_assert(count($captured) === 1, 'flag on: exactly one log emitted');
 test_assert($captured[0]['step'] === 'intent_understanding_shadow_probe', 'flag on: log step name');
 test_assert($captured[0]['context']['shadow_mode'] === true, 'flag on: shadow_mode flagged in log');
 test_assert($captured[0]['context']['parity'] === true, 'flag on: parity logged');
+// Additive (Phase 2-D-3-2A): Routing / Clarification parity inputs + privacy-safe hash.
+test_assert(array_key_exists('clarification_required', $captured[0]['context']), 'flag on: clarification_required logged');
+test_assert(array_key_exists('clarification_reason', $captured[0]['context']), 'flag on: clarification_reason logged');
+test_assert(array_key_exists('message_hash', $captured[0]['context']), 'flag on: message_hash logged');
+// Privacy: raw message must never appear in the log context.
+test_assert(!in_array('我想3月去東京自由行', $captured[0]['context'], true), 'flag on: raw message not logged');
 
 // --- parity detection: legacy knowledge_query but AIU sees product ----------
 $captured = [];
