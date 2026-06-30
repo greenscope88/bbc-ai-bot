@@ -1,6 +1,11 @@
 <?php
 declare(strict_types=1);
 
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
+    . 'intent' . DIRECTORY_SEPARATOR . 'AiIntentCategory.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
+    . 'intent' . DIRECTORY_SEPARATOR . 'DispatchPlan.php';
+
 /**
  * Phase 2-D Step 2-D-3-2A - AIU Shadow Probe Parity Report (read-only validation tool).
  *
@@ -19,12 +24,15 @@ declare(strict_types=1);
  *   - Data protection: never outputs raw customer messages; uses message_hash only.
  *
  * Parity definitions (explicit, for Sign-off reference):
- *   - Intent Parity:        mapped(legacy_intent_type) === aiu_intent.
+ *   - Intent Parity:        mapped(legacy_intent_type) === aiu_intent (AiIntentCategory).
  *   - Routing Parity:       dispatch_plan within the legal route set for legacy_intent_type;
  *                           owner=HUMAN (dispatch=human) is an observational bucket,
  *                           excluded from the routing denominator.
  *   - Clarification Parity: clarification_required <=> (dispatch_plan === clarification)
  *                           (validates AIU clarification routing is self-consistent).
+ *
+ * Contract note: AIU intent / dispatch values are referenced via the frozen
+ * AiIntentCategory / DispatchPlan Value Objects (no literal drift).
  *
  * CLI usage:
  *   php var/ops/phase2d3_intent_parity_report.php [logPath]
@@ -34,25 +42,25 @@ final class IntentParityReport
 {
     public const SHADOW_STEP = 'intent_understanding_shadow_probe';
 
-    /** legacy intent_type => expected AIU intent category. */
+    /** legacy intent_type => expected AIU intent category (frozen VO values). */
     private const LEGACY_TO_AIU = [
-        'product_search' => 'product_search',
-        'knowledge_query' => 'knowledge',
-        'ambiguous' => 'ambiguous',
+        'product_search' => AiIntentCategory::PRODUCT_SEARCH,
+        'knowledge_query' => AiIntentCategory::KNOWLEDGE,
+        'ambiguous' => AiIntentCategory::AMBIGUOUS,
     ];
 
     /** legacy intent_type => legal dispatch_plan set (routing parity). */
     private const LEGACY_TO_DISPATCH = [
-        'product_search' => ['product', 'clarification'],
-        'knowledge_query' => ['knowledge'],
-        'ambiguous' => ['clarification'],
+        'product_search' => [DispatchPlan::PRODUCT, DispatchPlan::CLARIFICATION],
+        'knowledge_query' => [DispatchPlan::KNOWLEDGE],
+        'ambiguous' => [DispatchPlan::CLARIFICATION],
     ];
 
     /** AIU intent category => report count bucket. */
     private const AIU_TO_BUCKET = [
-        'product_search' => 'product',
-        'knowledge' => 'knowledge',
-        'ambiguous' => 'ambiguous',
+        AiIntentCategory::PRODUCT_SEARCH => 'product',
+        AiIntentCategory::KNOWLEDGE => 'knowledge',
+        AiIntentCategory::AMBIGUOUS => 'ambiguous',
     ];
 
     /**
@@ -154,7 +162,7 @@ final class IntentParityReport
                 $summary['intent_ok']++;
             }
 
-            $isHuman = $owner === 'HUMAN' || $dispatch === 'human';
+            $isHuman = $owner === 'HUMAN' || $dispatch === DispatchPlan::HUMAN;
             $routingOk = true;
             if ($isHuman) {
                 $summary['human_bucket']++;
@@ -167,7 +175,7 @@ final class IntentParityReport
                 }
             }
 
-            $clarOk = $clarRequired === ($dispatch === 'clarification');
+            $clarOk = $clarRequired === ($dispatch === DispatchPlan::CLARIFICATION);
             if ($clarOk) {
                 $summary['clarification_ok']++;
             }

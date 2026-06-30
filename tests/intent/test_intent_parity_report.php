@@ -1,6 +1,10 @@
 <?php
 
 $root = dirname(__DIR__, 2);
+require_once $root . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'intent'
+    . DIRECTORY_SEPARATOR . 'AiIntentCategory.php';
+require_once $root . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'intent'
+    . DIRECTORY_SEPARATOR . 'DispatchPlan.php';
 require_once $root . DIRECTORY_SEPARATOR . 'var' . DIRECTORY_SEPARATOR . 'ops'
     . DIRECTORY_SEPARATOR . 'phase2d3_intent_parity_report.php';
 
@@ -68,7 +72,7 @@ test_assert(is_string(IntentParityReport::format($empty)), 'empty: format return
 // ============================================================================
 // 2. parseLine: shadow vs non-shadow vs bad json
 // ============================================================================
-$line = shadow_line(shadow_record('product_search', 'product_search', 'product', 'product_search'));
+$line = shadow_line(shadow_record('product_search', AiIntentCategory::PRODUCT_SEARCH, DispatchPlan::PRODUCT, 'product_search'));
 test_assert(IntentParityReport::parseLine($line) !== null, 'parse: valid shadow line decoded');
 test_assert(IntentParityReport::parseLine('[2026-06-30 10:00:00][other_step] {"a":1}') === null, 'parse: non-shadow line null');
 test_assert(IntentParityReport::parseLine('[2026-06-30 10:00:00][' . IntentParityReport::SHADOW_STEP . '] not-json') === null, 'parse: bad json null');
@@ -78,11 +82,11 @@ test_assert(IntentParityReport::parseLine('') === null, 'parse: empty line null'
 // 3. Normal log: product + knowledge + ambiguous, all parity => 100%
 // ============================================================================
 $lines = [
-    shadow_line(shadow_record('product_search', 'product_search', 'product', 'product_search')),
-    shadow_line(shadow_record('knowledge_query', 'knowledge', 'knowledge', 'knowledge_resolve')),
-    shadow_line(shadow_record('ambiguous', 'ambiguous', 'clarification', null, 'AI', true)),
+    shadow_line(shadow_record('product_search', AiIntentCategory::PRODUCT_SEARCH, DispatchPlan::PRODUCT, 'product_search')),
+    shadow_line(shadow_record('knowledge_query', AiIntentCategory::KNOWLEDGE, DispatchPlan::KNOWLEDGE, 'knowledge_resolve')),
+    shadow_line(shadow_record('ambiguous', AiIntentCategory::AMBIGUOUS, DispatchPlan::CLARIFICATION, null, 'AI', true)),
     'random noise line that should be ignored',
-    shadow_line(shadow_record('product_search', 'product_search', 'clarification', 'product_clarification', 'AI', true)),
+    shadow_line(shadow_record('product_search', AiIntentCategory::PRODUCT_SEARCH, DispatchPlan::CLARIFICATION, 'product_clarification', 'AI', true)),
 ];
 $records = IntentParityReport::parseLines($lines);
 test_assert(count($records) === 4, 'normal: 4 shadow records parsed (noise skipped)');
@@ -101,7 +105,7 @@ test_assert($sum['mismatch_count'] === 0, 'normal: zero mismatch');
 // 4. Intent + routing mismatch: legacy product_search but AIU knowledge/knowledge
 // ============================================================================
 $mm = IntentParityReport::summarize([
-    shadow_record('product_search', 'knowledge', 'knowledge', 'knowledge_resolve'),
+    shadow_record('product_search', AiIntentCategory::KNOWLEDGE, DispatchPlan::KNOWLEDGE, 'knowledge_resolve'),
 ]);
 test_assert($mm['total'] === 1, 'mismatch: total 1');
 test_assert($mm['intent_parity_pct'] === 0.0, 'mismatch: intent parity 0%');
@@ -109,8 +113,8 @@ test_assert($mm['routing_parity_pct'] === 0.0, 'mismatch: routing parity 0% (kno
 test_assert($mm['mismatch_count'] === 1, 'mismatch: one mismatch recorded');
 $detail = $mm['mismatches'][0];
 test_assert($detail['legacy_intent'] === 'product_search', 'mismatch detail: legacy_intent');
-test_assert($detail['aiu_intent'] === 'knowledge', 'mismatch detail: aiu_intent');
-test_assert($detail['dispatch_plan'] === 'knowledge', 'mismatch detail: dispatch_plan');
+test_assert($detail['aiu_intent'] === AiIntentCategory::KNOWLEDGE, 'mismatch detail: aiu_intent');
+test_assert($detail['dispatch_plan'] === DispatchPlan::KNOWLEDGE, 'mismatch detail: dispatch_plan');
 test_assert($detail['message_hash'] !== '', 'mismatch detail: message_hash present');
 test_assert(in_array('intent', $detail['failed'], true), 'mismatch detail: intent flagged');
 test_assert(in_array('routing', $detail['failed'], true), 'mismatch detail: routing flagged');
@@ -119,7 +123,7 @@ test_assert(in_array('routing', $detail['failed'], true), 'mismatch detail: rout
 // 5. Clarification parity mismatch: required but dispatch != clarification
 // ============================================================================
 $cm = IntentParityReport::summarize([
-    shadow_record('product_search', 'product_search', 'product', 'product_search', 'AI', true),
+    shadow_record('product_search', AiIntentCategory::PRODUCT_SEARCH, DispatchPlan::PRODUCT, 'product_search', 'AI', true),
 ]);
 test_assert($cm['clarification_parity_pct'] === 0.0, 'clar-mismatch: clarification parity 0%');
 test_assert($cm['mismatch_count'] === 1, 'clar-mismatch: one mismatch');
@@ -129,8 +133,8 @@ test_assert(in_array('clarification', $cm['mismatches'][0]['failed'], true), 'cl
 // 6. Human bucket: owner=HUMAN excluded from routing denominator
 // ============================================================================
 $hb = IntentParityReport::summarize([
-    shadow_record('product_search', 'product_search', 'human', 'human_blocked', 'HUMAN', false),
-    shadow_record('knowledge_query', 'knowledge', 'knowledge', 'knowledge_resolve', 'AI', false),
+    shadow_record('product_search', AiIntentCategory::PRODUCT_SEARCH, DispatchPlan::HUMAN, 'human_blocked', 'HUMAN', false),
+    shadow_record('knowledge_query', AiIntentCategory::KNOWLEDGE, DispatchPlan::KNOWLEDGE, 'knowledge_resolve', 'AI', false),
 ]);
 test_assert($hb['human_bucket'] === 1, 'human: human_bucket 1');
 test_assert($hb['routing_denominator'] === 1, 'human: routing denominator excludes human');
