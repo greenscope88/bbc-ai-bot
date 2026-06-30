@@ -35,6 +35,7 @@ require_once __DIR__ . '/conversation/ConversationRuntimeShadowProbe.php';
 require_once __DIR__ . '/conversation/ConversationReplyGateCompareProbe.php';
 require_once __DIR__ . '/conversation/ConversationEventIngestProbe.php';
 require_once __DIR__ . '/conversation/event/ConversationIdentityBuilder.php';
+require_once __DIR__ . '/intent/AiIntentUnderstandingShadowProbe.php';
 
 class SaaSRouter
 {
@@ -1125,6 +1126,28 @@ class SaaSRouter
                 Logger::log('saas_router.log', 'conversation_runtime_shadow_probe_error', [
                     'trace_id' => $traceId,
                     'message' => $shadowProbeError->getMessage(),
+                ]);
+            }
+
+            // Phase 2-D Step 2-D-3-1: AI Intent Understanding shadow probe (flag default OFF).
+            // Shadow-only — runs AiIntentUnderstandingRuntime in parallel with the legacy
+            // KnowledgeIntentDetector and logs intent / dispatch_plan / execution_hint /
+            // owner_snapshot parity. Never changes reply text, route, transport, Knowledge /
+            // Product / Human Runtime, or LineService behavior; never throws.
+            try {
+                AiIntentUnderstandingShadowProbe::run([
+                    'tenant_sno' => $tenantSno,
+                    'conversation_id' => $runtimeConversationId,
+                    'message' => $queryText,
+                    'legacy_intent_type' => (string) ($intentDetection['intent_type'] ?? ''),
+                    'trace_id' => $traceId,
+                    'now' => $now,
+                    'reference_date' => $now,
+                ]);
+            } catch (\Throwable $intentShadowError) {
+                Logger::log('saas_router.log', 'intent_understanding_shadow_probe_error', [
+                    'trace_id' => $traceId,
+                    'message' => $intentShadowError->getMessage(),
                 ]);
             }
 
