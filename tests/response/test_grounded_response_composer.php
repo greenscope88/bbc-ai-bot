@@ -114,10 +114,15 @@ foreach (
         'source_type',
         'human_service_required',
         'safety_notes',
+        'reply_suppressed',
+        'validation_passed',
+        'voice_profile_used',
     ] as $key
 ) {
     test_assert(array_key_exists($key, $arr), "contract: toArray has key {$key}");
 }
+test_assert($arr['reply_suppressed'] === false, 'contract: reply_suppressed default false');
+test_assert($arr['validation_passed'] === true, 'contract: validation_passed pass-through true');
 
 // 6b. Knowledge path layout/reply_type defaults (no regression)
 $knOut = $composer->composeFromKnowledgeResult($serviceQa);

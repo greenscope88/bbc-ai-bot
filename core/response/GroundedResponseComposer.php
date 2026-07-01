@@ -69,7 +69,10 @@ final class GroundedResponseComposer
             $humanServiceRequired,
             $safetyNotes,
             $this->resolveReplyType($input, $humanServiceRequired, $usedFactsCount),
-            $this->resolveLayoutProfile($sourceType)
+            $this->resolveLayoutProfile($sourceType),
+            false,
+            true,
+            $this->resolveVoiceProfileUsed($input)
         );
     }
 
@@ -132,5 +135,13 @@ final class GroundedResponseComposer
         }
 
         return GroundedOutput::LAYOUT_KNOWLEDGE_STANDARD;
+    }
+
+    private function resolveVoiceProfileUsed(GroundedInput $input): string
+    {
+        $tone = $input->getTone();
+        $persona = trim((string) ($tone['persona'] ?? ''));
+
+        return $persona;
     }
 }
