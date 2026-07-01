@@ -51,10 +51,8 @@ $runtimeComposer = new GroundedResponseComposer(['grounded_composer_generative_e
 
 // --- flag OFF: legacy pass-through unchanged ---
 $legacyOut = $legacyComposer->composeFromKnowledgeResult($phoneResult, $tenant);
-pipeline_assert(
-    $legacyOut->getText() === $phoneResult['reply_text'],
-    'flag OFF: reply text passthrough unchanged'
-);
+pipeline_assert($legacyOut->getText() === $phoneResult['reply_text'], 'flag OFF: reply text passthrough unchanged');
+pipeline_assert($legacyOut->isValidationPassed() === true, 'flag OFF: validation_passed true without validator');
 pipeline_assert($legacyComposer->isGenerativeRuntimeEnabled() === false, 'flag OFF: generative disabled');
 
 // --- flag ON + owner=AI + knowledge_private: strategy path matches legacy ---
@@ -70,6 +68,7 @@ pipeline_assert(
     'flag ON + knowledge_private: matches KnowledgeResponseComposer baseline'
 );
 pipeline_assert($runtimeAiOut->isReplySuppressed() === false, 'flag ON + owner AI: not suppressed');
+pipeline_assert($runtimeAiOut->isValidationPassed() === true, 'flag ON + knowledge_private: validation_passed true');
 
 // --- flag ON + product_search: ProductLayoutStrategy matches PersonaRuntime baseline ---
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
@@ -114,6 +113,7 @@ pipeline_assert(
     $productRuntimeOut->getLayoutProfile() === LayoutProfile::PRODUCT_RICH,
     'flag ON product: product_rich_v1 layout'
 );
+pipeline_assert($productRuntimeOut->isValidationPassed() === true, 'flag ON product: validation_passed true');
 
 // --- HumanTakeoverDefenseGuard: owner=HUMAN ---
 $humanInput = GroundedInput::fromArray([
@@ -149,6 +149,7 @@ pipeline_assert(
     $runtimeHumanOut->getReplyType() === ReplyType::SUPPRESSED_HUMAN_TAKEOVER,
     'runtime HUMAN: reply_type suppressed_human_takeover'
 );
+pipeline_assert($runtimeHumanOut->isValidationPassed() === true, 'runtime HUMAN: validation_passed true');
 
 // --- ComposerRuntime direct: generative callback invoked for AI owner ---
 $runtime = new ComposerRuntime();
