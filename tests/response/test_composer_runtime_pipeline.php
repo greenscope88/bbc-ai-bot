@@ -16,6 +16,8 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPA
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
     . 'response' . DIRECTORY_SEPARATOR . 'RuntimeType.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
+    . 'response' . DIRECTORY_SEPARATOR . 'LayoutProfile.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
     . 'knowledge' . DIRECTORY_SEPARATOR . 'LocalTenantPrivateKnowledgeProvider.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
     . 'knowledge' . DIRECTORY_SEPARATOR . 'TenantPrivateKnowledgeRuntime.php';
@@ -69,17 +71,48 @@ pipeline_assert(
 );
 pipeline_assert($runtimeAiOut->isReplySuppressed() === false, 'flag ON + owner AI: not suppressed');
 
-// --- flag ON + product_search: legacy fallback ---
-$productInput = GroundedInput::fromProductRuntimeResult([
-    'reply_text' => 'product copy unchanged',
+// --- flag ON + product_search: ProductLayoutStrategy matches PersonaRuntime baseline ---
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
+    . 'product_source' . DIRECTORY_SEPARATOR . 'recommendation' . DIRECTORY_SEPARATOR
+    . 'TravelConsultantPersonaRuntime.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
+    . 'product_source' . DIRECTORY_SEPARATOR . 'recommendation' . DIRECTORY_SEPARATOR
+    . 'TravelConsultantPersonaFormatter.php';
+
+$personaFormatter = TravelConsultantPersonaFormatter::createWithFixedIndex(0);
+$personaRuntime = new TravelConsultantPersonaRuntime($personaFormatter);
+$productSummary = [
+    'result_count' => 1,
+    'top_products' => [
+        ['title' => '東京 5 日', 'primary_url' => 'https://example.com/tokyo', 'display_emoji' => '✈️'],
+    ],
+    'primary_url' => 'https://example.com/tokyo',
+];
+$productBaseline = $personaRuntime->composeProductRecommendation($productSummary);
+$productPayload = [
+    'reply_text' => 'legacy passthrough must not be used when strategy runs',
     'grounded' => true,
-    'product_list' => [['title' => '東京 5 日']],
-    'recommendation_summary' => ['result_count' => 1],
-], $tenant);
-$productOut = $runtimeComposer->compose($productInput);
+    'product_list' => [['title' => '東京 5 日', 'primary_url' => 'https://example.com/tokyo']],
+    'recommendation_summary' => $productSummary,
+];
+$productInput = GroundedInput::fromProductRuntimeResult($productPayload, $tenant);
+$productLegacyOut = $legacyComposer->composeProductReply($productPayload, $tenant);
+$productRuntimeOut = $runtimeComposer->compose($productInput);
 pipeline_assert(
-    $productOut->getReplyText() === 'product copy unchanged',
-    'flag ON + product_search: legacy fallback'
+    $productLegacyOut->getReplyText() === $productPayload['reply_text'],
+    'flag OFF product: legacy pass-through unchanged'
+);
+pipeline_assert(
+    $productRuntimeOut->getReplyText() === $productBaseline,
+    'flag ON + product_search: matches TravelConsultantPersonaRuntime baseline'
+);
+pipeline_assert(
+    $productRuntimeOut->getReplyText() !== $productPayload['reply_text'],
+    'flag ON product: does not pass through raw reply_text'
+);
+pipeline_assert(
+    $productRuntimeOut->getLayoutProfile() === LayoutProfile::PRODUCT_RICH,
+    'flag ON product: product_rich_v1 layout'
 );
 
 // --- HumanTakeoverDefenseGuard: owner=HUMAN ---

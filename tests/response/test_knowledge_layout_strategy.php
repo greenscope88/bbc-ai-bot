@@ -137,29 +137,53 @@ kls_assert(
     'flag ON knowledge: not product fallback'
 );
 
-// --- flag ON non-knowledge falls back to legacy pass-through ---
+// --- flag ON product_search uses ProductLayoutStrategy (not legacy pass-through) ---
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
+    . 'product_source' . DIRECTORY_SEPARATOR . 'recommendation' . DIRECTORY_SEPARATOR
+    . 'TravelConsultantPersonaRuntime.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
+    . 'product_source' . DIRECTORY_SEPARATOR . 'recommendation' . DIRECTORY_SEPARATOR
+    . 'TravelConsultantPersonaFormatter.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
+    . 'response' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'ProductLayoutStrategy.php';
+
+$personaRuntime = new TravelConsultantPersonaRuntime(TravelConsultantPersonaFormatter::createWithFixedIndex(0));
+$productSummary = [
+    'result_count' => 1,
+    'top_products' => [['title' => '東京 5 日', 'primary_url' => 'https://example.com/t']],
+    'primary_url' => 'https://example.com/t',
+];
+$productBaseline = $personaRuntime->composeProductRecommendation($productSummary);
 $productLegacy = $legacyComposer->composeProductReply([
     'reply_text' => 'product copy',
     'grounded' => true,
-    'product_list' => [['title' => '東京 5 日']],
-    'recommendation_summary' => ['result_count' => 1],
+    'product_list' => [['title' => '東京 5 日', 'primary_url' => 'https://example.com/t']],
+    'recommendation_summary' => $productSummary,
 ], $tenant);
 $productRuntime = $runtimeComposer->composeProductReply([
     'reply_text' => 'product copy',
     'grounded' => true,
-    'product_list' => [['title' => '東京 5 日']],
-    'recommendation_summary' => ['result_count' => 1],
+    'product_list' => [['title' => '東京 5 日', 'primary_url' => 'https://example.com/t']],
+    'recommendation_summary' => $productSummary,
 ], $tenant);
 kls_assert(
-    $productRuntime->getReplyText() === $productLegacy->getReplyText(),
-    'flag ON product_search: legacy fallback unchanged'
+    $productLegacy->getReplyText() === 'product copy',
+    'flag OFF product: legacy pass-through unchanged'
+);
+kls_assert(
+    $productRuntime->getReplyText() === $productBaseline,
+    'flag ON product_search: matches PersonaRuntime baseline'
+);
+kls_assert(
+    $productRuntime->getReplyText() !== 'product copy',
+    'flag ON product_search: does not pass through raw reply_text'
 );
 
 // --- LayoutStrategySelector ---
 $selector = LayoutStrategySelector::createDefault();
 kls_assert($selector->resolve($privateInput) !== null, 'selector: resolves knowledge_private');
 kls_assert($selector->resolve($sharedInput) !== null, 'selector: resolves knowledge_shared');
-kls_assert($selector->resolve($productInput) === null, 'selector: null for product');
+kls_assert($selector->resolve($productInput) instanceof ProductLayoutStrategy, 'selector: resolves product_search');
 
 // --- ResponseBuilder ---
 $built = $builder->build($privateInput, $draft);
