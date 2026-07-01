@@ -78,6 +78,15 @@ return [
     'intent_understanding_shadow_tenant_snos' => [
         '5f99b8d665e8444d', // travel_b pilot (Live Shadow Validation)
     ],
+    // Phase 2-D Step 2-D-3-3 Authoritative Runtime Selection (safe default OFF).
+    // When enabled for allowlisted tenant, AIU dispatch_plan drives routing via
+    // legacy-compatible intent_type mapping. Legacy detect always runs for Shadow parity.
+    // Shadow probe continues independently. Reversible in one line (set back to false).
+    // Production reply flow remains Legacy until this flag is explicitly turned ON.
+    'intent_understanding_authoritative_enabled' => false,
+    'intent_understanding_authoritative_tenant_snos' => [
+        '5f99b8d665e8444d', // travel_b pilot
+    ],
     'tenants' => [
         // Pilot tenant (dry_run only — no LINE / Gemini from BATS hook in 4B)
         '5f99b8d665e8444d' => [

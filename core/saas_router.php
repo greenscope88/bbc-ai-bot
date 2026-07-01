@@ -36,6 +36,8 @@ require_once __DIR__ . '/conversation/ConversationReplyGateCompareProbe.php';
 require_once __DIR__ . '/conversation/ConversationEventIngestProbe.php';
 require_once __DIR__ . '/conversation/event/ConversationIdentityBuilder.php';
 require_once __DIR__ . '/intent/AiIntentUnderstandingShadowProbe.php';
+require_once __DIR__ . '/intent/AiIntentUnderstandingRuntimeSelector.php';
+require_once __DIR__ . '/intent/DispatchPlan.php';
 
 class SaaSRouter
 {
@@ -1105,7 +1107,33 @@ class SaaSRouter
             }
 
             $intentDetector = $knowledgeIntentDetector ?? new KnowledgeIntentDetector();
-            $intentDetection = $intentDetector->detect($queryText);
+            $legacyIntentDetection = $intentDetector->detect($queryText);
+            $legacyIntentType = (string) ($legacyIntentDetection['intent_type'] ?? '');
+
+            // Phase 2-D Step 2-D-3-3: Authoritative Runtime Selection (flag default OFF).
+            // When enabled for tenant, AIU dispatch_plan drives routing via legacy-compatible
+            // intent_type mapping. Legacy detect always runs first for Shadow parity; flag OFF
+            // is byte-identical to pre-2-D-3-3 behavior. Never throws; falls back to legacy.
+            $intentSelection = AiIntentUnderstandingRuntimeSelector::resolve([
+                'tenant_sno' => $tenantSno,
+                'conversation_id' => $runtimeConversationId,
+                'message' => $queryText,
+                'legacy_intent_type' => $legacyIntentType,
+                'now' => $now,
+                'reference_date' => $now,
+            ]);
+            if (($intentSelection['runtime_source'] ?? '') === AiIntentUnderstandingRuntimeSelector::SOURCE_AIU) {
+                Logger::log('saas_router.log', 'intent_understanding_authoritative_selection', [
+                    'trace_id' => $traceId,
+                    'tenant_sno' => $tenantSno,
+                    'conversation_id' => $runtimeConversationId,
+                    'legacy_intent_type' => $legacyIntentType,
+                    'selected_intent_type' => (string) ($intentSelection['intent_type'] ?? ''),
+                    'dispatch_plan' => $intentSelection['dispatch_plan'] ?? null,
+                    'execution_hint' => $intentSelection['execution_hint'] ?? null,
+                    'human_blocked' => (bool) ($intentSelection['human_blocked'] ?? false),
+                ]);
+            }
 
             // Phase 2-B Step 4-B: Conversation Runtime shadow probe (flag default OFF).
             // Shadow-only — observes ConversationRuntimeFacade decision and logs parity
@@ -1116,7 +1144,7 @@ class SaaSRouter
                 ConversationRuntimeShadowProbe::run([
                     'tenant_sno' => $tenantSno,
                     'conversation_id' => $runtimeConversationId,
-                    'intent_type' => (string) ($intentDetection['intent_type'] ?? ''),
+                    'intent_type' => (string) ($intentSelection['intent_type'] ?? $legacyIntentType),
                     'legacy_conversation_status' => $shadowLegacyStatus,
                     'legacy_allowed' => FinalReplyGate::maySendAiReply($shadowLegacyStatus),
                     'trace_id' => $traceId,
@@ -1139,7 +1167,7 @@ class SaaSRouter
                     'tenant_sno' => $tenantSno,
                     'conversation_id' => $runtimeConversationId,
                     'message' => $queryText,
-                    'legacy_intent_type' => (string) ($intentDetection['intent_type'] ?? ''),
+                    'legacy_intent_type' => $legacyIntentType,
                     'trace_id' => $traceId,
                     'now' => $now,
                     'reference_date' => $now,
@@ -1150,6 +1178,40 @@ class SaaSRouter
                     'message' => $intentShadowError->getMessage(),
                 ]);
             }
+
+            if (($intentSelection['human_blocked'] ?? false) === true) {
+                self::recordReplyGateCompare(
+                    ConversationReplyGateCompareProbe::GATE_POINT_EARLY_BLOCK,
+                    $tenantSno,
+                    $runtimeConversationId,
+                    $conversationStatus,
+                    FinalReplyGate::maySendAiReply($conversationStatus),
+                    $traceId,
+                    $now
+                );
+
+                $blockedPayload = [
+                    'trace_id' => $traceId,
+                    'tenant_sno' => $tenantSno,
+                    'conversation_id' => $conversationKey,
+                    'conversation_status' => $conversationStatus,
+                    'blocked' => true,
+                    'block_reason' => 'aiu_human_owner',
+                    'runtime_source' => AiIntentUnderstandingRuntimeSelector::SOURCE_AIU,
+                    'dispatch_plan' => $intentSelection['dispatch_plan'] ?? DispatchPlan::HUMAN,
+                    'final_route' => 'phase_9c1_structured_pilot_blocked',
+                ];
+                Logger::log('saas_router.log', 'phase_9c1_structured_pilot_blocked', $blockedPayload);
+                self::appendWebhookLog('phase_9c1_structured_pilot_blocked', $blockedPayload);
+
+                return [
+                    'ok' => true,
+                    'message' => 'phase_9c1_structured_pilot_blocked',
+                    'phase_9c1' => $blockedPayload,
+                ];
+            }
+
+            $intentDetection = ['intent_type' => (string) ($intentSelection['intent_type'] ?? $legacyIntentType)];
 
             // Phase 2-B Step 2-B-2: Event Source ingest (parse + optional dispatch).
             // flags default OFF. Parse-only logs canonical descriptors; dispatch (when
