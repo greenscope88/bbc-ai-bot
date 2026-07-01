@@ -87,6 +87,11 @@ return [
     'intent_understanding_authoritative_tenant_snos' => [
         '5f99b8d665e8444d', // travel_b pilot
     ],
+    // Phase 2-E Step 2-E-2a Composer Runtime foundation (safe default OFF).
+    // When OFF: GroundedResponseComposer uses legacy pass-through only (2-E-1).
+    // When ON: ComposerRuntime pipeline (Human Takeover guard + pass-through fallback).
+    // Generative NLG / Prioritization / Validator are future 2-E-2 sub-phases.
+    'grounded_composer_generative_enabled' => false,
     'tenants' => [
         // Pilot tenant (dry_run only — no LINE / Gemini from BATS hook in 4B)
         '5f99b8d665e8444d' => [

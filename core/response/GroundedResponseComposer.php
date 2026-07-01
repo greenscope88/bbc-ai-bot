@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'GroundedInput.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'GroundedOutput.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'ComposerRuntime.php';
 
 /**
  * Phase 9-C-2C-1 — Grounded Response Composer (presentation layer, thin wrapper).
@@ -12,13 +13,9 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'GroundedOutput.php';
  * Single, multi-tenant composer that presents Runtime-resolved grounded data
  * under one contract (GroundedInput -> GroundedOutput).
  *
- * Scope (9-C-2C-1 Knowledge Path, 9-C-2C-2 Product Path): the Runtime already
- * composes the final reply text (Knowledge: KnowledgeResponseComposer /
- * HumanServiceResponseComposer; Product: TravelConsultantPersonaRuntime via
- * GeminiClient). This composer passes that text through unchanged and only
- * normalizes the surrounding grounded metadata (reply_type / layout_profile /
- * used_facts_count) so downstream phases rely on a stable contract. Behavior is
- * unchanged.
+ * Phase 2-E-2a: when `grounded_composer_generative_enabled` is ON, delegates to
+ * ComposerRuntime (Human Takeover guard + legacy pass-through). When OFF, legacy
+ * pass-through only — behavior unchanged from Phase 2-E-1.
  *
  * Hard rules (BATS_AI_PERSONA.md §5 / SSOT §7):
  *  - Never adds prices, dates, URLs, phone numbers, policies, or products.
@@ -28,13 +25,75 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'GroundedOutput.php';
  */
 final class GroundedResponseComposer
 {
+    public const FEATURE_GROUNDED_COMPOSER_GENERATIVE_ENABLED = 'grounded_composer_generative_enabled';
+
+    /** @var array<string, mixed> */
+    private array $featureConfig;
+
+    private ComposerRuntime $composerRuntime;
+
+    /**
+     * @param array<string, mixed>|null $featureConfig Override for tests; loads config/bats_feature.php when null.
+     */
+    public function __construct(?array $featureConfig = null, ?ComposerRuntime $composerRuntime = null)
+    {
+        $this->featureConfig = $featureConfig ?? self::loadFeatureConfig();
+        $this->composerRuntime = $composerRuntime ?? new ComposerRuntime();
+    }
+
     /**
      * Compose a GroundedOutput from an already-resolved GroundedInput.
-     *
-     * The reply text is taken verbatim from the Runtime result; this method
-     * only derives grounded metadata and records non-blocking safety notes.
      */
     public function compose(GroundedInput $input): GroundedOutput
+    {
+        if (!$this->isGenerativeRuntimeEnabled()) {
+            return $this->composeLegacyPassThrough($input);
+        }
+
+        return $this->composerRuntime->run(
+            $input,
+            function (GroundedInput $groundedInput): GroundedOutput {
+                return $this->composeLegacyPassThrough($groundedInput);
+            }
+        );
+    }
+
+    /**
+     * Convenience entry for the Knowledge Path exit in the orchestrator.
+     *
+     * @param array<string, mixed> $knowledgeResult Result from TenantPrivateKnowledgeRuntime::handle()
+     * @param array<string, mixed> $tenant          Tenant context (registry-driven)
+     */
+    public function composeFromKnowledgeResult(array $knowledgeResult, array $tenant = []): GroundedOutput
+    {
+        return $this->compose(
+            GroundedInput::fromKnowledgeRuntimeResult($knowledgeResult, $tenant)
+        );
+    }
+
+    /**
+     * Convenience entry for the Product Path push reply exit in the orchestrator.
+     *
+     * @param array<string, mixed> $productResult Expected: reply_text, grounded,
+     *   recommendation_summary, product_list
+     * @param array<string, mixed> $tenant
+     */
+    public function composeProductReply(array $productResult, array $tenant = []): GroundedOutput
+    {
+        return $this->compose(
+            GroundedInput::fromProductRuntimeResult($productResult, $tenant)
+        );
+    }
+
+    public function isGenerativeRuntimeEnabled(): bool
+    {
+        return (bool) ($this->featureConfig[self::FEATURE_GROUNDED_COMPOSER_GENERATIVE_ENABLED] ?? false);
+    }
+
+    /**
+     * Legacy pass-through path (Phase 2-E-1). Reply text from Runtime; metadata normalized only.
+     */
+    public function composeLegacyPassThrough(GroundedInput $input): GroundedOutput
     {
         $text = $input->getRuntimeReplyText();
         $grounded = $input->isRuntimeGrounded();
@@ -44,18 +103,15 @@ final class GroundedResponseComposer
 
         $safetyNotes = [];
 
-        // Contract invariant (SSOT §4): grounded reply must reference >=1 fact.
         if ($grounded && $usedFactsCount === 0) {
             $safetyNotes[] = 'grounded_without_facts';
         }
 
-        // Contract invariant: ungrounded reply must not claim facts.
         if (!$grounded && $usedFactsCount > 0) {
             $usedFactsCount = 0;
             $safetyNotes[] = 'ungrounded_fact_count_reset';
         }
 
-        // Human-service fallback is, by definition, not grounded in tenant data.
         if ($humanServiceRequired) {
             $grounded = false;
             $usedFactsCount = 0;
@@ -77,33 +133,18 @@ final class GroundedResponseComposer
     }
 
     /**
-     * Convenience entry for the Knowledge Path exit in the orchestrator.
-     *
-     * @param array<string, mixed> $knowledgeResult Result from TenantPrivateKnowledgeRuntime::handle()
-     * @param array<string, mixed> $tenant          Tenant context (registry-driven)
+     * @return array<string, mixed>
      */
-    public function composeFromKnowledgeResult(array $knowledgeResult, array $tenant = []): GroundedOutput
+    public static function loadFeatureConfig(): array
     {
-        return $this->compose(
-            GroundedInput::fromKnowledgeRuntimeResult($knowledgeResult, $tenant)
-        );
-    }
+        $path = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'bats_feature.php';
+        if (!is_readable($path)) {
+            return [];
+        }
 
-    /**
-     * Convenience entry for the Product Path push reply exit in the orchestrator.
-     *
-     * Reply text must already be produced by the Product Runtime; this method
-     * never regenerates recommendation copy.
-     *
-     * @param array<string, mixed> $productResult Expected: reply_text, grounded,
-     *   recommendation_summary, product_list
-     * @param array<string, mixed> $tenant
-     */
-    public function composeProductReply(array $productResult, array $tenant = []): GroundedOutput
-    {
-        return $this->compose(
-            GroundedInput::fromProductRuntimeResult($productResult, $tenant)
-        );
+        $loaded = require $path;
+
+        return is_array($loaded) ? $loaded : [];
     }
 
     private function resolveReplyType(
