@@ -69,6 +69,10 @@ pipeline_assert(
 );
 pipeline_assert($runtimeAiOut->isReplySuppressed() === false, 'flag ON + owner AI: not suppressed');
 pipeline_assert($runtimeAiOut->isValidationPassed() === true, 'flag ON + knowledge_private: validation_passed true');
+pipeline_assert(
+    $runtimeAiOut->getReplyText() === $legacyOut->getReplyText(),
+    'flag ON + empty context: CEL no-op preserves knowledge reply'
+);
 
 // --- flag ON + product_search: ProductLayoutStrategy matches PersonaRuntime baseline ---
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR

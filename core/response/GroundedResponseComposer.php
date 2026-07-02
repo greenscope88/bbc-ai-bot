@@ -16,6 +16,10 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'L
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'GroundedOutputValidator.php';
 
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'experience' . DIRECTORY_SEPARATOR . 'PersonaAdapter.php';
+
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'experience' . DIRECTORY_SEPARATOR . 'ConversationExperienceLayer.php';
+
 
 
 /**
@@ -66,6 +70,10 @@ final class GroundedResponseComposer
 
     private GroundedOutputValidator $groundedOutputValidator;
 
+    private PersonaAdapter $personaAdapter;
+
+    private ConversationExperienceLayer $conversationExperienceLayer;
+
 
 
     /**
@@ -84,7 +92,11 @@ final class GroundedResponseComposer
 
         ?ResponseBuilder $responseBuilder = null,
 
-        ?GroundedOutputValidator $groundedOutputValidator = null
+        ?GroundedOutputValidator $groundedOutputValidator = null,
+
+        ?PersonaAdapter $personaAdapter = null,
+
+        ?ConversationExperienceLayer $conversationExperienceLayer = null
 
     ) {
 
@@ -97,6 +109,10 @@ final class GroundedResponseComposer
         $this->responseBuilder = $responseBuilder ?? new ResponseBuilder();
 
         $this->groundedOutputValidator = $groundedOutputValidator ?? new GroundedOutputValidator();
+
+        $this->personaAdapter = $personaAdapter ?? new PersonaAdapter();
+
+        $this->conversationExperienceLayer = $conversationExperienceLayer ?? new ConversationExperienceLayer();
 
     }
 
@@ -214,7 +230,13 @@ final class GroundedResponseComposer
 
         if ($strategy !== null) {
 
-            $candidate = $this->responseBuilder->build($input, $strategy->compose($input));
+            $layoutDraft = $strategy->compose($input);
+
+            $personaDraft = $this->personaAdapter->adapt($input, $layoutDraft);
+
+            $experienceDraft = $this->conversationExperienceLayer->enhance($input, $personaDraft);
+
+            $candidate = $this->responseBuilder->buildFromExperience($input, $experienceDraft);
 
             return $this->groundedOutputValidator->validateAndFinalize($input, $candidate, true);
 

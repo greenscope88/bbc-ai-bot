@@ -84,6 +84,17 @@ final class GroundedFactAllowlistBuilder
             }
         }
 
+        foreach (self::collectConversationContextFragments($input->getConversationContext()) as $fragment) {
+            $textFragments[] = $fragment;
+        }
+
+        $resumeContext = $input->getResumeContext();
+        if (is_array($resumeContext)) {
+            foreach (self::collectResumeContextFragments($resumeContext) as $fragment) {
+                $textFragments[] = $fragment;
+            }
+        }
+
         $summary = $input->getRecommendationSummary();
         if (is_array($summary)) {
             $primaryUrl = trim((string) ($summary['primary_url'] ?? ''));
@@ -220,6 +231,72 @@ final class GroundedFactAllowlistBuilder
         }
 
         return array_values(array_unique($prices));
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     *
+     * @return list<string>
+     */
+    private static function collectConversationContextFragments(array $context): array
+    {
+        $fragments = [];
+        foreach (
+            [
+                'current_requirement',
+                'destination',
+                'travel_dates',
+                'party_size',
+                'budget',
+                'ai_summary',
+            ] as $key
+        ) {
+            if (!isset($context[$key])) {
+                continue;
+            }
+            $value = trim((string) $context[$key]);
+            if ($value !== '') {
+                $fragments[] = $value;
+            }
+        }
+
+        foreach (['outstanding_issues', 'completed_items', 'recently_recommended_products'] as $listKey) {
+            if (!isset($context[$listKey]) || !is_array($context[$listKey])) {
+                continue;
+            }
+            foreach ($context[$listKey] as $item) {
+                if (is_array($item) || is_object($item)) {
+                    continue;
+                }
+                $text = trim((string) $item);
+                if ($text !== '') {
+                    $fragments[] = $text;
+                }
+            }
+        }
+
+        return array_values(array_unique($fragments));
+    }
+
+    /**
+     * @param array<string, mixed> $resumeContext
+     *
+     * @return list<string>
+     */
+    private static function collectResumeContextFragments(array $resumeContext): array
+    {
+        $fragments = [];
+        foreach ($resumeContext as $value) {
+            if (is_array($value) || is_object($value)) {
+                continue;
+            }
+            $text = trim((string) $value);
+            if ($text !== '') {
+                $fragments[] = $text;
+            }
+        }
+
+        return array_values(array_unique($fragments));
     }
 
     public static function normalizeUrl(string $url): string
