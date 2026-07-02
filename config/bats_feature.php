@@ -87,6 +87,14 @@ return [
     'intent_understanding_authoritative_tenant_snos' => [
         '5f99b8d665e8444d', // travel_b pilot
     ],
+    // Phase 2-F Step 2-F-2a Grounding Layer shadow probe (safe default OFF).
+    // Shadow-only: assembles GroundedInput in parallel and logs structure / reply
+    // parity against the legacy compose path. Never changes outbound reply.
+    'grounding_layer_shadow_enabled' => false,
+    'grounding_layer_shadow_tenant_snos' => [],
+    // Phase 2-F Step 2-F-2b Authoritative Grounding path (safe default OFF; not used in F-2a).
+    'grounding_layer_authoritative_enabled' => false,
+    'grounding_layer_authoritative_tenant_snos' => [],
     // Phase 2-E Step 2-E-2a Composer Runtime foundation (safe default OFF).
     // When OFF: GroundedResponseComposer uses legacy pass-through only (2-E-1).
     // When ON: ComposerRuntime pipeline (Human Takeover guard + pass-through fallback).

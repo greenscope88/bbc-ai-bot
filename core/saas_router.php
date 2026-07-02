@@ -38,6 +38,9 @@ require_once __DIR__ . '/conversation/event/ConversationIdentityBuilder.php';
 require_once __DIR__ . '/intent/AiIntentUnderstandingShadowProbe.php';
 require_once __DIR__ . '/intent/AiIntentUnderstandingRuntimeSelector.php';
 require_once __DIR__ . '/intent/DispatchPlan.php';
+require_once __DIR__ . '/grounding/GroundingShadowProbe.php';
+require_once __DIR__ . '/grounding/GroundingOrchestratorContextFactory.php';
+require_once __DIR__ . '/response/RuntimeType.php';
 
 class SaaSRouter
 {
@@ -1260,6 +1263,27 @@ class SaaSRouter
                 );
                 $replyText = $groundedOutput->getText();
 
+                self::runGroundingShadowProbe([
+                    'path' => 'knowledge',
+                    'trace_id' => $traceId,
+                    'tenant_sno' => $tenantSno,
+                    'conversation_id' => $runtimeConversationId,
+                    'customer_query' => $queryText,
+                    'runtime_type' => GroundingOrchestratorContextFactory::resolveKnowledgeRuntimeType($knowledgeResult),
+                    'runtime_result' => $knowledgeResult,
+                    'dispatch_result' => [
+                        'reply_purpose' => GroundedInput::PURPOSE_KNOWLEDGE_REPLY,
+                        'intent_type' => (string) ($intentDetection['intent_type'] ?? ''),
+                    ],
+                    'tenant' => [
+                        'tenant_sno' => $tenantSno,
+                        'tenant_key' => trim((string) ($tenant['tenant_key'] ?? '')),
+                        'company_name' => trim((string) ($tenant['company_name'] ?? '')),
+                        'industry_code' => trim((string) ($tenant['industry_code'] ?? '')),
+                    ],
+                    'legacy_reply_text' => $replyText,
+                ]);
+
                 $finalGate = FinalReplyGate::evaluate($statusResolver->resolveStatus($conversationKey, $now));
                 self::recordReplyGateCompare(
                     ConversationReplyGateCompareProbe::GATE_POINT_KNOWLEDGE_FINAL,
@@ -1494,6 +1518,28 @@ class SaaSRouter
                 $groundedReplyType = $groundedOutput->getReplyType();
                 $groundedLayoutProfile = $groundedOutput->getLayoutProfile();
                 $groundedUsedFactsCount = $groundedOutput->getUsedFactsCount();
+
+                self::runGroundingShadowProbe([
+                    'path' => 'product',
+                    'trace_id' => $traceId,
+                    'tenant_sno' => $tenantSno,
+                    'conversation_id' => $runtimeConversationId,
+                    'customer_query' => $queryText,
+                    'runtime_type' => RuntimeType::PRODUCT_SEARCH,
+                    'runtime_result' => [
+                        'reply_text' => $replyText,
+                        'grounded' => $productResultCount > 0,
+                        'recommendation_summary' => $recommendationSummary,
+                        'product_list' => $productProductList,
+                    ],
+                    'dispatch_result' => [
+                        'reply_purpose' => GroundedInput::PURPOSE_PRODUCT_REPLY,
+                        'intent_type' => (string) ($intentDetection['intent_type'] ?? ''),
+                    ],
+                    'tenant' => is_array($tenant) ? $tenant : [],
+                    'bats_search_intent' => $intentArray,
+                    'legacy_reply_text' => $replyText,
+                ]);
             }
 
             if ($replyText === '') {
@@ -1678,6 +1724,24 @@ class SaaSRouter
         $loaded = require $path;
 
         return is_array($loaded) ? $loaded : BatsFeatureGate::defaultConfig();
+    }
+
+    /**
+     * Phase 2-F-2a: shadow-only grounding probe (never throw; never changes reply).
+     *
+     * @param array<string, mixed> $params
+     */
+    private static function runGroundingShadowProbe(array $params): void
+    {
+        try {
+            GroundingShadowProbe::run($params);
+        } catch (\Throwable $e) {
+            Logger::log('saas_router.log', 'grounding_layer_shadow_probe_error', [
+                'trace_id' => (string) ($params['trace_id'] ?? ''),
+                'path' => (string) ($params['path'] ?? ''),
+                'message' => $e->getMessage(),
+            ]);
+        }
     }
 
     private static function createPdo(array $config): PDO
