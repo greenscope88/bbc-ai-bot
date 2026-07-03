@@ -30,6 +30,7 @@ require_once __DIR__ . '/search/KnowledgeIntentDetector.php';
 require_once __DIR__ . '/search/BatsSearchIntentBuilder.php';
 require_once __DIR__ . '/knowledge/TenantPrivateKnowledgeRuntime.php';
 require_once __DIR__ . '/knowledge/TenantPrivateKnowledgeProviderInterface.php';
+require_once __DIR__ . '/knowledge/KnowledgeFallbackResolver.php';
 require_once __DIR__ . '/response/GroundedResponseComposer.php';
 require_once __DIR__ . '/conversation/ConversationRuntimeShadowProbe.php';
 require_once __DIR__ . '/conversation/ConversationReplyGateCompareProbe.php';
@@ -257,6 +258,7 @@ class SaaSRouter
                     null,
                     null,
                     $lineUserId,
+                    null,
                     null,
                     $event
                 );
@@ -1039,6 +1041,7 @@ class SaaSRouter
         ?KnowledgeIntentDetector $knowledgeIntentDetector = null,
         string $userId = '',
         $linePushSender = null,
+        ?KnowledgeFallbackResolver $knowledgeFallbackResolver = null,
         ?array $rawLineEvent = null
     ): ?array {
         $tenantSno = trim((string) ($tenant['sno'] ?? ''));
