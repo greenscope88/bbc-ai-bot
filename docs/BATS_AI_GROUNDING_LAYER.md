@@ -2,8 +2,8 @@
 
 **專案：** BBC AI SaaS / BATS
 **定位：** L3 架構 SSOT — **Grounding Layer Runtime** 唯一正式依據（組裝 `GroundedInput`）
-**版本：** v1.0 Freeze
-**狀態：** ✅ Architecture Freeze（Phase 2-F-0）— 後續 Coding 之唯一架構依據
+**版本：** v1.1 Adopt — Production Governance（Phase 2-F-2c）
+**狀態：** ✅ Architecture Freeze（Phase 2-F-0）+ ✅ Production Governance（Phase 2-F-2c）
 **主機參考：** 103.1.222.14（主機 A · `C:\bbc-ai-bot`）
 **Branch：** feature/api-gateway-mvp
 
@@ -54,8 +54,12 @@
 | §26 | Failure / Fallback Policy |
 | §27 | Future Extension |
 | §28 | Phase 2-F Roadmap |
+| §29 | Definition of Done（Production Governance） |
 | 附錄 A | Cross-Reference Index |
 | 附錄 B | Freeze Checklist（2-F-0） |
+| **附錄 C** | **Production Rollout Policy** |
+| **附錄 D** | **Rollback Playbook** |
+| **附錄 E** | **Production Acceptance Checklist** |
 
 ---
 
@@ -675,7 +679,7 @@ $groundedInput = $groundingRuntime->assemble($context);
 $groundedOutput = $composer->compose($groundedInput);
 ```
 
-**過渡期：** `composeFromKnowledgeResult` / `composeProductReply` 保留至 Phase 2-F-2。
+**過渡期（F-2b 後）：** Knowledge / Product exit 經 `GroundingPipelineRuntime`；authoritative 路徑為 `assemble()` → `compose()`。Legacy `composeFromKnowledgeResult` / `composeProductReply` **保留**作 flag OFF 與 fallback（見附錄 C / D）。
 
 ---
 
@@ -704,12 +708,35 @@ $groundedOutput = $composer->compose($groundedInput);
 
 ## 28. Phase 2-F Roadmap
 
-| Phase | 一句話目標 |
-|-------|------------|
-| **2-F-0** | ✅ **Frozen** — Grounding 架構、Public Contract、Ownership、Mapping、Schema Validation |
-| **2-F-1** | 實作 Grounding Context Builder（snapshot → context view） |
-| **2-F-2** | 實作 Grounding Pipeline Runtime（`assemble()` 取代 Orchestrator 分散組裝） |
-| **2-F-3** | Grounding Runtime Validation（E2E pilot gate） |
+| Phase | 狀態 | 一句話目標 |
+|-------|------|------------|
+| **2-F-0** | ✅ **Frozen** | Grounding 架構、Public Contract、Ownership、Mapping、Schema Validation |
+| **2-F-1** | ✅ **Completed** | Grounding Context Builder MVP（`GroundingRuntime::assemble()`） |
+| **2-F-2a** | ✅ **Completed** | Shadow Integration（observe-only；不改 outbound reply） |
+| **2-F-2b** | ✅ **Completed** | Authoritative Pilot Wiring（`GroundingPipelineRuntime`；flag default OFF） |
+| **2-F-2c** | 🔄 **Current** | Production Governance / Freeze（本附錄 C–E；**不**開 flag） |
+| **2-F-3** | 📋 **Planned** | Grounding Runtime Validation（E2E pilot gate） |
+
+> **2-F-2 收斂說明：** 原 roadmap「2-F-2 Pipeline Runtime」已拆分為 2-F-2a / 2-F-2b / 2-F-2c。Coding 主線（F-2a、F-2b）已完成；F-2c 為 **Governance SSOT**；Production Switch **須**依附錄 C 與 E 營運裁示後方可開啟 `grounding_layer_authoritative_enabled`。
+
+---
+
+## 29. Definition of Done（Production Governance）
+
+Phase 2-F-2c **Production Governance** 視為完成，須**同時**滿足：
+
+| ID | 完成條件 |
+|----|----------|
+| **DoD-2c-1** | 附錄 C Production Rollout Policy 已寫入本 SSOT |
+| **DoD-2c-2** | 附錄 D Rollback Playbook 已寫入本 SSOT |
+| **DoD-2c-3** | 附錄 E Production Acceptance Checklist 已寫入本 SSOT |
+| **DoD-2c-4** | §28 Roadmap 反映 F-2a / F-2b Completed、F-2c Current、F-3 Planned |
+| **DoD-2c-5** | §4～§16 Architecture Freeze **未**修改 |
+| **DoD-2c-6** | F-2c Operational Freeze 決策（附錄 F-2c-1～F-2c-7）已記錄 |
+
+**F-2c SSOT 完成 ≠ Production Switch 完成。** Production Switch 須附錄 E 全勾 + 營運裁示後，由 Ops 開啟 authoritative flag（**非** F-2c SSOT 階段）。
+
+**F-2c 完成後下一階段：** Phase 2-F-3 Grounding Runtime Validation（E2E pilot gate + ops runner）。
 
 ---
 
@@ -741,7 +768,179 @@ $groundedOutput = $composer->compose($groundedInput);
 
 **Freeze 日期：** 2026-07-01  
 **Freeze Phase：** Phase 2-F-0  
-**下一階段：** Phase 2-F-1 Grounding Context Builder Coding（待指令）
+**下一階段：** Phase 2-F-3 Grounding Runtime Validation（E2E pilot gate）
+
+---
+
+## 附錄 C. Production Rollout Policy
+
+> **Governance 原則：** Shadow → Pilot → Expand → Global。每階段須附錄 E 對應項目 PASS + 營運裁示後方可推進。**不得**跳階。
+
+**Feature Flags（`config/bats_feature.php`）：**
+
+| Flag | 語意 | Production 預設 |
+|------|------|-----------------|
+| `grounding_layer_shadow_enabled` | 平行 `assemble()` + 稽核 log；**不改** outbound reply | `false` |
+| `grounding_layer_shadow_tenant_snos` | Shadow 觀察 tenant allowlist | `[]` |
+| `grounding_layer_authoritative_enabled` | Knowledge / Product exit 走 `assemble()` → `compose()` | `false` |
+| `grounding_layer_authoritative_tenant_snos` | Authoritative pilot allowlist | travel_b 預填 |
+
+### C.1 Stage 1 — Shadow（Observe Only）
+
+| 項目 | 規格 |
+|------|------|
+| **目的** | 驗證 `GroundingRuntime::assemble()` 結構、parity、例外率；**零** reply 影響 |
+| **入口** | `GroundingShadowProbe`（F-2a 已接線） |
+| **Flag** | `grounding_layer_shadow_enabled=true` + allowlist 含 pilot tenant |
+| **成功準則** | Shadow log 無 exception spike；結構符合 GRC §8.5；reply parity = legacy |
+| **失敗處置** | Flag OFF（附錄 D.1） |
+
+### C.2 Stage 2 — Pilot（Authoritative Allowlist）
+
+| 項目 | 規格 |
+|------|------|
+| **目的** | 單一 tenant（travel_b）正式走 authoritative pipeline |
+| **入口** | `GroundingPipelineRuntime` |
+| **Flag** | `grounding_layer_authoritative_enabled=true` + tenant 在 allowlist |
+| **Pilot Tenant** | travel_b — `5f99b8d665e8444d` |
+| **Fallback** | 任何 `Throwable` → legacy compose（§26） |
+| **失敗處置** | Flag OFF 或 tenant 移出 allowlist（附錄 D.2） |
+
+### C.3 Stage 3 — Expand（Multi-Tenant Allowlist）
+
+| 項目 | 規格 |
+|------|------|
+| **目的** | 漸進擴大 authoritative allowlist |
+| **限制** | 一次僅追加少量 tenant；新 tenant 建議先 Shadow |
+| **失敗處置** | 僅移除問題 tenant；其餘不受影響 |
+
+### C.4 Stage 4 — Global（Default Authoritative）
+
+| 項目 | 規格 |
+|------|------|
+| **目的** | 全域預設走 Grounding Pipeline |
+| **前置** | F-3 E2E Validation PASS；Legacy 退場計畫核准 |
+| **Legacy** | `composeFromX` **保留**至 F-3 + 觀察期 |
+
+**F-2c 當前位置：** Governance SSOT 完成；Production Switch **尚未開始**（authoritative flag 仍 OFF）。
+
+---
+
+## 附錄 D. Rollback Playbook
+
+> **原則：** Protect Before Extend — rollback **優先**於 hotfix 架構變更。三層由快到慢。
+
+### D.1 Layer 1 — Flag OFF（Immediate，< 1 min）
+
+| 動作 | 說明 |
+|------|------|
+| **Authoritative OFF** | `grounding_layer_authoritative_enabled=false` |
+| **Shadow OFF** | `grounding_layer_shadow_enabled=false`（若僅 Shadow 問題） |
+| **效果** | 立即回到 legacy `composeFromX` 路徑；**無** deploy |
+| **適用** | Reply 品質問題、exception spike、LINE 客訴 |
+
+### D.2 Layer 2 — Tenant Allowlist（Surgical，< 5 min）
+
+| 動作 | 說明 |
+|------|------|
+| **移除 tenant** | 自 authoritative / shadow allowlist 移除問題 tenant |
+| **效果** | 僅問題 tenant 回 legacy；其他 tenant 不受影響 |
+| **適用** | 單 tenant 異常；Expand 階段首選 |
+
+### D.3 Layer 3 — Git Revert（Code Rollback，需 deploy）
+
+| 動作 | 說明 |
+|------|------|
+| **Revert commit** | Revert F-2b 接線（`GroundingPipelineRuntime` + `saas_router`） |
+| **效果** | 完全移除 authoritative 接線 |
+| **適用** | Flag OFF 仍無法恢復；fallback 也失敗 |
+| **禁止** | 未經 SSOT 修訂不得 revert F-2-1 核心 `GroundingRuntime` |
+
+### D.4 Rollback Decision Matrix
+
+| 症狀 | 首選 | 次選 |
+|------|------|------|
+| 單 tenant reply 異常 | D.2 移除 tenant | D.1 Flag OFF |
+| 多 tenant 異常 | D.1 Flag OFF | D.3 Git Revert |
+| assemble exception 率上升 | D.1 Flag OFF | Shadow log 調查 |
+| Human takeover 異常 | D.1 Flag OFF | 不改 Human Guard |
+
+### D.5 Post-Rollback
+
+1. 記錄 incident（trace_id、tenant、stage、rollback layer）
+2. Regression suite 重跑（附錄 E A1）
+3. Root cause 分析後再進 Shadow / Pilot
+
+---
+
+## 附錄 E. Production Acceptance Checklist
+
+> **使用時機：** 每次推進附錄 C 階段**前**須全勾。Ops 簽核欄位由營運維護。
+
+### E.1 Regression PASS
+
+| ID | 檢查項 | PASS 條件 |
+|----|--------|-----------|
+| **A1** | Grounding unit tests | `tests/grounding/test_*.php` 全 PASS |
+| **A2** | Composer pilot | `test_composer_pilot_validation.php` PASS |
+| **A3** | SaaS router pilot | `test_saas_router_phase9c1_pilot.php` PASS（flag OFF baseline） |
+| **A4** | PHP syntax | `core/grounding/*.php` `php -l` 無 error |
+
+### E.2 LINE OA Validation
+
+| ID | 檢查項 | PASS 條件 |
+|----|--------|-----------|
+| **A5** | Knowledge path | FAQ / 價格 / 服務 reply 可讀 |
+| **A6** | Product path | 推薦 / 無結果 / clarification 符合預期 |
+| **A7** | 北海道 8月 五天 | `conversation_context` slots 正確 |
+
+### E.3 travel_b Validation
+
+| ID | 檢查項 | PASS 條件 |
+|----|--------|-----------|
+| **A8** | Pilot tenant | `5f99b8d665e8444d` 端到端可完成 |
+| **A9** | Persona / tone | 符合 Travel Consultant Policy |
+| **A10** | Links / URLs | 連結可點、fact 可追溯 |
+
+### E.4 Human Service Validation
+
+| ID | 檢查項 | PASS 條件 |
+|----|--------|-----------|
+| **A11** | Human takeover | `conversation_owner=HUMAN` 無 AI outbound |
+| **A12** | Handoff path | Human service reply 正常 |
+
+### E.5 Rollback Drill
+
+| ID | 檢查項 | PASS 條件 |
+|----|--------|-----------|
+| **A13** | Flag OFF drill | D.1 後 legacy reply 恢復 |
+| **A14** | Allowlist drill | D.2 後單 tenant 隔離 |
+| **A15** | 恢復 | drill 後恢復原 flag 設定 |
+
+### E.6 Operations Approval
+
+| ID | 檢查項 | PASS 條件 |
+|----|--------|-----------|
+| **A16** | Ops sign-off | 營運負責人書面同意推進目標 Stage |
+| **A17** | 觀察期 | Shadow / Pilot 最低觀察天數已達成 |
+| **A18** | 監控 | exception / fallback 率有 baseline |
+
+---
+
+## 附錄 F. Phase 2-F-2c Operational Freeze Decisions
+
+| ID | 決策 | 狀態 |
+|----|------|------|
+| **F-2c-1** | Production Rollout 採 Shadow → Pilot → Expand → Global | ✅ Frozen |
+| **F-2c-2** | F-2c 僅 Governance SSOT；**不**開 authoritative flag | ✅ Frozen |
+| **F-2c-3** | Legacy compose **保留**至 F-3 + 觀察期 | ✅ Frozen |
+| **F-2c-4** | Authoritative 例外 fallback legacy；不得 silent pass | ✅ Frozen |
+| **F-2c-5** | Rollback 三層：Flag OFF → Allowlist → Git Revert | ✅ Frozen |
+| **F-2c-6** | Production Switch 須附錄 E 全勾 + Ops 裁示 | ✅ Frozen |
+| **F-2c-7** | §4～§16 Architecture Freeze 不因 F-2c 修改 | ✅ Frozen |
+
+**Governance Freeze 日期：** 2026-07-03  
+**Governance Freeze Phase：** Phase 2-F-2c
 
 ---
 
@@ -750,7 +949,8 @@ $groundedOutput = $composer->compose($groundedInput);
 | 版本 | 日期 | 狀態 | 說明 |
 |------|------|------|------|
 | **1.0** | 2026-07-01 | **Freeze** | Phase 2-F-0 Architecture Freeze：凍結 Public Contract、Assembly Context、Runtime Boundary、Ownership、Mapping Rules、Schema Validation |
+| **1.1** | 2026-07-03 | **Adopt** | Phase 2-F-2c Production Governance：附錄 C–F Rollout / Rollback / Acceptance / Operational Freeze |
 
 ---
 
-*本文件為 Grounding Layer Runtime 唯一 L3 SSOT（v1.0 Freeze）。不涉及程式實作。*
+*本文件為 Grounding Layer Runtime 唯一 L3 SSOT（v1.1 Adopt）。§4～§16 架構凍結不變；附錄 C–F 為 Production Governance 權威。*
