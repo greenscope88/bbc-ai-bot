@@ -16,12 +16,12 @@ return [
     'controlled_reply_tenants' => [
         '5f99b8d665e8444d',
     ],
-    'controlled_reply_keyword_prefix' => 'BATS測試',
+    'controlled_reply_keyword_prefix' => 'BATS皜祈岫',
     // Phase 9-B-26C-7 controlled real LINE reply test gate (safe default OFF).
     'controlled_real_reply_enabled' => false,
     'controlled_real_reply_tenant_sno' => '5f99b8d665e8444d',
     'controlled_real_reply_tenant_key' => 'travel_b',
-    'controlled_real_reply_keyword_prefix' => 'BATS測試',
+    'controlled_real_reply_keyword_prefix' => 'BATS皜祈岫',
     // Phase 2-B Step 4-B Conversation Runtime shadow probe (safe default OFF).
     // Shadow-only: observes ConversationRuntimeFacade decisions and logs parity
     // against the legacy FinalReplyGate. Never changes reply behavior.
@@ -71,7 +71,7 @@ return [
     // Product / Human Runtime, or LineService behavior; never throws.
     //
     // Phase 2-D Step 2-D-3-2B Live Shadow Validation (travel_b): master switch ON,
-    // but strictly tenant-scoped via the allowlist below — only travel_b runs live
+    // but strictly tenant-scoped via the allowlist below ??only travel_b runs live
     // shadow; every non-allowlisted tenant remains effectively OFF (default-deny).
     // Reversible in one line (set back to false). Production reply flow unaffected.
     'intent_understanding_shadow_enabled' => true,
@@ -95,7 +95,7 @@ return [
     // Phase 2-F Step 2-F-2b Authoritative Grounding path (safe default OFF).
     // When enabled for allowlisted tenant (travel_b pilot), Knowledge / Product exits
     // use GroundingRuntime::assemble() -> compose(). Legacy compose remains fallback.
-    'grounding_layer_authoritative_enabled' => false,
+    'grounding_layer_authoritative_enabled' => true,
     'grounding_layer_authoritative_tenant_snos' => [
         '5f99b8d665e8444d', // travel_b pilot
     ],
@@ -105,7 +105,7 @@ return [
     // Generative NLG / Prioritization / Validator are future 2-E-2 sub-phases.
     'grounded_composer_generative_enabled' => false,
     'tenants' => [
-        // Pilot tenant (dry_run only — no LINE / Gemini from BATS hook in 4B)
+        // Pilot tenant (dry_run only ??no LINE / Gemini from BATS hook in 4B)
         '5f99b8d665e8444d' => [
             'mode' => 'dry_run',
         ],
