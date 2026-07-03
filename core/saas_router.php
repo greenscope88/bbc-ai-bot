@@ -40,7 +40,9 @@ require_once __DIR__ . '/intent/AiIntentUnderstandingRuntimeSelector.php';
 require_once __DIR__ . '/intent/DispatchPlan.php';
 require_once __DIR__ . '/grounding/GroundingShadowProbe.php';
 require_once __DIR__ . '/grounding/GroundingOrchestratorContextFactory.php';
+require_once __DIR__ . '/grounding/GroundingPipelineRuntime.php';
 require_once __DIR__ . '/response/RuntimeType.php';
+require_once __DIR__ . '/response/GroundedInput.php';
 
 class SaaSRouter
 {
@@ -1250,17 +1252,29 @@ class SaaSRouter
                     'industry_code' => trim((string) ($tenant['industry_code'] ?? '')),
                 ]);
 
-                // Phase 9-C-2C-1: present knowledge reply through unified Grounded
-                // Response Composer (thin wrapper; reply text unchanged).
-                $groundedOutput = (new GroundedResponseComposer())->composeFromKnowledgeResult(
-                    $knowledgeResult,
-                    [
-                        'tenant_sno' => $tenantSno,
-                        'tenant_key' => trim((string) ($tenant['tenant_key'] ?? '')),
-                        'company_name' => trim((string) ($tenant['company_name'] ?? '')),
-                        'industry_code' => trim((string) ($tenant['industry_code'] ?? '')),
-                    ]
-                );
+                // Phase 9-C-2C-1 / 2-F-2b: Grounded Response Composer (legacy or authoritative pilot).
+                $tenantContext = [
+                    'tenant_sno' => $tenantSno,
+                    'tenant_key' => trim((string) ($tenant['tenant_key'] ?? '')),
+                    'company_name' => trim((string) ($tenant['company_name'] ?? '')),
+                    'industry_code' => trim((string) ($tenant['industry_code'] ?? '')),
+                ];
+                $knowledgeCompose = GroundingPipelineRuntime::composeKnowledgeReply([
+                    'config' => self::loadBatsFeatureConfig(),
+                    'trace_id' => $traceId,
+                    'tenant_sno' => $tenantSno,
+                    'conversation_id' => $runtimeConversationId,
+                    'customer_query' => $queryText,
+                    'runtime_type' => GroundingOrchestratorContextFactory::resolveKnowledgeRuntimeType($knowledgeResult),
+                    'runtime_result' => $knowledgeResult,
+                    'dispatch_result' => [
+                        'reply_purpose' => GroundedInput::PURPOSE_KNOWLEDGE_REPLY,
+                        'intent_type' => (string) ($intentDetection['intent_type'] ?? ''),
+                    ],
+                    'tenant' => $tenantContext,
+                    'legacy_tenant' => $tenantContext,
+                ]);
+                $groundedOutput = $knowledgeCompose['output'];
                 $replyText = $groundedOutput->getText();
 
                 self::runGroundingShadowProbe([
@@ -1502,15 +1516,30 @@ class SaaSRouter
                 $productProductList = isset($recommendationSummary['top_products']) && is_array($recommendationSummary['top_products'])
                     ? $recommendationSummary['top_products']
                     : [];
-                $groundedOutput = (new GroundedResponseComposer())->composeProductReply(
-                    [
-                        'reply_text' => $replyText,
-                        'grounded' => $productResultCount > 0,
-                        'recommendation_summary' => $recommendationSummary,
-                        'product_list' => $productProductList,
+                $productRuntimeResult = [
+                    'reply_text' => $replyText,
+                    'grounded' => $productResultCount > 0,
+                    'recommendation_summary' => $recommendationSummary,
+                    'product_list' => $productProductList,
+                ];
+                $tenantArray = is_array($tenant) ? $tenant : [];
+                $productCompose = GroundingPipelineRuntime::composeProductReply([
+                    'config' => self::loadBatsFeatureConfig(),
+                    'trace_id' => $traceId,
+                    'tenant_sno' => $tenantSno,
+                    'conversation_id' => $runtimeConversationId,
+                    'customer_query' => $queryText,
+                    'runtime_type' => RuntimeType::PRODUCT_SEARCH,
+                    'runtime_result' => $productRuntimeResult,
+                    'dispatch_result' => [
+                        'reply_purpose' => GroundedInput::PURPOSE_PRODUCT_REPLY,
+                        'intent_type' => (string) ($intentDetection['intent_type'] ?? ''),
                     ],
-                    is_array($tenant) ? $tenant : []
-                );
+                    'tenant' => $tenantArray,
+                    'legacy_tenant' => $tenantArray,
+                    'bats_search_intent' => $intentArray,
+                ]);
+                $groundedOutput = $productCompose['output'];
                 $composedReplyText = $groundedOutput->getReplyText();
                 if ($composedReplyText !== '') {
                     $replyText = $composedReplyText;
