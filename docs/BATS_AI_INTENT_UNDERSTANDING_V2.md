@@ -2,8 +2,8 @@
 
 **專案：** BBC AI SaaS / BATS / Phase 2-D
 **定位：** L3 架構 SSOT — **AI Intent Understanding Runtime（v2）** 唯一正式依據（Runtime 定位 / 職責 / Boundary / `AiIntentUnderstandingResult` Contract / Integration）
-**版本：** v1.0 Freeze
-**狀態：** ✅ Architecture Freeze（Phase 2-D-0）— 後續 Coding 之唯一架構依據
+**版本：** v1.2 Freeze（SSOT Refinement — Understand）  
+**狀態：** ✅ Architecture Freeze（Phase 2-D-0 + v1.2 Understand Refinement）— 後續 Coding 之唯一架構依據
 **主機參考：** 103.1.222.14（主機 A · `C:\bbc-ai-bot`）
 **Branch：** feature/api-gateway-mvp
 
@@ -50,6 +50,7 @@
 | §1 | Document Purpose |
 | §2 | Architecture Overview |
 | §3 | AI Intent Understanding Runtime（定位 / 職責 / Boundary） |
+| §3.4 | Semantic Understanding Core Policy |
 | §4 | AI Intent Understanding Runtime Flow |
 | §5 | `AiIntentUnderstandingResult` 正式 Contract |
 | §6 | Runtime Components |
@@ -130,6 +131,46 @@ LINE / Web / Future Channels
 - **唯讀**：對 Memory / State 僅讀 snapshot；**絕不**寫入或變更（IU-002 / Owner First）。
 - **不執行業務**：不搜尋、不查知識庫、不組句、不送任何 Channel 訊息。
 - **不路由執行**：只產出 `dispatch_plan`；實際路由由 Runtime Dispatch、實際執行由 Execution Runtime。
+
+### 3.4 Semantic Understanding Core Policy
+
+> **本節定位：** 補強 AI Intent Understanding v2 之 **Understand** 核心能力；**不**修改 F-1～F-5 契約、**不**新增 Runtime 架構。
+
+**Semantic Understanding Core：**
+
+| 項目 | 規格 |
+|------|------|
+| **唯一核心** | **Gemini**（或未來等效 LLM）為 AI Intent Understanding v2 **唯一** Semantic Understanding Core |
+| **目標** | 理解客人**真正意圖**，非字面關鍵字命中 |
+
+**理解依據（五要素）：**
+
+| 要素 | 說明 |
+|------|------|
+| **Semantic** | 自然語言語意理解 |
+| **Context** | Customer Memory Card、tenant / 場景上下文 |
+| **Conversation** | 多輪對話階段、prior message、Resume 延續 |
+| **Intent** | 意圖類別（CA-009）與 Entity 萃取 |
+| **Confidence** | 理解信心；低信心或 Ambiguous → `clarification.required = true` |
+
+**禁止（非 AIU v2 長期架構）：**
+
+- PHP Keyword Matching 作為 Intent 終態判斷
+- Rule Matching（固定規則表）作為唯一 Intent 依據
+- if…else Intent 硬編碼
+- 關鍵字硬綁（Marker / Lexicon 命中即 Intent）
+
+**Legacy Transition（MVP 過渡，非長期架構）：**
+
+現行 Production / Pilot 仍可能存在下列 **Rule / Keyword / Lexicon** 元件（§6）：
+
+| 元件 | 過渡定位 | 長期終態 |
+|------|----------|----------|
+| `BatsSearchIntentBuilder` / `TravelIntentLexicon` | Product Search 語意過渡 | Gemini Semantic Understanding |
+| `KnowledgeIntentDetector`（Rule / Marker） | Knowledge / Human 意圖過渡 | Gemini Semantic Understanding |
+| `ClarificationPolicy`（Rule） | Clarification 決策過渡 | AIU Clarification + Confidence |
+
+> **規則：** 上述元件 **僅為 MVP 過渡**，**不是** AI Intent Understanding v2 長期架構。`AiIntentUnderstandingResult` 契約（§5）、F-1～F-5、IU-001～IU-006 **維持 Freeze**。新 Intent 能力 **不得**再以 Keyword Patch 擴充。
 
 ---
 
@@ -214,6 +255,8 @@ AiIntentUnderstandingResult {
 ## 6. Runtime Components
 
 > 以下為 AIU Runtime 之 **邏輯子職責元件**；既有 SSOT 已定義者直接重用，本文件不新增新架構。
+>
+> **Legacy Transition 註記（§3.4）：** 表中「重用」之 Rule / Lexicon 元件為 **MVP 過渡實作**，非 AIU v2 目標架構終態；目標終態為 **Gemini Semantic Understanding Core**。
 
 | 元件（邏輯） | 角色 | 來源 / 重用 |
 |--------------|------|-------------|
@@ -325,6 +368,7 @@ AI Understand First, Runtime Execute Second
 | **F-3** | `AiIntentUnderstandingResult` | 9 欄位（intent / entity / context_snapshot / owner_snapshot / conversation_stage / resume_context / clarification / dispatch_plan / execution_hint） | ✅ Frozen |
 | **F-4** | `execution_hint` | 非綁定、扁平字串、封閉 enum（§5.2）；可空；不編碼 Execution 解析鏈 | ✅ Frozen |
 | **F-5** | Core Principle Mapping | 對映 Core Principle #1；信條「AI Understand First, Runtime Execute Second」；不新增原則 | ✅ Frozen |
+| **F-6** | Semantic Understanding Core Policy | Gemini 唯一 Semantic Core；§3.4 五要素 / 禁止項 / Legacy Transition | ✅ Frozen（v1.2 Refinement） |
 
 ---
 
@@ -332,7 +376,7 @@ AI Understand First, Runtime Execute Second
 
 | 項目 | 狀態 |
 |------|------|
-| **文件狀態** | **v1.0 Freeze** — AI Intent Understanding v2 L3 SSOT |
+| **文件狀態** | **v1.2 Freeze（Understand Refinement）** — AI Intent Understanding v2 L3 SSOT |
 | **Adopted Decisions** | IU-001～IU-006 |
 | **Architecture Freeze** | ✅ 已 Freeze（Phase 2-D-0）；F-1～F-5 凍結 |
 | **Additive 確認** | 是 — 不修改任何既有 Runtime 行為、不修改其他 SSOT 架構本體 |
@@ -344,7 +388,9 @@ AI Understand First, Runtime Execute Second
 
 | 版本 | 日期 | 狀態 | 說明 |
 |------|------|------|------|
-| **1.0** | 2026-06-30 | Freeze | 初版：整合 Phase 2-D Proposal / Architecture Refinement / Review；Freeze AI Intent Understanding Runtime 定位、職責、Boundary、`AiIntentUnderstandingResult`（9 欄位）、`execution_hint`（封閉 enum）、Core Principle #1 對映（IU-001～IU-006；F-1～F-5）。不新增新架構。 |
+| **1.2** | 2026-07-04 | Freeze（Refinement） | §3.4 補強 Understand：Gemini 唯一 Semantic Core、五要素、禁止 Keyword/Rule/if-else、Legacy Transition 明確化。聚焦 Understand；不修改其它 SSOT。 |
+| **1.1** | 2026-07-04 | Freeze（Refinement） | 新增 §3.4 Semantic Understanding Core Policy；§6 Legacy 註記；F-6。 |
+| **1.0** | 2026-06-30 | Freeze | 初版 Freeze（F-1～F-5；IU-001～IU-006）。 |
 
 ---
 
