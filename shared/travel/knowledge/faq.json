@@ -29,6 +29,14 @@
             "title": "國際線多久前到機場",
             "content": "建議於航班起飛前二至三小時抵達機場辦理報到與安檢。",
             "enabled": true
+        },
+        {
+            "item_id": "travel-faq-baggage-weight-limit",
+            "category": "faq",
+            "item_type": "standard",
+            "title": "行李可以帶幾公斤",
+            "content": "托運與手提行李重量依航空公司與艙等規定而異，建議出發前向航空公司或旅行社客服確認最新行李額度。",
+            "enabled": true
         }
     ]
 }

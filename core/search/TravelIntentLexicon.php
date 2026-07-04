@@ -43,6 +43,37 @@ final class TravelIntentLexicon
     ];
 
     /**
+     * Fuzzy / relative date-window terms that the Search Runtime's DateParser
+     * resolves into a concrete date range (DateParser::parseSsotFuzzySemantics()
+     * and its holiday rules). This single declared vocabulary keeps the Intent
+     * date signal aligned with the Search Runtime, so a query that DateParser can
+     * date (e.g. 「最近」「近期」「本月」) is also recognised as a product-search
+     * date signal — preventing per-keyword drift in the intent layer.
+     *
+     * @var list<string>
+     */
+    public const FUZZY_DATE_TERMS = [
+        // seasons / holidays (DateParser holiday + fuzzy rules)
+        '暑假',
+        '寒假',
+        '春節',
+        '過年',
+        '端午',
+        '中秋',
+        '連假',
+        // relative date windows (DateParser fuzzy semantics)
+        '最近',
+        '近期',
+        '本月',
+        '下月',
+        '明年',
+        '月初',
+        '月中',
+        '月底',
+        '月末',
+    ];
+
+    /**
      * Product / style terms that reinforce tour-search intent.
      *
      * @var list<string>
@@ -160,7 +191,7 @@ final class TravelIntentLexicon
         if (preg_match('/\d{1,2}\/\d{1,2}/u', $text) === 1) {
             return true;
         }
-        foreach (['暑假', '寒假', '春節', '過年', '端午', '中秋', '連假'] as $label) {
+        foreach (self::FUZZY_DATE_TERMS as $label) {
             if (mb_strpos($text, $label, 0, 'UTF-8') !== false) {
                 return true;
             }

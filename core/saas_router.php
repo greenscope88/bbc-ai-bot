@@ -27,10 +27,11 @@ require_once __DIR__ . '/product_source/renderer/gemini/GeminiRenderer.php';
 require_once __DIR__ . '/product_source/integration/GeminiClient.php';
 require_once __DIR__ . '/product_source/recommendation/ProductRecommendationBuilder.php';
 require_once __DIR__ . '/search/KnowledgeIntentDetector.php';
+require_once __DIR__ . '/search/ConversationQueryMerger.php';
+require_once __DIR__ . '/knowledge/HumanServiceResponseComposer.php';
 require_once __DIR__ . '/search/BatsSearchIntentBuilder.php';
 require_once __DIR__ . '/knowledge/TenantPrivateKnowledgeRuntime.php';
 require_once __DIR__ . '/knowledge/TenantPrivateKnowledgeProviderInterface.php';
-require_once __DIR__ . '/knowledge/KnowledgeFallbackResolver.php';
 require_once __DIR__ . '/response/GroundedResponseComposer.php';
 require_once __DIR__ . '/conversation/ConversationRuntimeShadowProbe.php';
 require_once __DIR__ . '/conversation/ConversationReplyGateCompareProbe.php';
@@ -1080,8 +1081,13 @@ class SaaSRouter
                 ? ConversationIdentityBuilder::forLine($tenantSno, $runtimeUserId)
                 : $conversationKey;
 
-            $queryText = Phase9C1FeatureGate::stripPilotQueryPrefix($userMessage);
-            $statusResolver->recordCustomerMessage($conversationKey, $queryText, $now);
+            $rawQueryText = Phase9C1FeatureGate::stripPilotQueryPrefix($userMessage);
+            $queryText = ConversationQueryMerger::mergeDateClarificationFollowUp(
+                $statusResolver,
+                $conversationKey,
+                $rawQueryText
+            );
+            $statusResolver->recordCustomerMessage($conversationKey, $rawQueryText, $now);
             $conversationStatus = $statusResolver->resolveStatus($conversationKey, $now);
 
             if ($conversationStatus === ConversationStatusResolver::STATUS_HUMAN_ACTIVE) {
@@ -1244,15 +1250,55 @@ class SaaSRouter
                 ]);
             }
 
+            if (($intentDetection['intent_type'] ?? '') === KnowledgeIntentDetector::INTENT_HUMAN_SERVICE_REQUEST) {
+                $humanServiceComposer = new HumanServiceResponseComposer();
+                $replyText = $humanServiceComposer->compose(
+                    trim((string) ($tenant['tenant_key'] ?? '')),
+                    trim((string) ($tenant['company_name'] ?? ''))
+                );
+                $statusResolver->markHumanActive($conversationKey, $now);
+
+                $replyRes = null;
+                if (is_callable($lineReplySender)) {
+                    $replyRes = $lineReplySender($lineReplyUrl, $lineToken, $replyToken, $replyText);
+                } else {
+                    $replyRes = LineService::replyToLine($lineReplyUrl, $lineToken, $replyToken, $replyText);
+                }
+
+                $humanPayload = [
+                    'trace_id' => $traceId,
+                    'tenant_sno' => $tenantSno,
+                    'conversation_id' => $conversationKey,
+                    'conversation_status' => $statusResolver->resolveStatus($conversationKey, $now),
+                    'intent_type' => KnowledgeIntentDetector::INTENT_HUMAN_SERVICE_REQUEST,
+                    'reply_text_length' => mb_strlen($replyText),
+                    'line_reply' => $replyRes,
+                    'final_route' => 'phase_9c2b3_knowledge_human_service_request',
+                ];
+                Logger::log('saas_router.log', 'phase_9c2b3_knowledge_human_service_request', $humanPayload);
+                self::appendWebhookLog('phase_9c2b3_knowledge_human_service_request', $humanPayload);
+
+                return [
+                    'ok' => true,
+                    'message' => 'phase_9c2b3_knowledge_human_service_request',
+                    'phase_9c1' => $humanPayload,
+                ];
+            }
+
             if (($intentDetection['intent_type'] ?? '') === KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY) {
+                $industryCode = trim((string) ($tenant['industry_code'] ?? ''));
+                if ($industryCode === '' && trim((string) ($tenant['tenant_key'] ?? '')) === 'travel_b') {
+                    $industryCode = 'travel';
+                }
+
                 $knowledgeRuntime = $knowledgeProvider !== null
-                    ? new TenantPrivateKnowledgeRuntime($knowledgeProvider)
-                    : new TenantPrivateKnowledgeRuntime(null, null, null, $tenantSno);
+                    ? new TenantPrivateKnowledgeRuntime($knowledgeProvider, null, null, null, null, null, null, null, $knowledgeFallbackResolver)
+                    : new TenantPrivateKnowledgeRuntime(null, null, null, $tenantSno, null, null, null, null, $knowledgeFallbackResolver);
                 $knowledgeResult = $knowledgeRuntime->handle($queryText, [
                     'tenant_sno' => $tenantSno,
                     'tenant_key' => trim((string) ($tenant['tenant_key'] ?? '')),
                     'company_name' => trim((string) ($tenant['company_name'] ?? '')),
-                    'industry_code' => trim((string) ($tenant['industry_code'] ?? '')),
+                    'industry_code' => $industryCode,
                 ]);
 
                 // Phase 9-C-2C-1 / 2-F-2b: Grounded Response Composer (legacy or authoritative pilot).
@@ -1260,7 +1306,7 @@ class SaaSRouter
                     'tenant_sno' => $tenantSno,
                     'tenant_key' => trim((string) ($tenant['tenant_key'] ?? '')),
                     'company_name' => trim((string) ($tenant['company_name'] ?? '')),
-                    'industry_code' => trim((string) ($tenant['industry_code'] ?? '')),
+                    'industry_code' => $industryCode,
                 ];
                 $knowledgeCompose = GroundingPipelineRuntime::composeKnowledgeReply([
                     'config' => self::loadBatsFeatureConfig(),
@@ -1279,6 +1325,12 @@ class SaaSRouter
                 ]);
                 $groundedOutput = $knowledgeCompose['output'];
                 $replyText = $groundedOutput->getText();
+                if ($replyText === '' || $groundedOutput->isReplySuppressed()) {
+                    $runtimeReply = trim((string) ($knowledgeResult['reply_text'] ?? ''));
+                    if ($runtimeReply !== '') {
+                        $replyText = $runtimeReply;
+                    }
+                }
 
                 self::runGroundingShadowProbe([
                     'path' => 'knowledge',
@@ -1296,7 +1348,7 @@ class SaaSRouter
                         'tenant_sno' => $tenantSno,
                         'tenant_key' => trim((string) ($tenant['tenant_key'] ?? '')),
                         'company_name' => trim((string) ($tenant['company_name'] ?? '')),
-                        'industry_code' => trim((string) ($tenant['industry_code'] ?? '')),
+                        'industry_code' => $industryCode,
                     ],
                     'legacy_reply_text' => $replyText,
                 ]);

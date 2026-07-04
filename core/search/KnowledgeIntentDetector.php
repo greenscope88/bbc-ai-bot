@@ -11,6 +11,7 @@ final class KnowledgeIntentDetector
     public const INTENT_PRODUCT_SEARCH = 'product_search';
     public const INTENT_KNOWLEDGE_QUERY = 'knowledge_query';
     public const INTENT_AMBIGUOUS = 'ambiguous';
+    public const INTENT_HUMAN_SERVICE_REQUEST = 'human_service_request';
 
     /** @var list<string> */
     private const KNOWLEDGE_PHRASE_MARKERS = [
@@ -65,6 +66,16 @@ final class KnowledgeIntentDetector
         '想玩',
     ];
 
+    /** @var list<string> */
+    private const HUMAN_SERVICE_MARKERS = [
+        '真人客服',
+        '找真人',
+        '找客服',
+        '人工客服',
+        '轉人工',
+        '我要找真人',
+    ];
+
     /**
      * @return array{intent_type: string}
      */
@@ -77,6 +88,10 @@ final class KnowledgeIntentDetector
         $text = trim($message);
         if ($text === '') {
             return ['intent_type' => self::INTENT_AMBIGUOUS];
+        }
+
+        if ($this->matchesHumanServiceRequest($text)) {
+            return ['intent_type' => self::INTENT_HUMAN_SERVICE_REQUEST];
         }
 
         if ($this->matchesKnowledgeQuery($text)) {
@@ -150,6 +165,24 @@ final class KnowledgeIntentDetector
             return true;
         }
 
+        if (mb_strpos($text, '行李', 0, 'UTF-8') !== false
+            && (mb_strpos($text, '公斤', 0, 'UTF-8') !== false
+                || mb_strpos($text, '托運', 0, 'UTF-8') !== false
+                || mb_strpos($text, '手提', 0, 'UTF-8') !== false)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function matchesHumanServiceRequest(string $text): bool
+    {
+        foreach (self::HUMAN_SERVICE_MARKERS as $marker) {
+            if (mb_strpos($text, $marker, 0, 'UTF-8') !== false) {
+                return true;
+            }
+        }
+
         return false;
     }
 
@@ -199,10 +232,12 @@ final class KnowledgeIntentDetector
             return false;
         }
 
+        // Date signal (incl. fuzzy/relative windows like 最近/近期/本月) is owned
+        // by TravelIntentLexicon::hasDateSignal(), aligned with DateParser. No
+        // per-keyword hardcoding here — keep a single date-signal source of truth.
         return TravelIntentLexicon::hasDateSignal($text)
             || TravelIntentLexicon::hasBudgetSignal($text)
             || TravelIntentLexicon::hasTourProductTerm($text)
-            || mb_strpos($text, '近期', 0, 'UTF-8') !== false
             || $this->hasDepartureSignal($text);
     }
 

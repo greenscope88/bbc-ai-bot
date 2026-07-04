@@ -21,6 +21,7 @@ final class SharedKnowledgeMatcher
             ['退票'],
             ['來不及', '搭機', '搭乘', '飛機', '來不及搭'],
         ],
+        'travel-faq-baggage-weight-limit' => [['行李'], ['公斤', '托運', '手提']],
     ];
 
     /**
