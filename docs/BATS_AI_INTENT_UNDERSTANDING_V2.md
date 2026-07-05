@@ -2,8 +2,8 @@
 
 **專案：** BBC AI SaaS / BATS / Phase 2-D
 **定位：** L3 架構 SSOT — **AI Intent Understanding Runtime（v2）** 唯一正式依據（Runtime 定位 / 職責 / Boundary / `AiIntentUnderstandingResult` Contract / Integration）
-**版本：** v1.2 Freeze（SSOT Refinement — Understand）  
-**狀態：** ✅ Architecture Freeze（Phase 2-D-0 + v1.2 Understand Refinement）— 後續 Coding 之唯一架構依據
+**版本：** v1.3 Clarification（SSOT Refinement — Understand）  
+**狀態：** ✅ Architecture Freeze（Phase 2-D-0 + v1.2 Understand Refinement + v1.3 Clarification）— 後續 Coding 之唯一架構依據
 **主機參考：** 103.1.222.14（主機 A · `C:\bbc-ai-bot`）
 **Branch：** feature/api-gateway-mvp
 
@@ -50,7 +50,7 @@
 | §1 | Document Purpose |
 | §2 | Architecture Overview |
 | §3 | AI Intent Understanding Runtime（定位 / 職責 / Boundary） |
-| §3.4 | Semantic Understanding Core Policy |
+| §3.4 | Semantic Understanding Core Policy（含 Semantic Entity Extraction Clarification） |
 | §4 | AI Intent Understanding Runtime Flow |
 | §5 | `AiIntentUnderstandingResult` 正式 Contract |
 | §6 | Runtime Components |
@@ -118,7 +118,7 @@ LINE / Web / Future Channels
 | 職責 | 說明 |
 |------|------|
 | **Intent Understanding** | 判定意圖類別（Product Search / Knowledge / Ambiguous，CA-009） |
-| **Entity Extraction** | 萃取與意圖相關之實體（語意欄位本體引用 `BATS_AI_SEMANTIC_SEARCH.md`） |
+| **Entity Extraction** | **語意實體萃取（Semantic Entity Extraction）**；由 Gemini Semantic Understanding 產出；語意欄位本體引用 `BATS_AI_SEMANTIC_SEARCH.md`（詳 §3.4） |
 | **Context Snapshot** | **讀取** Conversation Memory（Customer Memory Card）作為理解上下文 |
 | **Owner Snapshot** | **讀取** Conversation State 之有效 Owner（AI / HUMAN） |
 | **Conversation Stage** | 取得對話階段（與 Memory / Lifecycle 對齊；唯讀） |
@@ -134,7 +134,7 @@ LINE / Web / Future Channels
 
 ### 3.4 Semantic Understanding Core Policy
 
-> **本節定位：** 補強 AI Intent Understanding v2 之 **Understand** 核心能力；**不**修改 F-1～F-5 契約、**不**新增 Runtime 架構。
+> **本節定位：** 補強 AI Intent Understanding v2 之 **Understand** 核心能力；**不**修改 F-1～F-5 契約、**不**新增 Runtime 架構、**不**新增 Runtime Flow。
 
 **Semantic Understanding Core：**
 
@@ -143,15 +143,61 @@ LINE / Web / Future Channels
 | **唯一核心** | **Gemini**（或未來等效 LLM）為 AI Intent Understanding v2 **唯一** Semantic Understanding Core |
 | **目標** | 理解客人**真正意圖**，非字面關鍵字命中 |
 
+**語意解析面向（Clarification）：**
+
+AI Intent Understanding v2 解析使用者輸入中之語意資訊，作為理解與 `dispatch_plan` 規劃之依據。下列面向 **均屬 Understand 範疇**，**不**新增契約欄位、**不**改變 §5 之 9 欄位 Freeze：
+
+| 語意面向 | 說明 | 契約投影（§5） |
+|----------|------|----------------|
+| **Intent** | 意圖類別（Product Search / Knowledge / Ambiguous，CA-009） | `intent` |
+| **Semantic Meaning** | 自然語言之整體語意理解（含隱含需求、口語改述、多輪指代） | 內化於 Gemini 理解；投影至 `intent` / `entity` / `clarification` |
+| **Entities** | Gemini 語意理解後萃取之結構化語意資訊（§3.4 Semantic Entity Extraction） | `entity` |
+| **Context** | Customer Memory Card、tenant / 場景上下文 | `context_snapshot` |
+| **Conversation State** | 多輪對話階段、有效 Owner、Resume 延續 | `conversation_stage` / `owner_snapshot` / `resume_context` |
+| **Confidence** | 理解信心；低信心或 Ambiguous → 要求 Clarification | `clarification` |
+
 **理解依據（五要素）：**
+
+> 下列五要素為 Semantic Understanding Core 之 **設計依據**；上表六面向為其 **語意解析產出之 Clarification**，兩者並列、互補，**不**構成架構變更。
 
 | 要素 | 說明 |
 |------|------|
-| **Semantic** | 自然語言語意理解 |
+| **Semantic** | 自然語言語意理解（含 Semantic Meaning） |
 | **Context** | Customer Memory Card、tenant / 場景上下文 |
-| **Conversation** | 多輪對話階段、prior message、Resume 延續 |
+| **Conversation** | 多輪對話階段、prior message、Resume 延續（含 Conversation State） |
 | **Intent** | 意圖類別（CA-009）與 Entity 萃取 |
 | **Confidence** | 理解信心；低信心或 Ambiguous → `clarification.required = true` |
+
+**Semantic Entity Extraction（語意實體萃取）：**
+
+| 項目 | 規格 |
+|------|------|
+| **歸屬** | **屬於 AIU v2** — 為理解使用者真正意圖之 **必要組成**，非 Execution Runtime 業務邏輯 |
+| **產出方式** | 由 **Gemini Semantic Understanding** 完成語意理解後，萃取結構化 **Entities** 至 `entity` |
+| **性質** | 語意資訊之結構化投影；欄位語意本體引用 `BATS_AI_SEMANTIC_SEARCH.md`；**非** Keyword 命中清單 |
+
+**Entities 範例（旅遊語境，非 exhaustive）：**
+
+| 類別 | 說明 |
+|------|------|
+| **Destination** | 目的地（含口語別名、區域、城市） |
+| **Date** | 出發 / 回程 / 月份 / 季節等時間語意 |
+| **Duration** | 天數、行程長度 |
+| **Budget** | 預算區間、價格敏感度 |
+| **Departure City** | 出發地 |
+| **Traveler Count** | 人數、同行者組成 |
+| **Product Preference** | 產品類型、主題、艙等、飯店等偏好 |
+| **Human Service Request** | 轉人工、客服、真人協助等語意請求 |
+| **（其他）** | 任何對理解真正意圖具有語意重要性之資訊 |
+
+> **Clarification 守則：** 上表為 **語意類別示例**，**不是** Keyword Whitelist / Blacklist、**不是** Destination 硬編碼表、**不是** 新增 Routing Rule。具體欄位定義仍以 `BATS_AI_SEMANTIC_SEARCH.md` 為準。
+
+**明確區分 — Semantic Entity Extraction vs Programmatic Matching：**
+
+| 類型 | 歸屬 | 規格 |
+|------|------|------|
+| **Semantic Entity Extraction** | ✅ **AIU v2 長期架構** | 由 Gemini 語意理解後產生；是理解使用者真正意圖之一部分；輸出至 `entity` |
+| **Programmatic Keyword Matching / Rule Matching** | ❌ **非 AIU v2 長期架構** | 不可作為 Intent 判斷依據；不可用 PHP keyword、regex-first、if…else、hardcoded routing **取代** Gemini 理解 |
 
 **禁止（非 AIU v2 長期架構）：**
 
@@ -159,6 +205,8 @@ LINE / Web / Future Channels
 - Rule Matching（固定規則表）作為唯一 Intent 依據
 - if…else Intent 硬編碼
 - 關鍵字硬綁（Marker / Lexicon 命中即 Intent）
+- regex-first 或 hardcoded routing **取代** Gemini Semantic Understanding
+- 以 Keyword / Rule 命中結果 **冒充** Semantic Entity Extraction 產出
 
 **Legacy Transition（MVP 過渡，非長期架構）：**
 
@@ -225,7 +273,7 @@ AiIntentUnderstandingResult {
 | 欄位 | 型別 | 必填 | 規格 |
 |------|------|------|------|
 | `intent` | string | 是 | CA-009 三類；意圖本體定義引用 L2 §3 |
-| `entity` | array | 是（可空陣列） | 與意圖相關實體；欄位語意引用 `BATS_AI_SEMANTIC_SEARCH.md` |
+| `entity` | array | 是（可空陣列） | **Semantic Entity Extraction** 產出之語意實體集合；由 Gemini 理解後萃取；欄位語意引用 `BATS_AI_SEMANTIC_SEARCH.md`（§3.4）；**非** Keyword / Rule 命中產物 |
 | `context_snapshot` | array | 是（可空陣列） | Customer Memory Card 之唯讀投影；AIU 不改 Memory |
 | `owner_snapshot` | string | 是 | `AI` \| `HUMAN`；讀自 State Runtime 有效 Owner |
 | `conversation_stage` | string | 是 | 對話階段；唯讀 |
@@ -368,7 +416,7 @@ AI Understand First, Runtime Execute Second
 | **F-3** | `AiIntentUnderstandingResult` | 9 欄位（intent / entity / context_snapshot / owner_snapshot / conversation_stage / resume_context / clarification / dispatch_plan / execution_hint） | ✅ Frozen |
 | **F-4** | `execution_hint` | 非綁定、扁平字串、封閉 enum（§5.2）；可空；不編碼 Execution 解析鏈 | ✅ Frozen |
 | **F-5** | Core Principle Mapping | 對映 Core Principle #1；信條「AI Understand First, Runtime Execute Second」；不新增原則 | ✅ Frozen |
-| **F-6** | Semantic Understanding Core Policy | Gemini 唯一 Semantic Core；§3.4 五要素 / 禁止項 / Legacy Transition | ✅ Frozen（v1.2 Refinement） |
+| **F-6** | Semantic Understanding Core Policy | Gemini 唯一 Semantic Core；§3.4 五要素 / Semantic Entity Extraction / 禁止項 / Legacy Transition | ✅ Frozen（v1.2 Refinement + v1.3 Clarification） |
 
 ---
 
@@ -376,7 +424,7 @@ AI Understand First, Runtime Execute Second
 
 | 項目 | 狀態 |
 |------|------|
-| **文件狀態** | **v1.2 Freeze（Understand Refinement）** — AI Intent Understanding v2 L3 SSOT |
+| **文件狀態** | **v1.3 Clarification（Understand Refinement）** — AI Intent Understanding v2 L3 SSOT |
 | **Adopted Decisions** | IU-001～IU-006 |
 | **Architecture Freeze** | ✅ 已 Freeze（Phase 2-D-0）；F-1～F-5 凍結 |
 | **Additive 確認** | 是 — 不修改任何既有 Runtime 行為、不修改其他 SSOT 架構本體 |
@@ -388,6 +436,7 @@ AI Understand First, Runtime Execute Second
 
 | 版本 | 日期 | 狀態 | 說明 |
 |------|------|------|------|
+| **1.3** | 2026-07-05 | Clarification | §3.4 補充語意解析六面向、Semantic Entity Extraction 定義與旅遊 Entities 示例；明確區分 Semantic Entity Extraction vs Programmatic Keyword/Rule Matching。§3.2 / §5.1 交叉引用。Clarification only；F-1～F-5 / IU-001～IU-006 / §4 Flow 不變。 |
 | **1.2** | 2026-07-04 | Freeze（Refinement） | §3.4 補強 Understand：Gemini 唯一 Semantic Core、五要素、禁止 Keyword/Rule/if-else、Legacy Transition 明確化。聚焦 Understand；不修改其它 SSOT。 |
 | **1.1** | 2026-07-04 | Freeze（Refinement） | 新增 §3.4 Semantic Understanding Core Policy；§6 Legacy 註記；F-6。 |
 | **1.0** | 2026-06-30 | Freeze | 初版 Freeze（F-1～F-5；IU-001～IU-006）。 |
