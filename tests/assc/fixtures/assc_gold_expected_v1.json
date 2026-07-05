@@ -1,0 +1,147 @@
+{
+  "version": "v1.0",
+  "subset": "smoke",
+  "description": "ASSC Gold Smoke 20 — Expected Semantic Output (independent of corpus). Semantic ideals for offline validation; legacy pass rate is not a gate.",
+  "cases": [
+    {
+      "assc_id": "ASSC-001",
+      "expected_intent": "Product Search",
+      "expected_dispatch_plan": "product",
+      "expected_clarification": false,
+      "required_capabilities": ["entity_extraction"]
+    },
+    {
+      "assc_id": "ASSC-003",
+      "expected_intent": "Product Search",
+      "expected_dispatch_plan": "clarification",
+      "expected_clarification": true,
+      "required_capabilities": ["entity_extraction", "clarification"]
+    },
+    {
+      "assc_id": "ASSC-004",
+      "expected_intent": "Product Search",
+      "expected_dispatch_plan": "clarification",
+      "expected_clarification": true,
+      "required_capabilities": ["entity_extraction", "clarification"]
+    },
+    {
+      "assc_id": "ASSC-005",
+      "expected_intent": "Product Search",
+      "expected_dispatch_plan": "clarification",
+      "expected_clarification": true,
+      "required_capabilities": ["entity_extraction", "clarification"]
+    },
+    {
+      "assc_id": "ASSC-006",
+      "expected_intent": "Product Search",
+      "expected_dispatch_plan": "product",
+      "expected_clarification": false,
+      "required_capabilities": ["entity_extraction"]
+    },
+    {
+      "assc_id": "ASSC-007",
+      "expected_intent": "Product Search",
+      "expected_dispatch_plan": "product",
+      "expected_clarification": false,
+      "required_capabilities": ["entity_extraction"]
+    },
+    {
+      "assc_id": "ASSC-008",
+      "expected_intent": "Knowledge",
+      "expected_dispatch_plan": "knowledge",
+      "expected_clarification": false,
+      "required_capabilities": ["knowledge_resolve"]
+    },
+    {
+      "assc_id": "ASSC-010",
+      "expected_intent": "Knowledge",
+      "expected_dispatch_plan": "knowledge",
+      "expected_clarification": false,
+      "required_capabilities": ["knowledge_resolve"]
+    },
+    {
+      "assc_id": "ASSC-011",
+      "expected_intent": "Product Search",
+      "expected_dispatch_plan": "product",
+      "expected_clarification": false,
+      "required_capabilities": ["entity_extraction"]
+    },
+    {
+      "assc_id": "ASSC-018",
+      "expected_intent": "Knowledge",
+      "expected_dispatch_plan": "knowledge",
+      "expected_clarification": false,
+      "required_capabilities": ["knowledge_resolve"]
+    },
+    {
+      "assc_id": "ASSC-024",
+      "expected_intent": "Knowledge",
+      "expected_dispatch_plan": "knowledge",
+      "expected_clarification": false,
+      "required_capabilities": ["knowledge_resolve"]
+    },
+    {
+      "assc_id": "ASSC-025",
+      "expected_intent": "Product Search",
+      "expected_dispatch_plan": "product",
+      "expected_clarification": false,
+      "required_capabilities": ["entity_extraction"]
+    },
+    {
+      "assc_id": "ASSC-030",
+      "expected_intent": "Knowledge",
+      "expected_dispatch_plan": "knowledge",
+      "expected_clarification": false,
+      "required_capabilities": ["knowledge_resolve"]
+    },
+    {
+      "assc_id": "ASSC-031",
+      "expected_intent": "Ambiguous",
+      "expected_dispatch_plan": "clarification",
+      "expected_clarification": true,
+      "required_capabilities": ["clarification"]
+    },
+    {
+      "assc_id": "ASSC-036",
+      "expected_intent": "Ambiguous",
+      "expected_dispatch_plan": "clarification",
+      "expected_clarification": true,
+      "required_capabilities": ["clarification"]
+    },
+    {
+      "assc_id": "ASSC-045",
+      "expected_intent": "Product Search",
+      "expected_dispatch_plan": "product",
+      "expected_clarification": false,
+      "required_capabilities": ["entity_extraction"]
+    },
+    {
+      "assc_id": "ASSC-048",
+      "expected_intent": "Knowledge",
+      "expected_dispatch_plan": "knowledge",
+      "expected_clarification": false,
+      "required_capabilities": ["knowledge_resolve"]
+    },
+    {
+      "assc_id": "ASSC-056",
+      "expected_intent": "Ambiguous",
+      "expected_dispatch_plan": "clarification",
+      "expected_clarification": true,
+      "required_capabilities": ["clarification"]
+    },
+    {
+      "assc_id": "ASSC-070",
+      "expected_intent": "Knowledge",
+      "expected_dispatch_plan": "knowledge",
+      "expected_clarification": false,
+      "required_capabilities": ["knowledge_resolve"]
+    },
+    {
+      "assc_id": "ASSC-081",
+      "expected_intent": "Ambiguous",
+      "expected_dispatch_plan": "clarification",
+      "expected_clarification": true,
+      "required_capabilities": ["clarification"]
+    }
+  ]
+}
