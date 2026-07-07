@@ -2,8 +2,8 @@
 
 **專案：** BBC AI SaaS / BATS / Phase 2-D
 **定位：** L3 架構 SSOT — **AI Intent Understanding Runtime（v2）** 唯一正式依據（Runtime 定位 / 職責 / Boundary / `AiIntentUnderstandingResult` Contract / Integration）
-**版本：** v1.5（ASSC Gold Architecture Freeze）
-**狀態：** ✅ Architecture Freeze（Phase 2-D-0 + v1.2～v1.3 Understand Refinement + v1.4 ASSC Gold Integration + **v1.5 ASSC Gold Architecture Freeze**）— 後續 Coding 之唯一架構依據
+**版本：** v1.7（AIU v2 Understanding Core + AIU Prompt Scheme v1.0）
+**狀態：** ✅ Architecture Freeze（Phase 2-D-0 + v1.2～v1.3 Understand Refinement + v1.4～v1.5 ASSC Gold + v1.6 AIU Prompt Design Principles + **v1.7 Understanding Core + Prompt Scheme**）— 後續 Coding 之唯一架構依據
 **主機參考：** 103.1.222.14（主機 A · `C:\bbc-ai-bot`）
 **Branch：** feature/api-gateway-mvp
 
@@ -63,6 +63,10 @@
 | §12 | Architecture Freeze Result（F-1～F-6） |
 | §13 | ASSC Gold（AI Semantic Scenario Collection） |
 | §13.14 | ASSC Gold Architecture Freeze Result（AG-1～AG-12） |
+| §14 | AIU Prompt Design Principles |
+| §14.8 | AIU Prompt Architecture Diagram |
+| §15 | AIU v2 Understanding Core |
+| §16 | AIU Prompt Scheme v1.0 |
 
 ---
 
@@ -77,6 +81,7 @@
 | **約束** | 後續實作須完全依本文件；不一致時依 SSOT Authority（`BATS_AI_PERSONA.md` §0.7）修正程式，不得反向改本 SSOT |
 | **非目的** | 不新增新架構、不重複定義 L2 Pipeline / 意圖類別 / 語意欄位 / 話術 / Grounded 契約 / 程式實作 |
 | **ASSC Gold** | 本文件 §13 定義 **ASSC Gold** 架構、Schema、治理與 Golden Rules；正式 Benchmark Cases 見 `ASSC_GOLD_BENCHMARK_v1.md` |
+| **AIU Prompt** | 本文件 §14 定義 **AIU Prompt Design Principles** — SSOT × ASSC 如何形成 Gemini Prompt；四元件責任分工 |
 
 ---
 
@@ -422,6 +427,9 @@ AI Understand First, Runtime Execute Second
 | **F-5** | Core Principle Mapping | 對映 Core Principle #1；信條「AI Understand First, Runtime Execute Second」；不新增原則 | ✅ Frozen |
 | **F-6** | Semantic Understanding Core Policy | Gemini 唯一 Semantic Core；§3.4 五要素 / Semantic Entity Extraction / 禁止項 / Legacy Transition | ✅ Frozen（v1.2 Refinement + v1.3 Clarification） |
 | **F-7** | ASSC Gold Integration | §13 ASSC Gold 架構 / Schema / Taxonomy / Governance / Golden Rules；Benchmark Corpus 引用 `ASSC_GOLD_BENCHMARK_v1.md` | ✅ Frozen（v1.5 ASSC Gold Architecture Freeze） |
+| **F-8** | AIU Prompt Design Principles | §14 Prompt Formation / 四元件責任 / Prompt Architecture / Design Principles / Philosophy | ✅ Frozen（v1.6 AIU Prompt Design Principles） |
+| **F-9** | AIU v2 Understanding Core | §15 Gemini 唯一 Semantic Core；三方責任；Clarification Detection vs Execution 邊界；Understanding Core Invariants | ✅ Frozen（v1.7 Understanding Core） |
+| **F-10** | AIU Prompt Scheme v1.0 | §16 Prompt Block Schema（B-01～B-11）/ Semantic JSON v1.0 / Prompt→Gemini→Normalize 邊界 | ✅ Frozen（v1.7 AIU Prompt Scheme v1.0） |
 
 ---
 
@@ -682,17 +690,603 @@ ASSC-001～100 之 Primary Scenario 欄位目前已出現 **36 種**（如下表
 
 ---
 
+## 14. AIU Prompt Design Principles
+
+> **本節定位：** 完整定義 **AIU Prompt 如何形成**，以及 **AIU v2 SSOT、ASSC、Gemini、AIU Runtime** 四者之責任分工。本節為 AIU v2 **唯一主線**之 Prompt 設計 SSOT — **不**修改 §1～§12 Runtime Flow / Intent / Contract；**不**修改 §13 ASSC Gold Freeze（AG-1～AG-12）。
+
+### 14.1 Purpose
+
+| 目的 | 說明 |
+|------|------|
+| **主線** | AIU v2 如何利用 **SSOT** 與 **ASSC 100 真實案例** 所代表之語言模式，產生更精準的 **Gemini Prompt**，使 Gemini 成為 **Intent Understanding** 與 **Entity Extraction** 的核心 |
+| **定義** | AIU Prompt 之來源、組成、責任邊界與設計原則 |
+| **非目的** | 不定義 Gemini API 實作細節、不規範回覆話術、不取代 §5 `AiIntentUnderstandingResult` 契約、不將 Validation Harness / Regression Platform 納入本節（見 §14.7 Out of Scope） |
+
+### 14.2 AIU Prompt Philosophy
+
+> **AIU v2 以 SSOT 定義理解原則，以 ASSC 提供代表性的真實旅遊客服語言模式，共同形成 Gemini Prompt，充分發揮 Gemini 的 Intent Understanding 與 Entity Extraction 能力，並輸出 BBC Runtime 所需的 Semantic Contract。**
+
+### 14.3 AIU Prompt Formation
+
+**AIU Prompt 並非直接由 ASSC 產生。**
+
+AIU Prompt 的來源為下列兩者 **共同形成**：
+
+| 來源 | 角色 | 提供內容 |
+|------|------|----------|
+| **AIU v2 SSOT** | **What to understand** | Semantic Understanding Principles — 要理解什麼、Runtime 需要哪些 Semantic Information、Semantic Contract（§3.4 / §5） |
+| **ASSC** | **How customers speak** | Representative Customer Language Patterns — 真實客戶如何表達需求（引用 `ASSC_GOLD_BENCHMARK_v1.md` 語料所代表之模式；**不**改寫 Customer Utterance） |
+
+| 定位 | 說明 |
+|------|------|
+| **Prompt 是 SSOT 的實作** | Prompt 將 SSOT 所定義之理解原則與 Semantic Contract **實作化** 為 Gemini 可執行之指令與結構 |
+| **ASSC 是 Prompt Engineering 的補充來源** | ASSC 提供 **代表性真實語言模式**，協助 Prompt 覆蓋真實旅遊客服表達；**非** Prompt 唯一來源、**非** 規則引擎、**非** Runtime |
+
+```
+AIU v2 SSOT（What to understand）
+        +
+ASSC（How customers speak — Representative Language Patterns）
+        ↓
+   AIU Prompt（SSOT 實作 + ASSC 語言模式補充）
+        ↓
+      Gemini
+```
+
+### 14.4 Four Component Responsibilities
+
+#### 14.4.1 AIU v2 SSOT（本文件）
+
+定義 **Semantic Understanding Principles**。
+
+決定：
+
+- **要理解什麼**（Intent / Entity / Clarification / Constraint）
+- **Runtime 需要哪些 Semantic Information**（對齊 `AiIntentUnderstandingResult` 9 欄位）
+- **Semantic Contract**（§5；CA-009 Intent 類別引用 L2）
+
+#### 14.4.2 ASSC
+
+| 項目 | 說明 |
+|------|------|
+| **不參與** | Production Runtime |
+| **本節角色（Prompt Engineering）** | 提供 **代表性的真實旅遊客服案例** 所承載之語言模式 |
+| **可萃取供 Prompt** | Representative Customer Language Patterns、Common Travel Expressions、Frequently Used Natural Language |
+| **用途** | 協助 **Prompt Engineering** — 使 Gemini Prompt 貼近真實客戶表達 |
+| **非本節角色** | 不作 Production Validation、不作 AI Evaluation、不作 Runtime 路由（§13 Corpus 治理見 ASSC Gold Freeze；本節不展開） |
+
+> **Invariant：** ASSC **記錄**真實客戶如何表達需求；**不**教 AI 如何回答；**不**以 ASSC 規則取代 Gemini 自然語言理解（對齊 §13.13 Golden Rules 1～3）。
+
+#### 14.4.3 Gemini
+
+Gemini 為 AIU v2 **唯一的 Semantic Understanding Engine**。
+
+負責：
+
+- **Intent Understanding**
+- **Entity Extraction**
+- **Constraint Understanding**
+- **Clarification Detection**
+
+AIU v2 **不重新實作**：
+
+- NLP
+- Intent Classifier
+- Entity Extraction
+
+**充分利用 Gemini 原生能力**（對齊 §3.4 Semantic Understanding Core Policy）。
+
+#### 14.4.4 AIU Runtime
+
+AIU Runtime **不負責語意理解本身** — 理解由 **Gemini** 執行。
+
+AIU Runtime 負責：
+
+| 步驟 | 職責 |
+|------|------|
+| 1 | **建立 AIU Prompt**（依 §14.3：SSOT 原則 + ASSC 語言模式補充 + 當次 Customer Utterance） |
+| 2 | **呼叫 Gemini** |
+| 3 | **接收 Gemini Semantic Result** |
+| 4 | **Normalize** 為結構化語意結果 |
+| 5 | **輸出** BBC Runtime **Semantic Contract**（`AiIntentUnderstandingResult`，§5） |
+
+> **邊界：** AIU Runtime 為 **編排與契約閘道**；**不**以 Keyword / Rule / if-else 取代 Gemini 理解（§3.4）。
+
+### 14.5 AIU Prompt Architecture
+
+| 層級 | 元件 | 輸入 | 輸出 |
+|------|------|------|------|
+| **L0** | AIU v2 SSOT | CA-009 / §3.4 / §5 | Semantic Understanding Principles、Contract 要求 |
+| **L1** | ASSC Corpus（引用） | `ASSC_GOLD_BENCHMARK_v1.md` | Representative Language Patterns（離線萃取；不改寫原文） |
+| **L2** | **AIU Prompt Builder**（AIU Runtime 內） | SSOT + ASSC 模式摘要 + Customer Message + Context Snapshot | **AIU Prompt** |
+| **L3** | **Gemini** | AIU Prompt | Raw Semantic Result |
+| **L4** | **AIU Normalizer**（AIU Runtime 內） | Raw Semantic Result | `AiIntentUnderstandingResult` |
+| **L5** | BBC AI Runtime | `dispatch_plan` / `entity` / … | Execute / Govern |
+
+**Prompt 組成要素（概念層；實作見 Coding Phase）：**
+
+1. **SSOT Mandate** — 理解任務、Intent 類別、Entity 欄位、Clarification 政策
+2. **ASSC Language Pattern Hints** — 旅遊客服常見表達、口語、多輪、錯字、混合語等模式（來自 ASSC 代表性語料）
+3. **Runtime Context** — `context_snapshot` / `owner_snapshot` / `conversation_stage` / `resume_context`（唯讀）
+4. **Customer Utterance** — 當次客戶原文（**不得**由 ASSC 案例替換）
+
+### 14.6 Design Principles
+
+| # | 原則 | 說明 |
+|---|------|------|
+| **PD-1** | **SSOT First** | Prompt 必須忠實實作 SSOT 所定義之理解原則與 Semantic Contract |
+| **PD-2** | **ASSC Supplements Language, Not Rules** | ASSC 補充 **How customers speak**；不得以 ASSC 案例或 Scenario 作為 if-else 路由規則 |
+| **PD-3** | **Prompt ≠ Corpus** | AIU Prompt **不是** ASSC 全文複製；ASSC 提供 **代表性語言模式**，非逐案 Prompt 拼接 |
+| **PD-4** | **Gemini Native NLU** | Intent / Entity / Clarification 由 Gemini 理解；AIU 不重建 NLP 管線 |
+| **PD-5** | **Runtime Orchestrates** | AIU Runtime 組 Prompt、呼叫、Normalize、輸出契約 — **不**自行「理解」 |
+| **PD-6** | **Utterance Integrity** | 當次 Customer Utterance 必須原文進入 Prompt；ASSC 僅影響 **模式層** 設計 |
+| **PD-7** | **Contract Output** | 最終輸出必須符合 `AiIntentUnderstandingResult` 9 欄位（§5） |
+| **PD-8** | **Separation from Execution** | Prompt 服務 **Understand**；BBC Runtime **Execute / Govern** — 兩者不混淆 |
+
+### 14.7 Out of Scope（本節）
+
+以下 **不納入** §14 與本版 SSOT 更新：
+
+- ASSC Expected 100 標註本體
+- ASSC Validation Harness
+- Semantic Regression Platform
+- AI Evaluation Framework
+- PASS / FAIL Validation
+- Gold Annotation
+- P2 / P3 Roadmap
+- Human Service / Conversation Memory / Grounded Composer / Search Runtime
+
+（§13 ASSC Gold Corpus 架構與治理維持 v1.5 Freeze；與 §14 Prompt 角色 **互補**，本節不重寫 §13。）
+
+### 14.8 AIU Prompt Architecture Diagram
+
+```mermaid
+flowchart TB
+  subgraph sources ["Prompt Sources"]
+    SSOT["AIU v2 SSOT<br/>Semantic Understanding Principles<br/>(What to understand)"]
+    ASSC["ASSC<br/>Representative Customer<br/>Language Patterns<br/>(How customers speak)"]
+  end
+
+  SSOT --> PROMPT["AIU Prompt<br/>(SSOT 實作 + ASSC 語言模式補充)"]
+  ASSC -.->|補充| PROMPT
+
+  PROMPT --> GEMINI["Gemini<br/>Intent Understanding<br/>+ Entity Extraction<br/>+ Constraint / Clarification"]
+  GEMINI --> RUNTIME["AIU Runtime<br/>Normalize"]
+  RUNTIME --> CONTRACT["BBC Runtime<br/>Semantic Contract<br/>(AiIntentUnderstandingResult)"]
+  CONTRACT --> BBC["BBC AI Runtime<br/>Execute / Govern"]
+```
+
+**文字版（對照）：**
+
+```
+AIU v2 SSOT（What to understand）
+        ↓
+   AIU Prompt  ←── ASSC（Representative Customer Language Patterns）
+        ↓
+      Gemini（Intent Understanding + Entity Extraction）
+        ↓
+   AIU Runtime（Normalize）
+        ↓
+BBC Runtime Semantic Contract（AiIntentUnderstandingResult）
+        ↓
+   BBC AI Runtime（Execute / Govern）
+```
+
+### 14.9 Cross-References
+
+| 主題 | 章節 |
+|------|------|
+| Semantic Understanding Core | §3.4 |
+| Runtime Flow | §4 |
+| Output Contract | §5 |
+| ASSC Gold Corpus 治理 | §13（Frozen v1.5） |
+| ASSC 正式語料 | `ASSC_GOLD_BENCHMARK_v1.md` |
+| Product 語意欄位 | `BATS_AI_SEMANTIC_SEARCH.md` |
+
+---
+
+## 15. AIU v2 Understanding Core
+
+> **本節定位：** 正式定義 **AIU v2 Understanding Core** — AI Intent Understanding v2 之 **語意理解層** 唯一架構依據。本節 **不**修改 §1～§14 既有 Freeze；**不**修改 F-1～F-8；**不**修改 IU-001～IU-006；**不**修改 §4 Runtime Flow；**不**修改 §5 `AiIntentUnderstandingResult` 9 欄位契約。
+>
+> **✅ Architecture Freeze（v1.7）：** 本節 §15.1～§15.10 已正式 Freeze（F-9）。後續僅允許：明確錯誤修正、與 §16 Prompt Scheme 之對齊性 Clarification（不變更 §15 架構決策）。
+
+### 15.1 Document Purpose
+
+| 項目 | 規格 |
+|------|------|
+| **定位** | **AIU v2 Understanding Core** 為 AI Intent Understanding v2 之 **語意理解子系統** — 負責「理解客人真正意圖」，非執行、非治理 |
+| **關係** | §3.4 為 Runtime 章節內之 **政策摘要**；**§15 為 Understanding Core 之正式 Freeze 本體** |
+| **上層** | 位於 AIU Runtime（§3）編排路徑內；由 AIU Runtime 觸發，**不**由 BBC Runtime 觸發理解 |
+| **下層** | 透過 §16 **AIU Prompt Scheme v1.0** 作為 Gemini 之 Understanding Framework |
+
+### 15.2 Core Definition
+
+**AIU v2 Understanding Core** 指：以 **Gemini**（或未來等效 LLM）為 **唯一** Semantic Understanding Engine，對 Customer Utterance 與唯讀 Context 進行自然語言語意理解，產出結構化語意結果，供 AIU Runtime Normalize 為 `AiIntentUnderstandingResult`（§5）。
+
+**Invariant：**
+
+> **Understanding Core 只做理解（Understand）；AIU Runtime 只做編排與契約閘道（Orchestrate / Normalize）；BBC Runtime 只做執行與治理（Execute / Govern）。三者不混淆、不重疊理解職責。**
+
+### 15.3 Three-Layer Responsibility
+
+| 層級 | 元件 | 理解職責 | 正式職責 |
+|------|------|----------|----------|
+| **L1 — Understanding Core** | **Gemini** | ✅ **唯一**語意理解 | Intent Understanding、Semantic Meaning、Entity Extraction、Constraint Understanding、**Clarification Detection**、Confidence 評估 |
+| **L2 — AIU Runtime** | AIU Runtime（§3 / §4） | ❌ **不**重新理解 | 組裝 §16 Prompt、呼叫 Gemini、接收 Semantic Result、**Normalize** 為 `AiIntentUnderstandingResult`、Dispatch Planning |
+| **L3 — BBC Runtime** | Runtime Dispatch + Execution Runtime | ❌ **不**重新理解 | 依 `dispatch_plan` 路由與執行；**Clarification Execution**；Human / Product / Knowledge 業務執行；Owner / Status 治理 |
+
+> **邊界：** L2 **不得**以 Keyword / Rule / if-else **取代或覆寫** L1 之語意理解結果（對齊 §3.4 禁止項）。L3 **不得**對 Customer Utterance 再做 Intent 判斷以改變 `dispatch_plan` 權威（IU-003）。
+
+### 15.4 Gemini as Sole Semantic Understanding Core
+
+| 項目 | 規格 |
+|------|------|
+| **唯一核心** | **Gemini** 為 AIU v2 **唯一** Semantic Understanding Core |
+| **雙引擎** | ❌ 禁止 Rule + Gemini 並列作為 Understanding Core |
+| **理解方式** | 自然語言語意理解；理解客人**真正意圖**，非字面關鍵字命中 |
+| **產出** | Raw Semantic Result（§16.6 Semantic JSON v1.0 形狀） |
+| **AIU 不重建** | AIU v2 **不**重新實作 NLP、Intent Classifier、Entity Extractor（對齊 §14.4.3） |
+
+**Understanding Core 產出面向（投影至 §5）：**
+
+| 面向 | Understanding Core 職責 | 契約投影 |
+|------|-------------------------|----------|
+| **Intent** | 判斷意圖類別（CA-009） | `intent` |
+| **Semantic Meaning** | 整體語意理解（隱含需求、口語、多輪指代） | 內化；投影至 `intent` / `entity` / `clarification` |
+| **Entities** | Semantic Entity Extraction（§3.4） | `entity` |
+| **Context** | 結合唯讀 Context 理解 | `context_snapshot`（唯讀輸入）；理解結果內化 |
+| **Conversation State** | 結合 stage / owner / resume 理解 | `conversation_stage` / `owner_snapshot` / `resume_context`（唯讀輸入） |
+| **Confidence** | 評估理解信心 | 內化；低信心 → Clarification Detection |
+| **Clarification** | **Detection only**（§15.6） | `clarification`（經 Normalize） |
+
+### 15.5 Understanding Core Invariants（UC-1～UC-6）
+
+| ID | Invariant | 說明 |
+|----|-----------|------|
+| **UC-1** | **Gemini Only** | 語意理解 **僅** 由 Gemini 完成；無第二理解引擎 |
+| **UC-2** | **AIU Does Not Re-Understand** | AIU Runtime **不**自行判斷 Intent、**不**自行萃取 Entity、**不**自行做 Clarification Detection |
+| **UC-3** | **BBC Does Not Re-Understand** | BBC Runtime **不**對 Customer Utterance 重做 Intent Understanding 以取代 `dispatch_plan` |
+| **UC-4** | **Prompt Framework** | Gemini 理解 **必須** 透過 §16 AIU Prompt Scheme v1.0 框架進行；Prompt 服務 Understand，不服務 Execute |
+| **UC-5** | **Contract Output** | 理解結果 **必須** Normalize 為 `AiIntentUnderstandingResult` 9 欄位（§5）；**不**新增契約欄位 |
+| **UC-6** | **Read-Only Context** | Understanding 輸入之 Memory / State 為唯讀 snapshot（IU-002）；Understanding Core **不**變更 Owner / Status / Memory |
+
+### 15.6 Clarification Responsibility Boundary
+
+Clarification 分為 **Detection** 與 **Execution** 兩階段；**不可**由同一層級兼任兩者。
+
+#### 15.6.1 Clarification Detection（Understanding Core — Gemini）
+
+| 項目 | 規格 |
+|------|------|
+| **歸屬** | **Understanding Core（Gemini）** |
+| **時機** | 語意理解階段 |
+| **職責** | 判斷意圖是否 Ambiguous、關鍵語意是否不足、理解信心是否過低 |
+| **產出** | Semantic Result 內之 `clarification.required`（bool）與 `clarification.reason`（string） |
+| **不負責** | 不產生客人可見的追問文案、不發送訊息、不變更對話狀態 |
+
+**Detection 觸發條件（概念層；非 exhaustive）：**
+
+- `intent = Ambiguous`（CA-009）
+- 關鍵語意槽位缺失致無法規劃 `dispatch_plan`
+- Confidence 低於 Prompt Scheme 定義之閾值語意
+
+#### 15.6.2 Clarification Execution（BBC Runtime）
+
+| 項目 | 規格 |
+|------|------|
+| **歸屬** | **BBC Runtime**（Clarification Execution Runtime） |
+| **時機** | `dispatch_plan = clarification` 路由之後 |
+| **職責** | 依 AIU 已輸出之 `clarification` 與 `entity` / `intent` **執行**追問策略、組裝客人可見 Clarification 回覆 |
+| **輸入** | `AiIntentUnderstandingResult`（唯讀）；**不**重新解析 Customer Utterance 以改寫 Intent |
+| **不負責** | 不做 Intent Understanding、不做 Entity Extraction、不做 Clarification Detection |
+
+#### 15.6.3 AIU Runtime（Normalize Only）
+
+| 項目 | 規格 |
+|------|------|
+| **歸屬** | **AIU Runtime** |
+| **職責** | 將 Gemini Semantic Result **Normalize** 為 §5 `clarification` 物件；依 `clarification.required` 參與 `dispatch_plan` 規劃（§4 ⑧） |
+| **不負責** | **不**執行 Clarification 追問、**不**產生客人可見文案 |
+
+```mermaid
+flowchart LR
+  UTTER["Customer Utterance"]
+  GEMINI["Gemini<br/>Clarification Detection"]
+  AIU["AIU Runtime<br/>Normalize + dispatch_plan"]
+  BBC["BBC Runtime<br/>Clarification Execution"]
+
+  UTTER --> GEMINI
+  GEMINI -->|"clarification.required / reason"| AIU
+  AIU -->|"dispatch_plan = clarification"| BBC
+  BBC -->|"客人可見追問"| OUT["Channel Outbound"]
+```
+
+### 15.7 Understanding Core Flow（正式架構）
+
+```
+Customer Utterance + Read-only Context Snapshot
+   ↓
+AIU Runtime：組裝 §16 AIU Prompt Scheme v1.0
+   ↓
+Gemini（Understanding Core）
+   │  Intent + Entity + Semantic Meaning + Confidence
+   │  Clarification Detection
+   ↓
+AIU Runtime：Normalize → AiIntentUnderstandingResult（§5）
+   ↓
+Runtime Dispatch（依 dispatch_plan）
+   ↓
+BBC Runtime（Execute / Govern — 含 Clarification Execution）
+```
+
+> **Invariant：** 上列為 **正式目標架構**。Understanding Core **僅** 出現於 Gemini 節點；**不**存在平行 Rule-based Understanding 路徑。
+
+### 15.8 Explicit Prohibitions（Understanding Core）
+
+下列 **不屬於** AIU v2 Understanding Core 長期架構：
+
+| 禁止項 | 說明 |
+|--------|------|
+| PHP Keyword Matching 作為 Intent 終態判斷 | 不可取代 Gemini 理解 |
+| Rule Matching 作為唯一 Intent 依據 | 不可取代 Gemini 理解 |
+| if…else Intent 硬編碼 | 不可取代 Gemini 理解 |
+| Keyword / Lexicon 命中即 Intent | 不可冒充 Semantic Understanding |
+| regex-first / hardcoded routing 取代 Gemini | 不可取代 Gemini 理解 |
+| AIU Runtime 自行 Clarification Detection | 違反 UC-2 |
+| BBC Runtime 自行 Intent Re-interpretation | 違反 UC-3 |
+| 雙引擎 Understanding（Rule + Gemini 並列核心） | 違反 UC-1 |
+
+### 15.9 Out of Scope（本節）
+
+以下 **不納入** §15 與本版 Freeze：
+
+- 程式實作與類別命名
+- Prompt 區塊實作細節（見 §16）
+- §14 Design Principles 原則層（F-8 維持不變）
+- §5 契約欄位變更
+- §4 Runtime Flow 步驟變更
+- Offline Benchmark / Regression 子系統
+- Human Service / Grounded Composer / Search Runtime 執行細節
+
+### 15.10 Cross-References
+
+| 主題 | 章節 / 文件 |
+|------|-------------|
+| Semantic Understanding Core Policy（摘要） | §3.4 |
+| Runtime Flow | §4 |
+| Output Contract | §5 |
+| Runtime Boundary | §7 |
+| AIU Prompt Design Principles | §14（F-8） |
+| AIU Prompt Scheme v1.0 | §16（F-10） |
+| Intent 類別本體 | L2 CA-009 |
+| 語意欄位本體 | `BATS_AI_SEMANTIC_SEARCH.md` |
+
+### 15.11 Understanding Core Architecture Freeze Result（UC-F-1～UC-F-6）
+
+| Freeze 項 | 內容 | 狀態 |
+|-----------|------|------|
+| **UC-F-1** | Gemini 為唯一 Semantic Understanding Core | ✅ Frozen |
+| **UC-F-2** | 三方責任：Gemini Understand / AIU Orchestrate·Normalize / BBC Execute·Govern | ✅ Frozen |
+| **UC-F-3** | Clarification Detection（Gemini）vs Execution（BBC Runtime）邊界 | ✅ Frozen |
+| **UC-F-4** | AIU Runtime 不重新理解（UC-2） | ✅ Frozen |
+| **UC-F-5** | BBC Runtime 不重新理解（UC-3） | ✅ Frozen |
+| **UC-F-6** | Understanding Core 正式 Flow（§15.7）；無雙引擎、無 Rule-based Core | ✅ Frozen |
+
+---
+
+## 16. AIU Prompt Scheme v1.0
+
+> **本節定位：** 正式定義 **AIU Prompt Scheme v1.0** — Gemini 之 **Understanding Framework**（語意理解框架）。本節將 §14 Design Principles **規格化**為可凍結之 Prompt 結構與 Semantic 輸出形狀；**不**修改 §14 原則層（F-8）；**不**修改 §1～§14 既有 Freeze；**不**修改 §5 9 欄位契約。
+>
+> **✅ Architecture Freeze（v1.7）：** 本節 §16.1～§16.11 已正式 Freeze（F-10）。後續僅允許：明確錯誤修正、Block 文案之 non-breaking Clarification（不變更 B-01～B-11 語意角色）。
+
+### 16.1 Document Purpose
+
+| 項目 | 規格 |
+|------|------|
+| **定位** | **AIU Prompt Scheme v1.0** 為 Understanding Core（§15）呼叫 Gemini 時之 **唯一 Prompt 框架** |
+| **性質** | **Understanding Framework** — 服務語意理解，**不**服務 Execution、**不**服務回覆話術生成 |
+| **關係** | §14 定義 **Why / Who / Principles**；§16 定義 **What Structure / What Output Shape** |
+| **產出** | 每次理解請求產出 **AIU Prompt**（Block 組合）→ Gemini → **Semantic JSON v1.0** |
+
+### 16.2 Scheme Philosophy
+
+| 原則 | 說明 |
+|------|------|
+| **PS-1** | Prompt Scheme 是 Gemini 的 Understanding Framework，不是 BBC Runtime 的 Execution Template |
+| **PS-2** | Prompt **必須**忠實承載 §3.4 / §15 Understanding Core 政策與 §5 契約投影要求 |
+| **PS-3** | 當次 **Customer Utterance 原文** 必須進入 Prompt（Utterance Integrity；對齊 §14 PD-6） |
+| **PS-4** | Gemini 輸出 **Semantic JSON v1.0**；AIU Runtime **Normalize** 為 `AiIntentUnderstandingResult` — AIU **不**在 Normalize 階段重新理解 |
+| **PS-5** | Prompt Scheme **不**編碼 Product Search 執行邏輯、Knowledge 解析鏈、Clarification 追問文案 |
+
+### 16.3 Prompt Request Shape（`AiuPromptRequest`）
+
+每次 Understanding 請求之邏輯輸入（概念層；非程式 DTO Freeze）：
+
+| 欄位 | 型別 | 必填 | 說明 |
+|------|------|------|------|
+| `tenant_id` | string | 是 | 租戶識別（唯讀上下文） |
+| `channel` | string | 是 | 通道（如 `line`） |
+| `customer_utterance` | string | 是 | 當次客戶原文；**不得**改寫或替換 |
+| `context_snapshot` | array | 是 | Customer Memory Card 唯讀投影 |
+| `owner_snapshot` | string | 是 | `AI` \| `HUMAN` |
+| `conversation_stage` | string | 是 | 對話階段 |
+| `resume_context` | array \| null | 是 | Resume 延續；否則 `null` |
+| `request_id` | string | 否 | 追蹤用；不影響理解語意 |
+
+> **Invariant：** `AiuPromptRequest` 僅含 **唯讀輸入**；**不含** Execution 決策、**不含** 歷史回覆話術模板。
+
+### 16.4 Prompt Block Schema（B-01～B-11）
+
+AIU Prompt 由下列 **11 個邏輯 Block** 組成；順序固定：
+
+| Block | 名稱 | 內容職責 | 來源 |
+|-------|------|----------|------|
+| **B-01** | **Understanding Mandate** | 宣告任務：語意理解 + 結構化輸出；禁止幻覺與執行決策 | §15 / §3.4 |
+| **B-02** | **Intent Taxonomy** | CA-009 三類 Intent 定義與判斷要點 | L2 CA-009 |
+| **B-03** | **Entity Schema Reference** | 可萃取語意實體類別與欄位語意引用 | `BATS_AI_SEMANTIC_SEARCH.md` / §3.4 |
+| **B-04** | **Clarification Detection Policy** | 何時 `clarification.required = true`；Detection **非** Execution | §15.6 |
+| **B-05** | **Context Snapshot** | `context_snapshot` 唯讀注入 | `AiuPromptRequest` |
+| **B-06** | **Owner Snapshot** | `owner_snapshot`；HUMAN 時理解仍進行但影響 `execution_hint` 投影 | `AiuPromptRequest` / §5.2 |
+| **B-07** | **Conversation Stage** | `conversation_stage` 唯讀注入 | `AiuPromptRequest` |
+| **B-08** | **Resume Context** | `resume_context` 唯讀注入（可 null） | `AiuPromptRequest` |
+| **B-09** | **Customer Utterance** | 當次客戶原文（隔離區塊；不可與範例混淆） | `AiuPromptRequest` |
+| **B-10** | **Output Schema** | Semantic JSON v1.0 欄位定義與 JSON-only 輸出要求 | §16.6 |
+| **B-11** | **Guardrails** | 禁止項：不產生回覆話術、不變更 Owner、不執行路由、不做 Keyword 表命中 | §15.8 / §14 PD-4～PD-8 |
+
+> **Invariant：** B-01～B-11 為 **Understanding Framework** 之邏輯區塊；**不是** Execution Prompt、**不是** Composer Prompt。
+
+### 16.5 Prompt Assembly Flow
+
+```
+AiuPromptRequest
+   ↓
+B-01 Understanding Mandate
+B-02 Intent Taxonomy
+B-03 Entity Schema Reference
+B-04 Clarification Detection Policy
+B-05～B-08 Context Blocks（snapshot / owner / stage / resume）
+B-09 Customer Utterance
+B-10 Output Schema
+B-11 Guardrails
+   ↓
+AIU Prompt（完整 Understanding Framework）
+   ↓
+Gemini（Understanding Core）
+   ↓
+Semantic JSON v1.0
+   ↓
+AIU Runtime Normalize
+   ↓
+AiIntentUnderstandingResult（§5）
+```
+
+### 16.6 Semantic JSON v1.0（Gemini Raw Output Shape）
+
+Gemini 透過 Prompt Scheme 產出之 **Raw Semantic Result** 邏輯形狀（Normalize 前）：
+
+```json
+{
+  "intent": "Product Search | Knowledge | Ambiguous",
+  "entity": [],
+  "confidence": 0.0,
+  "clarification": {
+    "required": false,
+    "reason": ""
+  },
+  "semantic_notes": ""
+}
+```
+
+| 欄位 | 型別 | 必填 | 說明 |
+|------|------|------|------|
+| `intent` | string | 是 | CA-009 三類之一 |
+| `entity` | array | 是 | Semantic Entity Extraction 產出；可空陣列 |
+| `confidence` | number | 是 | 0.0～1.0；供 Clarification Detection 參考 |
+| `clarification.required` | bool | 是 | **Detection** 結果；非 Execution |
+| `clarification.reason` | string | 是 | Detection 理由；可空字串 |
+| `semantic_notes` | string | 否 | Gemini 內部語意備註；Normalize 時**不**進入 §5 契約 |
+
+### 16.7 Normalize Mapping（Semantic JSON → `AiIntentUnderstandingResult`）
+
+| Semantic JSON v1.0 | `AiIntentUnderstandingResult`（§5） | Normalize 規則 |
+|--------------------|-------------------------------------|----------------|
+| `intent` | `intent` | 直接映射；非法值 → Normalize 失敗 |
+| `entity` | `entity` | 直接映射；確保 array |
+| `clarification` | `clarification` | 直接映射 `{ required, reason }` |
+| — | `context_snapshot` | 來自 `AiuPromptRequest`（非 Gemini 改寫） |
+| — | `owner_snapshot` | 來自 `AiuPromptRequest` |
+| — | `conversation_stage` | 來自 `AiuPromptRequest` |
+| — | `resume_context` | 來自 `AiuPromptRequest` |
+| （AIU 規劃） | `dispatch_plan` | 依 `intent` + `clarification.required` + `owner_snapshot` 規劃（§4 ⑧） |
+| （AIU 規劃） | `execution_hint` | 依 §5.2 封閉 enum 投影；**非** Gemini 直接輸出 |
+| `confidence` | — | **不**進入 §5 契約；僅供 Detection 與觀測 |
+| `semantic_notes` | — | **不**進入 §5 契約 |
+
+> **Invariant：** `dispatch_plan` 與 `execution_hint` 由 **AIU Runtime 規劃**，**不是** Gemini 直接輸出欄位 — 避免 Execution 決策滲入 Understanding Core。
+
+### 16.8 Relationship to §14 Design Principles
+
+| §14 原則 | §16 落地 |
+|----------|----------|
+| PD-1 SSOT First | B-01 / B-02 / B-03 承載 SSOT 理解要求 |
+| PD-4 Gemini Native NLU | B-10 要求 JSON 語意輸出；AIU 不重建 NLP |
+| PD-5 Runtime Orchestrates | B-05～B-08 由 AIU 注入；Normalize 在 AIU |
+| PD-6 Utterance Integrity | B-09 隔離 Customer Utterance 原文 |
+| PD-7 Contract Output | §16.7 Mapping 至 9 欄位 |
+| PD-8 Separation from Execution | B-11 禁止 Execution 內容；`dispatch_plan` 非 Gemini 輸出 |
+
+### 16.9 Explicit Prohibitions（Prompt Scheme）
+
+| 禁止項 | 說明 |
+|--------|------|
+| Prompt 內嵌 Execution 話術模板 | 違反 PS-1 / PS-5 |
+| Prompt 要求 Gemini 輸出 `dispatch_plan` | 違反 §16.7；Execution 決策歸 AIU |
+| Prompt 要求 Gemini 產生客人可見 Clarification 文案 | Clarification Execution 歸 BBC Runtime |
+| 以範例 Utterance 覆蓋 B-09 當次原文 | 違反 PS-3 |
+| Block 順序任意調換致 Guardrails 失效 | B-11 必須在輸出約束之末段生效 |
+
+### 16.10 Out of Scope（本節）
+
+- 程式類別命名與檔案路徑
+- Gemini API 參數（temperature / model id）
+- Prompt 自然語言全文模板（屬實作層；不 Freeze 文案）
+- §5 契約欄位新增或變更
+- BBC Runtime Clarification 追問策略細節
+
+### 16.11 Prompt Scheme Architecture Freeze Result（PS-F-1～PS-F-5）
+
+| Freeze 項 | 內容 | 狀態 |
+|-----------|------|------|
+| **PS-F-1** | AIU Prompt Scheme v1.0 為 Gemini Understanding Framework | ✅ Frozen |
+| **PS-F-2** | `AiuPromptRequest` 輸入形狀（§16.3） | ✅ Frozen |
+| **PS-F-3** | Prompt Block Schema B-01～B-11（§16.4） | ✅ Frozen |
+| **PS-F-4** | Semantic JSON v1.0 輸出形狀（§16.6） | ✅ Frozen |
+| **PS-F-5** | Normalize Mapping 至 `AiIntentUnderstandingResult`（§16.7） | ✅ Frozen |
+
+### 16.12 Scheme Architecture Diagram
+
+```mermaid
+flowchart TB
+  REQ["AiuPromptRequest<br/>(read-only inputs)"]
+
+  subgraph scheme ["AIU Prompt Scheme v1.0"]
+    B01["B-01 Mandate"]
+    B02["B-02 Intent"]
+    B03["B-03 Entity Schema"]
+    B04["B-04 Clarification Detection"]
+    BCTX["B-05～B-08 Context"]
+    B09["B-09 Customer Utterance"]
+    B10["B-10 Output Schema"]
+    B11["B-11 Guardrails"]
+  end
+
+  GEMINI["Gemini<br/>Understanding Core"]
+  NORM["AIU Runtime<br/>Normalize + dispatch_plan"]
+  CONTRACT["AiIntentUnderstandingResult<br/>(§5)"]
+
+  REQ --> scheme
+  scheme --> GEMINI
+  GEMINI -->|"Semantic JSON v1.0"| NORM
+  NORM --> CONTRACT
+```
+
+---
+
 ## 審核狀態
 
 | 項目 | 狀態 |
 |------|------|
-| **文件狀態** | **v1.5（ASSC Gold Architecture Freeze）** — AI Intent Understanding v2 L3 SSOT |
+| **文件狀態** | **v1.7（AIU v2 Understanding Core + AIU Prompt Scheme v1.0）** — AI Intent Understanding v2 L3 SSOT |
 | **Adopted Decisions** | IU-001～IU-006 |
-| **Architecture Freeze** | ✅ 已 Freeze（Phase 2-D-0）；F-1～F-7 凍結；§13 AG-1～AG-12 凍結 |
+| **Architecture Freeze** | ✅ 已 Freeze（Phase 2-D-0）；F-1～F-10 凍結；§13 AG-1～AG-12 凍結 |
 | **ASSC Gold Freeze** | ✅ 已 Freeze（v1.5）— §13.1～§13.14 |
-| **Additive 確認** | 是 — 不修改任何既有 Runtime 行為、不修改 §1～§12 AIU Flow / Intent / Contract |
+| **AIU Prompt Design** | ✅ 已 Freeze（v1.6）— §14.1～§14.9 |
+| **Understanding Core** | ✅ 已 Freeze（v1.7）— §15.1～§15.11（F-9） |
+| **AIU Prompt Scheme** | ✅ 已 Freeze（v1.7）— §16.1～§16.12（F-10） |
+| **Additive 確認** | 是 — 不修改 §1～§14 既有章節內文；F-1～F-8 不變 |
 | **SAFE TO START AIU v2 CODING** | 是 |
-| **SAFE TO START Phase 2-D-1（Contract Foundation Coding）** | 是 |
+| **SAFE TO START Gemini Prompt Foundation Coding** | 是 |
 
 ---
 
@@ -700,6 +1294,8 @@ ASSC-001～100 之 Primary Scenario 欄位目前已出現 **36 種**（如下表
 
 | 版本 | 日期 | 狀態 | 說明 |
 |------|------|------|------|
+| **1.7** | 2026-07-07 | Freeze | **AIU v2 Understanding Core + AIU Prompt Scheme v1.0**：新增 §15（Gemini 唯一 Semantic Core、三方責任 UC-1～UC-6、Clarification Detection vs Execution 邊界、Understanding Core Flow、UC-F-1～UC-F-6）與 §16（`AiuPromptRequest`、Prompt Block B-01～B-11、Semantic JSON v1.0、Normalize Mapping、PS-F-1～PS-F-5）。F-9 / F-10。Documentation only；§1～§14 / F-1～F-8 / IU-001～IU-006 不變。 |
+| **1.6** | 2026-07-05 | Freeze | **AIU Prompt Design Principles**：新增 §14（Purpose / Philosophy / Prompt Formation / 四元件責任 / Prompt Architecture / Design Principles PD-1～PD-8 / Architecture Diagram / Out of Scope）。F-8。明確 SSOT（What）× ASSC（How customers speak）共同形成 AIU Prompt；Gemini 唯一 Semantic Engine；AIU Runtime 組 Prompt / Normalize / 輸出 Contract。Documentation only；§1～§12 / §13 不變。 |
 | **1.5** | 2026-07-05 | Freeze | **ASSC Gold Architecture Freeze**：§13.1～§13.14 正式 Freeze（AG-1～AG-12）。確認三方責任、14 欄位 Schema、40 Scenario v1.0 Taxonomy、Corpus ASSC-001～100、Governance、Golden Rules。Roadmap Scenario 41～50 不納入 v1.0。F-7 更新為 v1.5 Freeze。Documentation only；§1～§12 Runtime Flow / Intent / Contract 不變。 |
 | **1.4** | 2026-07-05 | SSOT Integration | 新增 §13 ASSC Gold（AI Semantic Scenario Collection）：Purpose / Mission / Core Principles / Architecture Responsibilities / Schema / Scenario Taxonomy / Benchmark Corpus 引用 / Governance / Future Expansion / Golden Rules。F-7。Benchmark Cases 引用 `ASSC_GOLD_BENCHMARK_v1.md`；不內嵌 ASSC-001～100。Documentation only；§1～§12 Runtime Flow / Intent / Contract 不變。 |
 | **1.3** | 2026-07-05 | Clarification | §3.4 補充語意解析六面向、Semantic Entity Extraction 定義與旅遊 Entities 示例；明確區分 Semantic Entity Extraction vs Programmatic Keyword/Rule Matching。§3.2 / §5.1 交叉引用。Clarification only；F-1～F-5 / IU-001～IU-006 / §4 Flow 不變。 |
@@ -709,4 +1305,4 @@ ASSC-001～100 之 Primary Scenario 欄位目前已出現 **36 種**（如下表
 
 ---
 
-*本文件為 AI Intent Understanding v2 唯一 L3 SSOT。AIU Runtime 之定位 / 職責 / Boundary / `AiIntentUnderstandingResult` 契約以本文件為準；ASSC Gold 架構與治理以本文件 §13 為準、Benchmark Cases 以 `ASSC_GOLD_BENCHMARK_v1.md` 為準；統一 Pipeline / Owner / Status / State / Grounding 以 `BATS_AI_CONVERSATION_ARCHITECTURE.md` 為準；Core Principles 以 `BATS_AI_PERSONA.md` §0 為準。不涉及程式實作。*
+*本文件為 AI Intent Understanding v2 唯一 L3 SSOT。AIU Runtime 之定位 / 職責 / Boundary / `AiIntentUnderstandingResult` 契約以本文件為準；AIU Prompt Design Principles 以本文件 §14 為準；ASSC Gold 架構與治理以本文件 §13 為準、Benchmark Cases 以 `ASSC_GOLD_BENCHMARK_v1.md` 為準；統一 Pipeline / Owner / Status / State / Grounding 以 `BATS_AI_CONVERSATION_ARCHITECTURE.md` 為準；Core Principles 以 `BATS_AI_PERSONA.md` §0 為準。不涉及程式實作。*
