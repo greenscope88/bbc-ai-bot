@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 /**
  * Hybrid Smart Search — canonical search condition (Phase 2-A core DTO).
- * Not wired to production flow in this phase.
  */
 final class SearchCondition
 {
@@ -36,6 +35,21 @@ final class SearchCondition
     /** @var int|null */
     private $budget_max;
 
+    /** @var string|null */
+    private $duration;
+
+    /** @var int|null */
+    private $people_count;
+
+    /** @var string|null */
+    private $people_label;
+
+    /** @var string|null */
+    private $product_type;
+
+    /** @var list<string> */
+    private $must_have;
+
     /** @var list<string> */
     private $travel_style;
 
@@ -58,6 +72,7 @@ final class SearchCondition
     private $date_label;
 
     /**
+     * @param list<string> $must_have
      * @param list<string> $travel_style
      * @param list<string> $special_tags
      * @param array<string, bool> $parser_flags
@@ -72,6 +87,11 @@ final class SearchCondition
         ?string $date_to = null,
         ?int $budget_min = null,
         ?int $budget_max = null,
+        ?string $duration = null,
+        ?int $people_count = null,
+        ?string $people_label = null,
+        ?string $product_type = null,
+        array $must_have = [],
         array $travel_style = [],
         array $special_tags = [],
         ?string $free_text = null,
@@ -89,6 +109,11 @@ final class SearchCondition
         $this->date_to = $date_to;
         $this->budget_min = $budget_min;
         $this->budget_max = $budget_max;
+        $this->duration = $duration;
+        $this->people_count = $people_count;
+        $this->people_label = $people_label;
+        $this->product_type = $product_type;
+        $this->must_have = $must_have;
         $this->travel_style = $travel_style;
         $this->special_tags = $special_tags;
         $this->free_text = $free_text;
@@ -105,7 +130,7 @@ final class SearchCondition
             $text = null;
         }
 
-        return new self(self::INTENT_TOUR_SEARCH, null, null, null, null, null, null, null, null, [], [], $text);
+        return new self(self::INTENT_TOUR_SEARCH, null, null, null, null, null, null, null, null, null, null, null, null, [], [], [], $text);
     }
 
     public function getIntent(): string
@@ -151,6 +176,32 @@ final class SearchCondition
     public function getBudgetMax(): ?int
     {
         return $this->budget_max;
+    }
+
+    public function getDuration(): ?string
+    {
+        return $this->duration;
+    }
+
+    public function getPeopleCount(): ?int
+    {
+        return $this->people_count;
+    }
+
+    public function getPeopleLabel(): ?string
+    {
+        return $this->people_label;
+    }
+
+    public function getProductType(): ?string
+    {
+        return $this->product_type;
+    }
+
+    /** @return list<string> */
+    public function getMustHave(): array
+    {
+        return $this->must_have;
     }
 
     /** @return list<string> */
@@ -208,6 +259,17 @@ final class SearchCondition
             array_key_exists('date_to', $patch) ? self::nullableString($patch['date_to']) : $this->date_to,
             array_key_exists('budget_min', $patch) ? self::nullableInt($patch['budget_min']) : $this->budget_min,
             array_key_exists('budget_max', $patch) ? self::nullableInt($patch['budget_max']) : $this->budget_max,
+            array_key_exists('duration', $patch) ? self::nullableString($patch['duration']) : $this->duration,
+            array_key_exists('people_count', $patch)
+                ? self::nullableInt($patch['people_count'])
+                : $this->people_count,
+            array_key_exists('people_label', $patch)
+                ? self::nullableString($patch['people_label'])
+                : $this->people_label,
+            array_key_exists('product_type', $patch)
+                ? self::nullableString($patch['product_type'])
+                : $this->product_type,
+            array_key_exists('must_have', $patch) ? self::stringList($patch['must_have']) : $this->must_have,
             array_key_exists('travel_style', $patch) ? self::stringList($patch['travel_style']) : $this->travel_style,
             array_key_exists('special_tags', $patch) ? self::stringList($patch['special_tags']) : $this->special_tags,
             array_key_exists('free_text', $patch) ? self::nullableString($patch['free_text']) : $this->free_text,
@@ -250,6 +312,11 @@ final class SearchCondition
             'date_to' => $this->date_to,
             'budget_min' => $this->budget_min,
             'budget_max' => $this->budget_max,
+            'duration' => $this->duration,
+            'people_count' => $this->people_count,
+            'people_label' => $this->people_label,
+            'product_type' => $this->product_type,
+            'must_have' => $this->must_have,
             'travel_style' => $this->travel_style,
             'special_tags' => $this->special_tags,
             'free_text' => $this->free_text,

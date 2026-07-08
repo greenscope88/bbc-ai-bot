@@ -39,7 +39,14 @@ final class SearchConditionCanonicalizer
         $keyword = $condition->getKeyword();
         $areaFallback = false;
 
-        $resolvedKeyword = self::resolveKeyword($keyword, $destination, $area, $condition->getSpecialTags(), $areaFallback);
+        $resolvedKeyword = self::resolveKeyword(
+            $keyword,
+            $destination,
+            $area,
+            $condition->getSpecialTags(),
+            $condition->getMustHave(),
+            $areaFallback
+        );
         $resolvedKeyword = self::truncateKeyword($resolvedKeyword);
 
         $country = null;
@@ -74,34 +81,72 @@ final class SearchConditionCanonicalizer
 
     /**
      * @param list<string> $specialTags
+     * @param list<string> $mustHave
      */
     private static function resolveKeyword(
         ?string $keyword,
         ?string $destination,
         ?string $area,
         array $specialTags,
+        array $mustHave,
         bool &$areaFallback
     ): string {
+        $mustHaveText = self::joinMustHave($mustHave);
         $k = $keyword !== null ? trim($keyword) : '';
         if ($k !== '') {
-            return $k;
+            return self::appendMustHave($k, $mustHaveText);
         }
 
         if ($destination !== null && trim($destination) !== '') {
-            return trim($destination);
+            return self::appendMustHave(trim($destination), $mustHaveText);
         }
 
         if ($area !== null && trim($area) !== '') {
             $areaFallback = true;
 
-            return trim($area);
+            return self::appendMustHave(trim($area), $mustHaveText);
         }
 
         if ($specialTags !== []) {
-            return trim($specialTags[0]);
+            return self::appendMustHave(trim($specialTags[0]), $mustHaveText);
+        }
+
+        if ($mustHaveText !== '') {
+            return $mustHaveText;
         }
 
         return '';
+    }
+
+    /**
+     * @param list<string> $mustHave
+     */
+    private static function joinMustHave(array $mustHave): string
+    {
+        $parts = [];
+        foreach ($mustHave as $item) {
+            $s = trim((string) $item);
+            if ($s !== '') {
+                $parts[] = $s;
+            }
+        }
+
+        return implode(' ', array_values(array_unique($parts)));
+    }
+
+    private static function appendMustHave(string $keyword, string $mustHaveText): string
+    {
+        if ($mustHaveText === '') {
+            return $keyword;
+        }
+        if ($keyword === '') {
+            return $mustHaveText;
+        }
+        if (mb_strpos($keyword, $mustHaveText, 0, 'UTF-8') !== false) {
+            return $keyword;
+        }
+
+        return $keyword . ' ' . $mustHaveText;
     }
 
     private static function truncateKeyword(string $keyword): string

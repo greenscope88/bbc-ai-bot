@@ -42,6 +42,15 @@ final class BatsSearchIntent
     private $people_count;
 
     /** @var string|null */
+    private $people_label;
+
+    /** @var string|null */
+    private $duration;
+
+    /** @var string|null */
+    private $product_type;
+
+    /** @var string|null */
     private $landmark;
 
     /** @var list<string> */
@@ -82,6 +91,9 @@ final class BatsSearchIntent
         ?int $budget_min = null,
         ?int $budget_max = null,
         ?int $people_count = null,
+        ?string $people_label = null,
+        ?string $duration = null,
+        ?string $product_type = null,
         ?string $landmark = null,
         array $must_have = [],
         array $avoid = [],
@@ -101,6 +113,9 @@ final class BatsSearchIntent
         $this->budget_min = $budget_min;
         $this->budget_max = $budget_max;
         $this->people_count = $people_count;
+        $this->people_label = self::nullableString($people_label);
+        $this->duration = self::nullableString($duration);
+        $this->product_type = self::nullableString($product_type);
         $this->landmark = self::nullableString($landmark);
         $this->must_have = self::stringList($must_have);
         $this->avoid = self::stringList($avoid);
@@ -172,6 +187,21 @@ final class BatsSearchIntent
         return $this->people_count;
     }
 
+    public function getPeopleLabel(): ?string
+    {
+        return $this->people_label;
+    }
+
+    public function getDuration(): ?string
+    {
+        return $this->duration;
+    }
+
+    public function getProductType(): ?string
+    {
+        return $this->product_type;
+    }
+
     public function getLandmark(): ?string
     {
         return $this->landmark;
@@ -235,6 +265,13 @@ final class BatsSearchIntent
             array_key_exists('people_count', $patch)
                 ? self::nullableInt($patch['people_count'])
                 : $this->people_count,
+            array_key_exists('people_label', $patch)
+                ? self::nullableString($patch['people_label'])
+                : $this->people_label,
+            array_key_exists('duration', $patch) ? self::nullableString($patch['duration']) : $this->duration,
+            array_key_exists('product_type', $patch)
+                ? self::nullableString($patch['product_type'])
+                : $this->product_type,
             array_key_exists('landmark', $patch) ? self::nullableString($patch['landmark']) : $this->landmark,
             array_key_exists('must_have', $patch) ? self::stringList($patch['must_have']) : $this->must_have,
             array_key_exists('avoid', $patch) ? self::stringList($patch['avoid']) : $this->avoid,
@@ -265,6 +302,9 @@ final class BatsSearchIntent
             'budget_min' => $this->budget_min,
             'budget_max' => $this->budget_max,
             'people_count' => $this->people_count,
+            'people_label' => $this->people_label,
+            'duration' => $this->duration,
+            'product_type' => $this->product_type,
             'landmark' => $this->landmark,
             'must_have' => $this->must_have,
             'avoid' => $this->avoid,

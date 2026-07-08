@@ -124,4 +124,28 @@ final class ApiQueryMapper
             'maps_to_priceMin' => $canonical['budget_min'] !== null && (int) $canonical['budget_min'] > 0,
         ];
     }
+
+    /**
+     * Entity context for composer / metadata (P1 contract fields).
+     *
+     * @return array{
+     *   duration: ?string,
+     *   people_count: ?int,
+     *   people_label: ?string,
+     *   product_type: ?string,
+     *   travel_style: list<string>,
+     *   must_have: list<string>
+     * }
+     */
+    public function entityContext(SearchCondition $condition): array
+    {
+        return [
+            'duration' => $condition->getDuration(),
+            'people_count' => $condition->getPeopleCount(),
+            'people_label' => $condition->getPeopleLabel(),
+            'product_type' => $condition->getProductType(),
+            'travel_style' => $condition->getTravelStyle(),
+            'must_have' => $condition->getMustHave(),
+        ];
+    }
 }

@@ -15,6 +15,17 @@ final class TravelBMultiSourceLinkBuilder
 {
     public const TRAVEL_B_SNO = '5f99b8d665e8444d';
 
+    /** @var array<string, string> */
+    private const PRODUCT_TYPE_TO_CATEGORY = [
+        '自由行' => 'fit',
+        '跟團' => 'group_tour',
+        '半自助' => 'fit',
+        '包車' => 'car_rental',
+        '郵輪' => 'cruise',
+        '團體' => 'group_tour',
+        '迷你團' => 'mini_group',
+    ];
+
     /** @var array<string, mixed> */
     private array $config;
 
@@ -102,6 +113,9 @@ final class TravelBMultiSourceLinkBuilder
      */
     public static function hybridConditionToSearchDocument(SearchCondition $condition): array
     {
+        $mustHave = $condition->getMustHave();
+        $mustHaveText = self::joinMustHave($mustHave);
+
         $keyword = $condition->getKeyword();
         if ($keyword === null || trim($keyword) === '') {
             $keyword = $condition->getDestination();
@@ -112,10 +126,19 @@ final class TravelBMultiSourceLinkBuilder
         if ($keyword === null || trim($keyword) === '') {
             $keyword = $condition->getFreeText();
         }
+        if (($keyword === null || trim($keyword) === '') && $mustHaveText !== '') {
+            $keyword = $mustHaveText;
+        }
+
+        $productType = $condition->getProductType();
+        $productCategory = 'group_tour';
+        if ($productType !== null && isset(self::PRODUCT_TYPE_TO_CATEGORY[$productType])) {
+            $productCategory = self::PRODUCT_TYPE_TO_CATEGORY[$productType];
+        }
 
         $document = [
             'keyword' => $keyword !== null ? trim($keyword) : '',
-            'product_category' => 'group_tour',
+            'product_category' => $productCategory,
         ];
 
         $destination = $condition->getDestination();
@@ -137,10 +160,63 @@ final class TravelBMultiSourceLinkBuilder
             $document['date_to'] = trim($dateTo);
         }
 
+        $budgetMin = $condition->getBudgetMin();
+        if ($budgetMin !== null && $budgetMin > 0) {
+            $document['budget_min'] = $budgetMin;
+        }
+        $budgetMax = $condition->getBudgetMax();
+        if ($budgetMax !== null && $budgetMax > 0) {
+            $document['budget_max'] = $budgetMax;
+        }
+
+        $duration = $condition->getDuration();
+        if ($duration !== null && trim($duration) !== '') {
+            $document['duration'] = trim($duration);
+        }
+
+        $peopleCount = $condition->getPeopleCount();
+        if ($peopleCount !== null && $peopleCount > 0) {
+            $document['people_count'] = $peopleCount;
+        }
+
+        $peopleLabel = $condition->getPeopleLabel();
+        if ($peopleLabel !== null && trim($peopleLabel) !== '') {
+            $document['people_label'] = trim($peopleLabel);
+        }
+
+        if ($productType !== null && trim($productType) !== '') {
+            $document['product_type'] = trim($productType);
+        }
+
+        $travelStyle = $condition->getTravelStyle();
+        if ($travelStyle !== []) {
+            $document['travel_style'] = $travelStyle;
+        }
+
+        if ($mustHave !== []) {
+            $document['must_have'] = $mustHave;
+        }
+
         $normalized = SearchConditionContract::normalize($document);
         $normalized['departure_path_code'] = self::resolveBbctravelDeparturePathCode($departureCity);
 
         return $normalized;
+    }
+
+    /**
+     * @param list<string> $mustHave
+     */
+    private static function joinMustHave(array $mustHave): string
+    {
+        $parts = [];
+        foreach ($mustHave as $item) {
+            $s = trim((string) $item);
+            if ($s !== '') {
+                $parts[] = $s;
+            }
+        }
+
+        return implode(' ', array_values(array_unique($parts)));
     }
 
     /**
