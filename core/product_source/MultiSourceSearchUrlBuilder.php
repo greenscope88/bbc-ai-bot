@@ -7,6 +7,7 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'RegionKeywordMapper.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'TourCenterDepartureMapper.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'SearchUrlBuilder.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'SearchUrlBuilderRegistry.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'SourceQueryMapper.php';
 
 /**
  * Builds search URL lists across registered source instances (Phase 9-B-14).
@@ -84,7 +85,11 @@ final class MultiSourceSearchUrlBuilder
         }
 
         $keyword = isset($searchCondition['keyword']) ? trim((string) $searchCondition['keyword']) : '';
-        $buildInput = $this->prepareBuildInput($searchCondition, $platformId, $keyword);
+        $mapKeyword = $keyword;
+        if ($mapKeyword === '' && isset($searchCondition['source_keyword_query'])) {
+            $mapKeyword = trim((string) $searchCondition['source_keyword_query']);
+        }
+        $buildInput = $this->prepareBuildInput($searchCondition, $platformId, $mapKeyword);
         $buildInput['tenant_instance'] = $tenantInstanceKey;
         $buildInput['platform'] = $platformId;
 

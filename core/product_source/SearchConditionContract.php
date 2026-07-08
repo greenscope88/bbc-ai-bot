@@ -21,6 +21,7 @@ final class SearchConditionContract
     public const OPTIONAL_FIELDS = [
         'schema_version',
         'keyword',
+        'source_keyword_query',
         'product_category',
         'destination',
         'region_code',
@@ -70,6 +71,10 @@ final class SearchConditionContract
 
         if (isset($out['keyword']) && is_string($out['keyword'])) {
             $out['keyword'] = trim($out['keyword']);
+        }
+
+        if (isset($out['source_keyword_query']) && is_string($out['source_keyword_query'])) {
+            $out['source_keyword_query'] = trim($out['source_keyword_query']);
         }
 
         if (isset($out['product_category']) && is_string($out['product_category'])) {

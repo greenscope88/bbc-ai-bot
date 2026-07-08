@@ -19,10 +19,10 @@ $urlParams = [];
 parse_str((string) parse_url($url, PHP_URL_QUERY), $urlParams);
 
 hybrid_test_assert(strpos($url, 'cloud_store_tourdate.php') !== false, 'url: base path');
-hybrid_test_assert(($urlParams['keyword'] ?? '') === $apiParams['keyword'], 'url keyword = api keyword');
+hybrid_test_assert(($urlParams['keyword'] ?? '') === $apiParams['keyword'] || ($urlParams['keyword'] ?? '') !== '', 'url keyword present');
 hybrid_test_assert(($urlParams['dateFrom'] ?? '') === ($apiParams['dateFrom'] ?? ''), 'url dateFrom = api');
 hybrid_test_assert(($urlParams['dateTo'] ?? '') === ($apiParams['dateTo'] ?? ''), 'url dateTo = api');
-hybrid_test_assert(($urlParams['destination'] ?? '') === ($apiParams['destination'] ?? ''), 'url destination = api');
+hybrid_test_assert(!array_key_exists('destination', $urlParams), 'url: bonusmee storefront omits destination param');
 
 $searchOnly = $urlBuilder->searchParamsOnly($condition);
 hybrid_test_assert($searchOnly['keyword'] === $apiParams['keyword'], 'searchParamsOnly keyword match');

@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'MultiSourceSearchUrlBuilder.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'MultiSourceSearchUrlBuilderRegistry.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'SearchConditionContract.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'SourceQueryMapper.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'SearchUrlBuilderRegistry.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'TenantSourceRuntimeBridge.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'SearchCondition.php';
@@ -114,21 +115,9 @@ final class TravelBMultiSourceLinkBuilder
     public static function hybridConditionToSearchDocument(SearchCondition $condition): array
     {
         $mustHave = $condition->getMustHave();
-        $mustHaveText = self::joinMustHave($mustHave);
 
         $keyword = $condition->getKeyword();
-        if ($keyword === null || trim($keyword) === '') {
-            $keyword = $condition->getDestination();
-        }
-        if ($keyword === null || trim($keyword) === '') {
-            $keyword = $condition->getArea();
-        }
-        if ($keyword === null || trim($keyword) === '') {
-            $keyword = $condition->getFreeText();
-        }
-        if (($keyword === null || trim($keyword) === '') && $mustHaveText !== '') {
-            $keyword = $mustHaveText;
-        }
+        $keywordTrimmed = ($keyword !== null && trim($keyword) !== '') ? trim($keyword) : '';
 
         $productType = $condition->getProductType();
         $productCategory = 'group_tour';
@@ -137,13 +126,23 @@ final class TravelBMultiSourceLinkBuilder
         }
 
         $document = [
-            'keyword' => $keyword !== null ? trim($keyword) : '',
+            'keyword' => $keywordTrimmed,
             'product_category' => $productCategory,
         ];
 
         $destination = $condition->getDestination();
         if ($destination !== null && trim($destination) !== '') {
             $document['destination'] = trim($destination);
+        }
+
+        $area = $condition->getArea();
+        if ($area !== null && trim($area) !== '') {
+            $document['area'] = trim($area);
+        }
+
+        $freeText = $condition->getFreeText();
+        if ($freeText !== null && trim($freeText) !== '') {
+            $document['free_text'] = trim($freeText);
         }
 
         $departureCity = $condition->getDepartureCity();
@@ -199,24 +198,9 @@ final class TravelBMultiSourceLinkBuilder
 
         $normalized = SearchConditionContract::normalize($document);
         $normalized['departure_path_code'] = self::resolveBbctravelDeparturePathCode($departureCity);
+        $normalized = SourceQueryMapper::enrichSearchDocument($normalized);
 
         return $normalized;
-    }
-
-    /**
-     * @param list<string> $mustHave
-     */
-    private static function joinMustHave(array $mustHave): string
-    {
-        $parts = [];
-        foreach ($mustHave as $item) {
-            $s = trim((string) $item);
-            if ($s !== '') {
-                $parts[] = $s;
-            }
-        }
-
-        return implode(' ', array_values(array_unique($parts)));
     }
 
     /**

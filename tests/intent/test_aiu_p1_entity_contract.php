@@ -174,7 +174,8 @@ $mustHaveOnly = SearchCondition::empty('溫泉')->with([
 ]);
 $mustDoc = TravelBMultiSourceLinkBuilder::hybridConditionToSearchDocument($mustHaveOnly);
 $mustCanon = SearchConditionCanonicalizer::canonicalize($mustHaveOnly);
-p1_assert(($mustDoc['keyword'] ?? '') !== '', 'url no null: document keyword non-empty');
+p1_assert(($mustDoc['source_keyword_query'] ?? '') !== '', 'url no null: document source_keyword_query non-empty');
+p1_assert(($mustDoc['destination'] ?? '') === '北海道', 'url no null: document destination preserved');
 p1_assert(strpos((string) ($mustCanon['keyword'] ?? ''), '溫泉') !== false, 'url no null: canonical keyword includes must_have');
 
 $ctx = p1_pipeline([

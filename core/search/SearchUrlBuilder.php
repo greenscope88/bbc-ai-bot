@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'SearchCondition.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'SearchConditionCanonicalizer.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'SourceQueryMapper.php';
 
 /**
  * Builds cloud_store_tourdate.php URL from SearchCondition (same canonical params as API).
@@ -27,6 +28,14 @@ final class SearchUrlBuilder
         $sno = trim($sno);
         $canonical = SearchConditionCanonicalizer::canonicalize($condition);
 
+        $wireKeyword = SourceQueryMapper::buildSourceKeywordQuery(
+            $condition->getDestination(),
+            $condition->getKeyword()
+        );
+        if ($wireKeyword === '') {
+            $wireKeyword = $canonical['keyword'];
+        }
+
         $query = [
             'openExternalBrowser' => '1',
             'UnCarousel' => '1',
@@ -34,7 +43,7 @@ final class SearchUrlBuilder
             'clearParam' => 'Y',
             'mode' => '1',
             'sno' => $sno,
-            'keyword' => $canonical['keyword'],
+            'keyword' => $wireKeyword,
         ];
 
         if ($canonical['dateFrom'] !== null && $canonical['dateFrom'] !== '') {
@@ -47,10 +56,6 @@ final class SearchUrlBuilder
 
         if ($condition->getDepartureCity() !== null && $condition->getDepartureCity() !== '') {
             $query['departureCity'] = $condition->getDepartureCity();
-        }
-
-        if ($canonical['destination'] !== null && $canonical['destination'] !== '') {
-            $query['destination'] = $canonical['destination'];
         }
 
         $qs = http_build_query($query, '', '&', PHP_QUERY_RFC3986);
@@ -119,16 +124,21 @@ final class SearchUrlBuilder
     public function searchParamsOnly(SearchCondition $condition): array
     {
         $canonical = SearchConditionCanonicalizer::canonicalize($condition);
-        $out = ['keyword' => $canonical['keyword']];
+        $wireKeyword = SourceQueryMapper::buildSourceKeywordQuery(
+            $condition->getDestination(),
+            $condition->getKeyword()
+        );
+        if ($wireKeyword === '') {
+            $wireKeyword = $canonical['keyword'];
+        }
+
+        $out = ['keyword' => $wireKeyword];
 
         if ($canonical['dateFrom'] !== null) {
             $out['dateFrom'] = $canonical['dateFrom'];
         }
         if ($canonical['dateTo'] !== null) {
             $out['dateTo'] = $canonical['dateTo'];
-        }
-        if ($canonical['destination'] !== null && $canonical['destination'] !== '') {
-            $out['destination'] = $canonical['destination'];
         }
 
         return $out;

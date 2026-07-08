@@ -5,6 +5,7 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'ProductCategoryContract.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'SearchUrlBuilderException.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'SearchUrlBuilderRegistry.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'SourceInstanceUrlTemplateBuilder.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'SourceQueryMapper.php';
 
 /**
  * Resolves search URLs from tenant instance registry + URL template builder (Phase 9-B-11).
@@ -104,7 +105,7 @@ final class ProductSourceSearchUrlBuilder
             );
         }
 
-        $runtimeInstance = $this->applyRuntimeInput($instance, $input, $productCategory);
+        $runtimeInstance = $this->applyRuntimeInput($instance, $input, $productCategory, $resolvedPlatformId);
 
         $this->resolveKeywordRegionCode($input, $platform);
 
@@ -162,8 +163,12 @@ final class ProductSourceSearchUrlBuilder
      * @param array<string, mixed> $input
      * @return array<string, mixed>
      */
-    private function applyRuntimeInput(array $instance, array $input, string $productCategory): array
-    {
+    private function applyRuntimeInput(
+        array $instance,
+        array $input,
+        string $productCategory,
+        string $platformId
+    ): array {
         $runtime = $instance;
         $values = isset($instance['identifier_values']) && is_array($instance['identifier_values'])
             ? $instance['identifier_values']
@@ -175,9 +180,9 @@ final class ProductSourceSearchUrlBuilder
             $values['region_code'] = trim((string) $input['region_code']);
         }
 
-        $keyword = isset($input['keyword']) ? trim((string) $input['keyword']) : '';
-        if ($keyword !== '') {
-            $values['keyword'] = $keyword;
+        $wireKeyword = SourceQueryMapper::resolveWireKeyword($input, $platformId);
+        if ($wireKeyword !== '') {
+            $values['keyword'] = $wireKeyword;
         }
 
         $departurePathCode = isset($input['departure_path_code']) ? trim((string) $input['departure_path_code']) : '';
