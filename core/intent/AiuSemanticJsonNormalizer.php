@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuPromptRequest.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiIntentCategory.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuGeminiUnderstandingClientInterface.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuDateEntityResolver.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'BatsSearchIntent.php';
 
 /**
@@ -11,6 +12,8 @@ require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPAR
  */
 final class AiuSemanticJsonNormalizer
 {
+    private AiuDateEntityResolver $dateEntityResolver;
+
     /** @var list<string> */
     private const PRODUCT_TYPE_TOKENS = [
         '自由行',
@@ -21,6 +24,11 @@ final class AiuSemanticJsonNormalizer
         '團體',
         '迷你團',
     ];
+
+    public function __construct(?AiuDateEntityResolver $dateEntityResolver = null)
+    {
+        $this->dateEntityResolver = $dateEntityResolver ?? new AiuDateEntityResolver();
+    }
 
     /**
      * @param array{
@@ -39,8 +47,11 @@ final class AiuSemanticJsonNormalizer
      *   confidence: float
      * }
      */
-    public function normalize(array $semantic, string $customerUtterance): array
-    {
+    public function normalize(
+        array $semantic,
+        string $customerUtterance,
+        ?\DateTimeImmutable $referenceDate = null
+    ): array {
         $intent = $this->normalizeIntent((string) ($semantic['intent'] ?? ''));
         $entity = $this->normalizeEntity(
             isset($semantic['entity']) && is_array($semantic['entity']) ? $semantic['entity'] : [],
@@ -53,6 +64,19 @@ final class AiuSemanticJsonNormalizer
         $clarificationRequired = (bool) ($clarification['required'] ?? false);
         $clarificationReason = trim((string) ($clarification['reason'] ?? ''));
         $confidence = isset($semantic['confidence']) ? (float) $semantic['confidence'] : 0.0;
+
+        if ($intent === AiIntentCategory::PRODUCT_SEARCH) {
+            $dateResolved = $this->dateEntityResolver->resolve(
+                $entity,
+                $customerUtterance,
+                $clarificationRequired,
+                $clarificationReason,
+                $referenceDate
+            );
+            $entity = $dateResolved['entity'];
+            $clarificationRequired = $dateResolved['clarification_required'];
+            $clarificationReason = $dateResolved['clarification_reason'];
+        }
 
         if ($intent === AiIntentCategory::AMBIGUOUS) {
             $clarificationRequired = true;

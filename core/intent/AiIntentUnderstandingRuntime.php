@@ -127,6 +127,9 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
         $message = trim($customerMessage);
 
         $now = ($context['now'] ?? null) instanceof \DateTimeImmutable ? $context['now'] : null;
+        $referenceDate = ($context['reference_date'] ?? null) instanceof \DateTimeImmutable
+            ? $context['reference_date']
+            : $now;
 
         $conversationId = isset($context['conversation_id']) ? (string) $context['conversation_id'] : '';
 
@@ -164,7 +167,7 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
 
         $semanticRaw = $this->geminiClient->understand($promptRequest);
 
-        $normalized = $this->semanticNormalizer->normalize($semanticRaw, $message);
+        $normalized = $this->semanticNormalizer->normalize($semanticRaw, $message, $referenceDate);
 
 
 
