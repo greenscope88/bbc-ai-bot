@@ -296,6 +296,7 @@ final class TourPromptContextService
      *   batsSearchIntentMapper?: BatsSearchIntentMapper,
      *   apiQueryMapper?: ApiQueryMapper,
      *   searchUrlBuilder?: SearchUrlBuilder,
+     *   authoritativeIntent?: BatsSearchIntent,
      *   referenceDate?: \DateTimeImmutable
      * } $params
      */
@@ -316,19 +317,35 @@ final class TourPromptContextService
         }
 
         try {
-            $intentDetector = $params['intentDetector'] ?? new TourQueryIntentDetector();
-            $tourIntent = $intentDetector->detect($userText);
-            if (($tourIntent['is_tour_query'] ?? false) !== true) {
-                return TourPromptContextResult::empty($userText);
+            $authoritativeIntent = $params['authoritativeIntent'] ?? null;
+            $usingAuthoritativeIntent = $authoritativeIntent instanceof BatsSearchIntent;
+
+            // AIU v2 Last Mile: skip legacy TourQueryIntentDetector when authoritative
+            // Contract Translation is supplied — dispatch already decided by AIU.
+            if (!$usingAuthoritativeIntent) {
+                $intentDetector = $params['intentDetector'] ?? new TourQueryIntentDetector();
+                $tourIntent = $intentDetector->detect($userText);
+                if (($tourIntent['is_tour_query'] ?? false) !== true) {
+                    return TourPromptContextResult::empty($userText);
+                }
+            } else {
+                $tourIntent = ['is_tour_query' => true, 'keyword' => $userText];
             }
 
             $referenceDate = $params['referenceDate'] ?? new \DateTimeImmutable('now', new \DateTimeZone('Asia/Taipei'));
-            $batsBuilder = $params['batsSearchIntentBuilder'] ?? new BatsSearchIntentBuilder();
             $batsMapper = $params['batsSearchIntentMapper'] ?? new BatsSearchIntentMapper();
-            $batsIntent = $batsBuilder->parse($userText, [
-                'reference_date' => $referenceDate,
-                'merge_legacy_keyword' => true,
-            ]);
+
+            // AIU v2 Last Mile: when authoritativeIntent is supplied (Contract Translation
+            // from AiIntentUnderstandingResult), skip legacy BatsSearchIntentBuilder parse.
+            if ($usingAuthoritativeIntent) {
+                $batsIntent = $authoritativeIntent;
+            } else {
+                $batsBuilder = $params['batsSearchIntentBuilder'] ?? new BatsSearchIntentBuilder();
+                $batsIntent = $batsBuilder->parse($userText, [
+                    'reference_date' => $referenceDate,
+                    'merge_legacy_keyword' => true,
+                ]);
+            }
 
             if ($batsIntent->isClarificationRequired()) {
                 return TourPromptContextResult::clarificationRequired(

@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiIntentUnderstandingRuntime.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiIntentCategory.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'KnowledgeIntentDetector.php';
 
 /**
  * Phase 2-D Step 2-D-3-1 — AI Intent Understanding Shadow Probe.

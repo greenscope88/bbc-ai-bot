@@ -83,7 +83,7 @@ return [
     // legacy-compatible intent_type mapping. Legacy detect always runs for Shadow parity.
     // Shadow probe continues independently. Reversible in one line (set back to false).
     // Production reply flow remains Legacy until this flag is explicitly turned ON.
-    'intent_understanding_authoritative_enabled' => false,
+    'intent_understanding_authoritative_enabled' => true,
     'intent_understanding_authoritative_tenant_snos' => [
         '5f99b8d665e8444d', // travel_b pilot
     ],

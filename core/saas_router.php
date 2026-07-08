@@ -39,6 +39,7 @@ require_once __DIR__ . '/conversation/ConversationEventIngestProbe.php';
 require_once __DIR__ . '/conversation/event/ConversationIdentityBuilder.php';
 require_once __DIR__ . '/intent/AiIntentUnderstandingShadowProbe.php';
 require_once __DIR__ . '/intent/AiIntentUnderstandingRuntimeSelector.php';
+require_once __DIR__ . '/intent/AiuProductIntentTranslator.php';
 require_once __DIR__ . '/intent/DispatchPlan.php';
 require_once __DIR__ . '/grounding/GroundingShadowProbe.php';
 require_once __DIR__ . '/grounding/GroundingOrchestratorContextFactory.php';
@@ -1043,7 +1044,8 @@ class SaaSRouter
         string $userId = '',
         $linePushSender = null,
         ?KnowledgeFallbackResolver $knowledgeFallbackResolver = null,
-        ?array $rawLineEvent = null
+        ?array $rawLineEvent = null,
+        ?AiIntentUnderstandingRuntime $aiuRuntime = null
     ): ?array {
         $tenantSno = trim((string) ($tenant['sno'] ?? ''));
         if (!Phase9C1FeatureGate::isEnabled([
@@ -1135,7 +1137,7 @@ class SaaSRouter
                 'legacy_intent_type' => $legacyIntentType,
                 'now' => $now,
                 'reference_date' => $now,
-            ]);
+            ], $aiuRuntime);
             if (($intentSelection['runtime_source'] ?? '') === AiIntentUnderstandingRuntimeSelector::SOURCE_AIU) {
                 Logger::log('saas_router.log', 'intent_understanding_authoritative_selection', [
                     'trace_id' => $traceId,
@@ -1226,6 +1228,19 @@ class SaaSRouter
             }
 
             $intentDetection = ['intent_type' => (string) ($intentSelection['intent_type'] ?? $legacyIntentType)];
+
+            // AIU v2 Last Mile: Contract Translation of authoritative Semantic Result
+            // for Product Execute Layer. Legacy BatsSearchIntentBuilder is NOT used when
+            // runtime_source = aiu and aiu_result is present.
+            $authoritativeProductIntent = null;
+            if (
+                ($intentSelection['runtime_source'] ?? '') === AiIntentUnderstandingRuntimeSelector::SOURCE_AIU
+                && ($intentSelection['aiu_result'] ?? null) instanceof AiIntentUnderstandingResult
+            ) {
+                $authoritativeProductIntent = (new AiuProductIntentTranslator())->translate(
+                    $intentSelection['aiu_result']
+                );
+            }
 
             // Phase 2-B Step 2-B-2: Event Source ingest (parse + optional dispatch).
             // flags default OFF. Parse-only logs canonical descriptors; dispatch (when
@@ -1453,6 +1468,9 @@ class SaaSRouter
             if ($searchClient instanceof TourSearchApiClient) {
                 $contextParams['searchClient'] = $searchClient;
             }
+            if ($authoritativeProductIntent instanceof BatsSearchIntent) {
+                $contextParams['authoritativeIntent'] = $authoritativeProductIntent;
+            }
 
             $intentType = (string) ($intentDetection['intent_type'] ?? '');
             $waitingReplySent = false;
@@ -1462,10 +1480,16 @@ class SaaSRouter
             $trimmedUserId = trim($userId);
 
             if ($intentType === KnowledgeIntentDetector::INTENT_PRODUCT_SEARCH) {
-                $preflightIntent = (new BatsSearchIntentBuilder())->parse($queryText, [
-                    'reference_date' => $now,
-                    'merge_legacy_keyword' => true,
-                ]);
+                // AIU v2 Last Mile: preflight clarification gate uses AIU Contract Translation
+                // when authoritative; legacy builder only as explicit fallback.
+                if ($authoritativeProductIntent instanceof BatsSearchIntent) {
+                    $preflightIntent = $authoritativeProductIntent;
+                } else {
+                    $preflightIntent = (new BatsSearchIntentBuilder())->parse($queryText, [
+                        'reference_date' => $now,
+                        'merge_legacy_keyword' => true,
+                    ]);
+                }
                 $preflightGate = FinalReplyGate::evaluate($statusResolver->resolveStatus($conversationKey, $now));
                 self::recordReplyGateCompare(
                     ConversationReplyGateCompareProbe::GATE_POINT_PRODUCT_PREFLIGHT,
@@ -1685,6 +1709,8 @@ class SaaSRouter
                 'conversation_id' => $conversationKey,
                 'conversation_status' => $finalGate['conversation_status'],
                 'intent_type' => $intentType,
+                'runtime_source' => (string) ($intentSelection['runtime_source'] ?? AiIntentUnderstandingRuntimeSelector::SOURCE_LEGACY),
+                'authoritative_product_path' => $authoritativeProductIntent instanceof BatsSearchIntent,
                 'clarification_required' => $structuredResult->isClarificationRequired(),
                 'clarification_reason' => $structuredResult->getClarificationReason(),
                 'gemini_context_schema_version' => $geminiContextSchemaVersion,

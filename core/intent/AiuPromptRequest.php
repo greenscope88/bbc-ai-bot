@@ -1,0 +1,91 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * Phase 2-D Step 2-D-4 — AIU Prompt Request（§16.3 邏輯輸入形狀）.
+ *
+ * SSOT: docs/BATS_AI_INTENT_UNDERSTANDING_V2.md §16.3
+ */
+final class AiuPromptRequest
+{
+    private string $tenantId;
+    private string $channel;
+    private string $customerUtterance;
+    /** @var array<string, mixed> */
+    private array $contextSnapshot;
+    private string $ownerSnapshot;
+    private string $conversationStage;
+    /** @var array<string, mixed>|null */
+    private ?array $resumeContext;
+    private ?string $requestId;
+
+    /**
+     * @param array<string, mixed>      $contextSnapshot
+     * @param array<string, mixed>|null $resumeContext
+     */
+    public function __construct(
+        string $tenantId,
+        string $channel,
+        string $customerUtterance,
+        array $contextSnapshot,
+        string $ownerSnapshot,
+        string $conversationStage,
+        ?array $resumeContext,
+        ?string $requestId = null
+    ) {
+        $this->tenantId = trim($tenantId);
+        $this->channel = trim($channel) !== '' ? trim($channel) : 'line';
+        $this->customerUtterance = trim($customerUtterance);
+        $this->contextSnapshot = $contextSnapshot;
+        $this->ownerSnapshot = trim($ownerSnapshot);
+        $this->conversationStage = trim($conversationStage);
+        $this->resumeContext = $resumeContext;
+        $this->requestId = $requestId !== null && trim($requestId) !== '' ? trim($requestId) : null;
+    }
+
+    public function getTenantId(): string
+    {
+        return $this->tenantId;
+    }
+
+    public function getChannel(): string
+    {
+        return $this->channel;
+    }
+
+    public function getCustomerUtterance(): string
+    {
+        return $this->customerUtterance;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function getContextSnapshot(): array
+    {
+        return $this->contextSnapshot;
+    }
+
+    public function getOwnerSnapshot(): string
+    {
+        return $this->ownerSnapshot;
+    }
+
+    public function getConversationStage(): string
+    {
+        return $this->conversationStage;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function getResumeContext(): ?array
+    {
+        return $this->resumeContext;
+    }
+
+    public function getRequestId(): ?string
+    {
+        return $this->requestId;
+    }
+}

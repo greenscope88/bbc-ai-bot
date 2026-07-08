@@ -84,7 +84,8 @@ final class AiIntentUnderstandingRuntimeSelector
      *   human_blocked: bool,
      *   dispatch_plan?: string,
      *   execution_hint?: string|null,
-     *   aiu_intent?: string
+     *   aiu_intent?: string,
+     *   aiu_result?: AiIntentUnderstandingResult
      * }
      */
     public static function resolve(array $params, ?AiIntentUnderstandingRuntime $runtime = null): array
@@ -132,6 +133,9 @@ final class AiIntentUnderstandingRuntimeSelector
                     'dispatch_plan' => $dispatchPlan,
                     'execution_hint' => $result->getExecutionHint(),
                     'aiu_intent' => $aiuIntent,
+                    // AIU v2 Last Mile: expose the authoritative Semantic Result so the
+                    // Execute Layer can Contract-Translate it without re-understanding.
+                    'aiu_result' => $result,
                 ];
             }
 
@@ -143,6 +147,9 @@ final class AiIntentUnderstandingRuntimeSelector
                 'dispatch_plan' => $dispatchPlan,
                 'execution_hint' => $result->getExecutionHint(),
                 'aiu_intent' => $aiuIntent,
+                // AIU v2 Last Mile: expose the authoritative Semantic Result so the
+                // Execute Layer can Contract-Translate it without re-understanding.
+                'aiu_result' => $result,
             ];
         } catch (\Throwable $e) {
             return self::legacySelection($legacyIntentType);
@@ -161,6 +168,11 @@ final class AiIntentUnderstandingRuntimeSelector
     {
         $dispatchPlan = $result->getDispatchPlan();
         $aiuIntent = $result->getIntent();
+        $entity = $result->getEntity();
+
+        if (($entity['human_service_request'] ?? false) === true) {
+            return KnowledgeIntentDetector::INTENT_HUMAN_SERVICE_REQUEST;
+        }
 
         if ($dispatchPlan === DispatchPlan::KNOWLEDGE) {
             return KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY;
