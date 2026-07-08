@@ -30,7 +30,8 @@ final class SearchUrlBuilder
 
         $wireKeyword = SourceQueryMapper::buildSourceKeywordQuery(
             $condition->getDestination(),
-            $condition->getKeyword()
+            $condition->getKeyword(),
+            $condition->getProductType()
         );
         if ($wireKeyword === '') {
             $wireKeyword = $canonical['keyword'];
@@ -126,7 +127,8 @@ final class SearchUrlBuilder
         $canonical = SearchConditionCanonicalizer::canonicalize($condition);
         $wireKeyword = SourceQueryMapper::buildSourceKeywordQuery(
             $condition->getDestination(),
-            $condition->getKeyword()
+            $condition->getKeyword(),
+            $condition->getProductType()
         );
         if ($wireKeyword === '') {
             $wireKeyword = $canonical['keyword'];

@@ -84,12 +84,18 @@ final class MultiSourceSearchUrlBuilder
             );
         }
 
-        $keyword = isset($searchCondition['keyword']) ? trim((string) $searchCondition['keyword']) : '';
-        $mapKeyword = $keyword;
-        if ($mapKeyword === '' && isset($searchCondition['source_keyword_query'])) {
-            $mapKeyword = trim((string) $searchCondition['source_keyword_query']);
+        // Prefer adapter-enriched source_keyword_query (destination + keyword + product_type)
+        // for region mapping / wire keyword; do not overwrite Runtime keyword contract.
+        $enriched = SourceQueryMapper::enrichSearchDocument($searchCondition);
+        $mapKeyword = isset($enriched['source_keyword_query'])
+            ? trim((string) $enriched['source_keyword_query'])
+            : '';
+        if ($mapKeyword === '') {
+            $mapKeyword = isset($searchCondition['keyword'])
+                ? trim((string) $searchCondition['keyword'])
+                : '';
         }
-        $buildInput = $this->prepareBuildInput($searchCondition, $platformId, $mapKeyword);
+        $buildInput = $this->prepareBuildInput($enriched, $platformId, $mapKeyword);
         $buildInput['tenant_instance'] = $tenantInstanceKey;
         $buildInput['platform'] = $platformId;
 

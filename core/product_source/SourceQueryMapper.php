@@ -2,10 +2,11 @@
 declare(strict_types=1);
 
 /**
- * Adapter-layer source query mapping (AIU v2 P1 Patch 2).
+ * Adapter-layer source query mapping (AIU v2 P1 Patch 2 / Product Type).
  *
- * Maps Runtime Contract fields (destination + optional keyword) to platform wire
- * keyword when the product source has no native destination search field.
+ * Maps Runtime Contract fields (destination + optional keyword + optional
+ * product_type) to platform wire keyword when the product source has no native
+ * destination / product_type search fields.
  *
  * Does not modify SearchCondition, canonicalizer, translator, or normalize.
  */
@@ -16,6 +17,15 @@ final class SourceQueryMapper
         'hostb',
         'host_b',
     ];
+
+    /**
+     * Platforms with a native product_type search field.
+     * Empty today — travel_b keyword-only sources fold product_type into
+     * source_keyword_query instead.
+     *
+     * @var list<string>
+     */
+    private const PLATFORMS_WITH_PRODUCT_TYPE_FIELD = [];
 
     /** External / storefront sources that only accept a combined keyword query. */
     private const KEYWORD_ONLY_PLATFORMS = [
@@ -37,6 +47,13 @@ final class SourceQueryMapper
         return $id !== '' && in_array($id, self::PLATFORMS_WITH_DESTINATION_FIELD, true);
     }
 
+    public static function supportsProductTypeField(string $platformId): bool
+    {
+        $id = strtolower(trim($platformId));
+
+        return $id !== '' && in_array($id, self::PLATFORMS_WITH_PRODUCT_TYPE_FIELD, true);
+    }
+
     public static function isKeywordOnlyPlatform(string $platformId): bool
     {
         $id = strtolower(trim($platformId));
@@ -45,20 +62,29 @@ final class SourceQueryMapper
     }
 
     /**
-     * Build combined wire keyword: destination + optional keyword (space-separated).
+     * Build combined wire keyword: destination + optional keyword + optional product_type.
+     *
+     * Duplicate tokens are de-duplicated; empty values are skipped.
+     * Does not mutate Runtime Contract fields.
      */
-    public static function buildSourceKeywordQuery(?string $destination, ?string $keyword): string
-    {
+    public static function buildSourceKeywordQuery(
+        ?string $destination,
+        ?string $keyword,
+        ?string $productType = null
+    ): string {
         $parts = [];
-        $dest = self::trimNonEmpty($destination);
-        $kw = self::trimNonEmpty($keyword);
+        $seen = [];
 
-        if ($dest !== null) {
-            $parts[] = $dest;
-        }
-
-        if ($kw !== null && $kw !== $dest) {
-            $parts[] = $kw;
+        foreach ([$destination, $keyword, $productType] as $raw) {
+            $part = self::trimNonEmpty($raw);
+            if ($part === null) {
+                continue;
+            }
+            if (isset($seen[$part])) {
+                continue;
+            }
+            $seen[$part] = true;
+            $parts[] = $part;
         }
 
         return implode(' ', $parts);
@@ -76,7 +102,8 @@ final class SourceQueryMapper
 
         $query = self::buildSourceKeywordQuery(
             isset($document['destination']) ? (string) $document['destination'] : null,
-            isset($document['keyword']) ? (string) $document['keyword'] : null
+            isset($document['keyword']) ? (string) $document['keyword'] : null,
+            isset($document['product_type']) ? (string) $document['product_type'] : null
         );
 
         if ($query === '') {
@@ -112,9 +139,15 @@ final class SourceQueryMapper
             }
         }
 
+        $productType = null;
+        if (!self::supportsProductTypeField($platformId)) {
+            $productType = isset($document['product_type']) ? (string) $document['product_type'] : null;
+        }
+
         $built = self::buildSourceKeywordQuery(
             isset($document['destination']) ? (string) $document['destination'] : null,
-            isset($document['keyword']) ? (string) $document['keyword'] : null
+            isset($document['keyword']) ? (string) $document['keyword'] : null,
+            $productType
         );
 
         if ($built !== '') {

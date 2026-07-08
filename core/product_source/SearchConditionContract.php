@@ -81,7 +81,19 @@ final class SearchConditionContract
             $out['product_category'] = ProductCategoryContract::normalizeProductCategory($out['product_category']);
         }
 
-        foreach (['destination', 'region_code', 'region_name', 'area', 'departure_city', 'date_from', 'date_to', 'free_text', 'platform', 'tenant_instance'] as $field) {
+        foreach ([
+            'destination',
+            'region_code',
+            'region_name',
+            'area',
+            'departure_city',
+            'date_from',
+            'date_to',
+            'free_text',
+            'platform',
+            'tenant_instance',
+            'product_type',
+        ] as $field) {
             if (isset($out[$field]) && is_string($out[$field])) {
                 $trimmed = trim($out[$field]);
                 $out[$field] = $trimmed !== '' ? $trimmed : null;
