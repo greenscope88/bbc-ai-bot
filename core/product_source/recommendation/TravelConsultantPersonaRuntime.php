@@ -24,6 +24,11 @@ final class TravelConsultantPersonaRuntime
             return $this->composeProductTypeMismatchMessage($recommendationSummary);
         }
 
+        if (($recommendationSummary['hard_constraints_complete'] ?? false) === true
+            || ($recommendationSummary['no_result_composer'] ?? false) === true) {
+            return $this->composeHardConstraintNoResultsMessage($recommendationSummary);
+        }
+
         $resultCount = isset($recommendationSummary['result_count'])
             ? max(0, (int) $recommendationSummary['result_count'])
             : 0;
@@ -87,6 +92,55 @@ final class TravelConsultantPersonaRuntime
         return implode("\n", $lines);
     }
 
+
+    /**
+     * @param array<string, mixed> $recommendationSummary
+     */
+    public function composeHardConstraintNoResultsMessage(array $recommendationSummary): string
+    {
+        if (($recommendationSummary['product_type_mismatch'] ?? false) === true) {
+            return $this->composeProductTypeMismatchMessage($recommendationSummary);
+        }
+
+        $lines = [];
+        $reason = trim((string) ($recommendationSummary['recommendation_reason'] ?? ''));
+        $lines[] = $reason !== '' ? $reason : '目前沒有找到符合條件的商品。';
+
+        $alternatives = isset($recommendationSummary['alternative_recommendations'])
+            && is_array($recommendationSummary['alternative_recommendations'])
+            ? $recommendationSummary['alternative_recommendations']
+            : [];
+        if ($alternatives !== []) {
+            $lines[] = '';
+            $lines[] = '您可以參考以下替代方案：';
+            foreach ($alternatives as $group) {
+                if (!is_array($group)) {
+                    continue;
+                }
+                $label = trim((string) ($group['label'] ?? ''));
+                if ($label !== '') {
+                    $lines[] = '* ' . $label;
+                }
+                $products = isset($group['top_products']) && is_array($group['top_products']) ? $group['top_products'] : [];
+                foreach ($products as $product) {
+                    if (!is_array($product)) {
+                        continue;
+                    }
+                    $title = trim((string) ($product['title'] ?? ''));
+                    if ($title !== '') {
+                        $lines[] = '  - ' . $title;
+                    }
+                }
+            }
+        }
+
+        $lines[] = '';
+        foreach ($this->personaFormatter->closingLines() as $closingLine) {
+            $lines[] = $closingLine;
+        }
+
+        return implode("\n", $lines);
+    }
     public function composeNoResultsMessage(): string
     {
         return implode("\n", [

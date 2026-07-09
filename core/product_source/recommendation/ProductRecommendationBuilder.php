@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'ProductSearchPolicyRuntime.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'NoResultComposerPolicy.php';
 
 /**
  * Phase 9-C-2A: builds grounded recommendation_summary from search results.
@@ -18,9 +19,12 @@ final class ProductRecommendationBuilder
 
     private ProductSearchPolicyRuntime $searchPolicyRuntime;
 
-    public function __construct(?ProductSearchPolicyRuntime $searchPolicyRuntime = null)
+    private NoResultComposerPolicy $noResultComposerPolicy;
+
+    public function __construct(?ProductSearchPolicyRuntime $searchPolicyRuntime = null, ?NoResultComposerPolicy $noResultComposerPolicy = null)
     {
         $this->searchPolicyRuntime = $searchPolicyRuntime ?? new ProductSearchPolicyRuntime();
+        $this->noResultComposerPolicy = $noResultComposerPolicy ?? new NoResultComposerPolicy();
     }
 
     /**
@@ -43,6 +47,13 @@ final class ProductRecommendationBuilder
         $resultCount = count($searchResults);
         $primaryUrl = $this->resolvePrimaryUrl($topProducts, $searchResults);
 
+        if ($resultCount <= 0) {
+            $noResultEval = $this->noResultComposerPolicy->evaluateFromIntentArray($batsSearchIntent);
+            if (($noResultEval['hard_constraints_complete'] ?? false) === true) {
+                return $this->buildHardConstraintNoResultSummary($batsSearchIntent, $searchPolicyMeta, $noResultEval);
+            }
+        }
+
         return [
             'result_count' => $resultCount,
             'top_products' => $topProducts,
@@ -61,6 +72,36 @@ final class ProductRecommendationBuilder
      * @param array<string, mixed> $searchPolicyMeta
      * @return array<string, mixed>
      */
+
+    private function buildHardConstraintNoResultSummary(array $batsSearchIntent, array $searchPolicyMeta, array $noResultEval): array
+    {
+        $alternatives = [];
+        if (($searchPolicyMeta['product_type_mismatch'] ?? false) === true) {
+            return $this->buildProductTypeMismatchSummary($batsSearchIntent, $searchPolicyMeta);
+        }
+
+        $altItems = isset($searchPolicyMeta['alternative_results']) && is_array($searchPolicyMeta['alternative_results'])
+            ? $searchPolicyMeta['alternative_results']
+            : [];
+        if ($altItems !== []) {
+            $alternatives = $this->buildAlternativeRecommendations(
+                ['alternative_results' => $altItems],
+                trim((string) ($noResultEval['destination'] ?? ''))
+            );
+        }
+
+        return [
+            'result_count' => 0,
+            'top_products' => [],
+            'primary_url' => '',
+            'recommendation_reason' => $this->noResultComposerPolicy->buildNoResultReason($noResultEval),
+            'hard_constraints_complete' => true,
+            'no_result_composer' => true,
+            'alternative_recommendations' => $alternatives,
+            'preference_hints' => self::PREFERENCE_HINTS,
+            'search_policy' => isset($searchPolicyMeta['policy']) ? (string) $searchPolicyMeta['policy'] : 'none',
+        ];
+    }
     private function buildProductTypeMismatchSummary(array $batsSearchIntent, array $searchPolicyMeta): array
     {
         $productType = trim((string) ($searchPolicyMeta['product_type'] ?? ($batsSearchIntent['product_type'] ?? '')));
@@ -73,6 +114,8 @@ final class ProductRecommendationBuilder
             'primary_url' => '',
             'recommendation_reason' => $this->buildProductTypeMismatchReason($destination, $dateLabel, $productType),
             'product_type_mismatch' => true,
+            'hard_constraints_complete' => true,
+            'no_result_composer' => true,
             'requested_product_type' => $productType,
             'alternative_recommendations' => $this->buildAlternativeRecommendations($searchPolicyMeta, $destination),
             'preference_hints' => self::PREFERENCE_HINTS,

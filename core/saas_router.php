@@ -1576,7 +1576,17 @@ class SaaSRouter
                 // legacy context. The fixed layout is only applied when the search
                 // returned results; with zero results the existing reply (the
                 // no-results message) is preserved unchanged.
-                $replyText = $geminiReplyText;
+                                $replyText = $geminiReplyText;
+                if (
+                    count($structuredResult->getSearchResults()) === 0
+                    && (
+                        ($recommendationSummary['hard_constraints_complete'] ?? false) === true
+                        || ($recommendationSummary['no_result_composer'] ?? false) === true
+                    )
+                ) {
+                    $noResultPersona = new TravelConsultantPersonaRuntime();
+                    $replyText = $noResultPersona->composeProductRecommendation($recommendationSummary);
+                }
                 if (count($structuredResult->getSearchResults()) > 0) {
                     $fixedProductLayout = TourFallbackFormatter::formatFromTourContext(
                         $structuredResult->getLegacyContext()

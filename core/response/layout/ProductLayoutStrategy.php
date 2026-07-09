@@ -79,6 +79,10 @@ final class ProductLayoutStrategy implements LayoutStrategyInterface
         $mode = $input->getReplyPolicyMode();
 
         if ($resultCount <= 0 || $mode === 'no_results') {
+            if (($summary['hard_constraints_complete'] ?? false) === true
+                || ($summary['no_result_composer'] ?? false) === true) {
+                return $this->personaRuntime->composeHardConstraintNoResultsMessage($summary);
+            }
             return $this->personaRuntime->composeNoResultsMessage();
         }
 
