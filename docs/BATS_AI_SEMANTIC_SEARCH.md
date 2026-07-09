@@ -118,6 +118,21 @@ Gemini Context Builder（商品 context 注入）
 | Multi-Source 9-B-14 | 消費 canonical keyword / 平台參數；**不** 重複定義 URL 模板 |
 | Tenant Mapping | `sno` 由 Gateway / Tenant Resolver 提供；**不** 在 Intent 內解析 |
 
+### 2.4 P1 Entity Token Mapping Principle（Adapter Layer）
+
+**Runtime Contract** 必須保持 Entity 獨立（`destination`、`area`、`product_type`、`keyword`、`travel_style`、`must_have` 等各自為獨立 Token）。
+
+**Adapter 責任**（`SourceQueryMapper`）：
+
+| 層級 | 行為 |
+|------|------|
+| Runtime | 保存完整 Entity，不得 merge / overwrite |
+| `source_keyword_query` | 由獨立 Token 以空格組合（例：`首爾` + `自由行` → `首爾 自由行`） |
+| Host B API `keyword` | 當 `destination` 已獨立送出時，`keyword` 僅含 preference / `product_type`（例：`destination=首爾` + `keyword=自由行`） |
+| Keyword-only 平台 URL | 使用完整 `source_keyword_query`（例：bonusmee `keyword=首爾 自由行`） |
+
+**禁止**：將多個不同語意 Entity 合併為單一 Runtime `keyword`（如 `首爾自由行`）。
+
 ---
 
 ## 3. BatsSearchIntent Contract
