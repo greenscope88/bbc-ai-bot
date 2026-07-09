@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'SearchCondition.php';
+
 /**
  * Adapter-layer source query mapping (AIU v2 P1 Patch 2 / Product Type).
  *
@@ -72,22 +74,119 @@ final class SourceQueryMapper
         ?string $keyword,
         ?string $productType = null
     ): string {
-        $parts = [];
-        $seen = [];
+        return self::joinUniqueTokens([$destination, $keyword, $productType]);
+    }
 
-        foreach ([$destination, $keyword, $productType] as $raw) {
-            $part = self::trimNonEmpty($raw);
-            if ($part === null) {
-                continue;
-            }
-            if (isset($seen[$part])) {
-                continue;
-            }
-            $seen[$part] = true;
-            $parts[] = $part;
+    /**
+     * Entity Token Mapping — adapter composes wire keyword from independent runtime tokens.
+     * Does not merge or overwrite Runtime Contract fields.
+     */
+    public static function buildSourceKeywordQueryFromSearchCondition(SearchCondition $condition): string
+    {
+        $candidates = [];
+
+        $area = self::trimNonEmpty($condition->getArea());
+        if ($area !== null) {
+            $candidates[] = $area;
         }
 
-        return implode(' ', $parts);
+        $destination = self::trimNonEmpty($condition->getDestination());
+        if ($destination !== null) {
+            $candidates[] = $destination;
+        }
+
+        $keyword = self::trimNonEmpty($condition->getKeyword());
+        if ($keyword !== null) {
+            $candidates[] = $keyword;
+        }
+
+        foreach ($condition->getTravelStyle() as $token) {
+            $candidates[] = $token;
+        }
+        foreach ($condition->getMustHave() as $token) {
+            $candidates[] = $token;
+        }
+        foreach ($condition->getSpecialTags() as $token) {
+            $candidates[] = $token;
+        }
+
+        $productType = self::trimNonEmpty($condition->getProductType());
+        if ($productType !== null) {
+            $candidates[] = $productType;
+        }
+
+        return self::joinUniqueTokens($candidates);
+    }
+
+    /**
+     * @param array<string, mixed> $document
+     */
+
+    /**
+     * Host B wire keyword when destination is sent as a separate API param.
+     * Excludes destination/area tokens; folds product_type and preferences into keyword.
+     */
+    public static function buildHostBKeywordFromSearchCondition(SearchCondition $condition): string
+    {
+        $exclude = [];
+        foreach ([$condition->getArea(), $condition->getDestination()] as $scalar) {
+            $part = self::trimNonEmpty($scalar);
+            if ($part !== null) {
+                $exclude[$part] = true;
+            }
+        }
+
+        $candidates = [];
+        $keyword = self::trimNonEmpty($condition->getKeyword());
+        if ($keyword !== null && !isset($exclude[$keyword])) {
+            $candidates[] = $keyword;
+        }
+        foreach ($condition->getTravelStyle() as $token) {
+            $part = self::trimNonEmpty($token);
+            if ($part !== null && !isset($exclude[$part])) {
+                $candidates[] = $part;
+            }
+        }
+        foreach ($condition->getMustHave() as $token) {
+            $part = self::trimNonEmpty($token);
+            if ($part !== null && !isset($exclude[$part])) {
+                $candidates[] = $part;
+            }
+        }
+        foreach ($condition->getSpecialTags() as $token) {
+            $part = self::trimNonEmpty($token);
+            if ($part !== null && !isset($exclude[$part])) {
+                $candidates[] = $part;
+            }
+        }
+        $productType = self::trimNonEmpty($condition->getProductType());
+        if ($productType !== null) {
+            $candidates[] = $productType;
+        }
+
+        return self::joinUniqueTokens($candidates);
+    }
+    public static function buildSourceKeywordQueryFromDocument(array $document): string
+    {
+        $candidates = [];
+
+        foreach (['area', 'destination', 'keyword', 'product_type'] as $scalarField) {
+            if (!isset($document[$scalarField])) {
+                continue;
+            }
+            $candidates[] = (string) $document[$scalarField];
+        }
+
+        foreach (['travel_style', 'must_have', 'special_tags'] as $listField) {
+            if (!isset($document[$listField]) || !is_array($document[$listField])) {
+                continue;
+            }
+            foreach ($document[$listField] as $token) {
+                $candidates[] = (string) $token;
+            }
+        }
+
+        return self::joinUniqueTokens($candidates);
     }
 
     /**
@@ -100,11 +199,7 @@ final class SourceQueryMapper
     {
         $out = $document;
 
-        $query = self::buildSourceKeywordQuery(
-            isset($document['destination']) ? (string) $document['destination'] : null,
-            isset($document['keyword']) ? (string) $document['keyword'] : null,
-            isset($document['product_type']) ? (string) $document['product_type'] : null
-        );
+        $query = self::buildSourceKeywordQueryFromDocument($document);
 
         if ($query === '') {
             $query = self::wireFallbackFromDocument($document);
@@ -139,16 +234,7 @@ final class SourceQueryMapper
             }
         }
 
-        $productType = null;
-        if (!self::supportsProductTypeField($platformId)) {
-            $productType = isset($document['product_type']) ? (string) $document['product_type'] : null;
-        }
-
-        $built = self::buildSourceKeywordQuery(
-            isset($document['destination']) ? (string) $document['destination'] : null,
-            isset($document['keyword']) ? (string) $document['keyword'] : null,
-            $productType
-        );
+        $built = self::buildSourceKeywordQueryFromDocument($document);
 
         if ($built !== '') {
             return $built;
@@ -185,6 +271,29 @@ final class SourceQueryMapper
         }
 
         return implode(' ', array_values(array_unique($parts)));
+    }
+
+    /**
+     * @param list<mixed> $candidates
+     */
+    private static function joinUniqueTokens(array $candidates): string
+    {
+        $parts = [];
+        $seen = [];
+
+        foreach ($candidates as $raw) {
+            $part = self::trimNonEmpty(is_string($raw) ? $raw : (is_scalar($raw) ? (string) $raw : null));
+            if ($part === null) {
+                continue;
+            }
+            if (isset($seen[$part])) {
+                continue;
+            }
+            $seen[$part] = true;
+            $parts[] = $part;
+        }
+
+        return implode(' ', $parts);
     }
 
     private static function trimNonEmpty(?string $value): ?string

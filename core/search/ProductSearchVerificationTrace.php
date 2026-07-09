@@ -6,6 +6,7 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'SearchCondition.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'SourceQueryMapper.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'TravelBMultiSourceLinkBuilder.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'SearchUrlBuilder.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'ApiQueryMapper.php';
 
 /**
  * Product Search Verification — layer-by-layer trace for manual URL parity checks.
@@ -27,21 +28,21 @@ final class ProductSearchVerificationTrace
         $document = TravelBMultiSourceLinkBuilder::hybridConditionToSearchDocument($condition);
         $sourceKeywordQuery = isset($document['source_keyword_query'])
             ? trim((string) $document['source_keyword_query'])
-            : SourceQueryMapper::buildSourceKeywordQuery(
-                $condition->getDestination(),
-                $condition->getKeyword(),
-                $condition->getProductType()
-            );
+            : SourceQueryMapper::buildSourceKeywordQueryFromSearchCondition($condition);
 
         $url = $finalSearchUrl;
         if ($url === null || trim($url) === '') {
             $url = (new SearchUrlBuilder(false))->build($tenantSno, $condition);
         }
 
+        $apiParams = (new ApiQueryMapper())->toClientParams($condition, ['include_sno' => $tenantSno]);
+
         return [
             'runtime_entity' => $intent->toArray(),
             'search_condition' => $condition->toArray(),
             'source_keyword_query' => $sourceKeywordQuery,
+            'api_query_params' => $apiParams,
+            'api_keyword' => isset($apiParams['keyword']) ? (string) $apiParams['keyword'] : '',
             'final_search_url' => $url,
             'result_count' => $resultCount,
             'search_policy' => $searchPolicyMeta,
@@ -49,6 +50,7 @@ final class ProductSearchVerificationTrace
                 'aiu_runtime_entity' => $intent->toArray(),
                 'search_condition' => $condition->toArray(),
                 'source_keyword_query' => $sourceKeywordQuery,
+                'api_keyword' => isset($apiParams['keyword']) ? (string) $apiParams['keyword'] : '',
                 'final_search_url' => $url,
                 'product_search_result_count' => $resultCount,
             ],

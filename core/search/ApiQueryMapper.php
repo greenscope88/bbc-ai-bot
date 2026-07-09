@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'SearchCondition.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'SearchConditionCanonicalizer.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'HostBTourSearchParamMapper.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'SourceQueryMapper.php';
 
 /**
  * Maps SearchCondition → internal gateway client params, then Host B wire params. No SQL/DB.
@@ -41,9 +42,15 @@ final class ApiQueryMapper
             }
         }
 
-        $keyword = $canonical['keyword'];
-        if ($keyword !== '') {
-            $params['keyword'] = $keyword;
+        $hasDestinationParam = $canonical['destination'] !== null && $canonical['destination'] !== '';
+        $wireKeyword = $hasDestinationParam
+            ? SourceQueryMapper::buildHostBKeywordFromSearchCondition($condition)
+            : SourceQueryMapper::buildSourceKeywordQueryFromSearchCondition($condition);
+        if ($wireKeyword === '') {
+            $wireKeyword = $canonical['keyword'];
+        }
+        if ($wireKeyword !== '') {
+            $params['keyword'] = $wireKeyword;
         }
 
         if ($canonical['destination'] !== null && $canonical['destination'] !== '') {

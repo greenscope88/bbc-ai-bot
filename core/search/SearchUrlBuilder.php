@@ -28,11 +28,7 @@ final class SearchUrlBuilder
         $sno = trim($sno);
         $canonical = SearchConditionCanonicalizer::canonicalize($condition);
 
-        $wireKeyword = SourceQueryMapper::buildSourceKeywordQuery(
-            $condition->getDestination(),
-            $condition->getKeyword(),
-            $condition->getProductType()
-        );
+        $wireKeyword = SourceQueryMapper::buildSourceKeywordQueryFromSearchCondition($condition);
         if ($wireKeyword === '') {
             $wireKeyword = $canonical['keyword'];
         }
@@ -125,11 +121,7 @@ final class SearchUrlBuilder
     public function searchParamsOnly(SearchCondition $condition): array
     {
         $canonical = SearchConditionCanonicalizer::canonicalize($condition);
-        $wireKeyword = SourceQueryMapper::buildSourceKeywordQuery(
-            $condition->getDestination(),
-            $condition->getKeyword(),
-            $condition->getProductType()
-        );
+        $wireKeyword = SourceQueryMapper::buildSourceKeywordQueryFromSearchCondition($condition);
         if ($wireKeyword === '') {
             $wireKeyword = $canonical['keyword'];
         }
