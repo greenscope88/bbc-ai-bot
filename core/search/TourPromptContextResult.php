@@ -22,8 +22,12 @@ final class TourPromptContextResult
 
     private ?string $clarificationReason;
 
+    /** @var array<string, mixed> */
+    private array $searchPolicyMeta;
+
     /**
      * @param list<array<string, mixed>> $searchResults
+     * @param array<string, mixed> $searchPolicyMeta
      */
     public function __construct(
         BatsSearchIntent $intent,
@@ -31,7 +35,8 @@ final class TourPromptContextResult
         array $searchResults,
         string $legacyContext,
         bool $clarificationRequired,
-        ?string $clarificationReason
+        ?string $clarificationReason,
+        array $searchPolicyMeta = []
     ) {
         $this->intent = $intent;
         $this->searchCondition = $searchCondition;
@@ -39,6 +44,7 @@ final class TourPromptContextResult
         $this->legacyContext = $legacyContext;
         $this->clarificationRequired = $clarificationRequired;
         $this->clarificationReason = $clarificationReason;
+        $this->searchPolicyMeta = $searchPolicyMeta;
     }
 
     public static function empty(string $freeText = ''): self
@@ -72,9 +78,10 @@ final class TourPromptContextResult
         BatsSearchIntent $intent,
         SearchCondition $searchCondition,
         array $searchResults,
-        string $legacyContext
+        string $legacyContext,
+        array $searchPolicyMeta = []
     ): self {
-        return new self($intent, $searchCondition, $searchResults, $legacyContext, false, null);
+        return new self($intent, $searchCondition, $searchResults, $legacyContext, false, null, $searchPolicyMeta);
     }
 
     public function getIntent(): BatsSearchIntent
@@ -113,6 +120,14 @@ final class TourPromptContextResult
     /**
      * @return array<string, mixed>
      */
+    public function getSearchPolicyMeta(): array
+    {
+        return $this->searchPolicyMeta;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
     public function toArray(): array
     {
         return [
@@ -122,6 +137,7 @@ final class TourPromptContextResult
             'legacy_context' => $this->legacyContext,
             'clarification_required' => $this->clarificationRequired,
             'clarification_reason' => $this->clarificationReason,
+            'search_policy' => $this->searchPolicyMeta,
         ];
     }
 

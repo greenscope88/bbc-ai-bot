@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'ProductSearchPolicyRuntime.php';
+
 /**
  * Phase 9-C-2A: builds grounded recommendation_summary from search results.
  */
@@ -14,13 +16,29 @@ final class ProductRecommendationBuilder
         '美食行程',
     ];
 
+    private ProductSearchPolicyRuntime $searchPolicyRuntime;
+
+    public function __construct(?ProductSearchPolicyRuntime $searchPolicyRuntime = null)
+    {
+        $this->searchPolicyRuntime = $searchPolicyRuntime ?? new ProductSearchPolicyRuntime();
+    }
+
     /**
      * @param list<array<string, mixed>> $searchResults
      * @param array<string, mixed> $batsSearchIntent
+     * @param array<string, mixed> $searchPolicyMeta
      * @return array<string, mixed>
      */
-    public function build(array $searchResults, array $batsSearchIntent = [], string $customerQuery = ''): array
-    {
+    public function build(
+        array $searchResults,
+        array $batsSearchIntent = [],
+        string $customerQuery = '',
+        array $searchPolicyMeta = []
+    ): array {
+        if (($searchPolicyMeta['product_type_mismatch'] ?? false) === true) {
+            return $this->buildProductTypeMismatchSummary($batsSearchIntent, $searchPolicyMeta);
+        }
+
         $topProducts = $this->selectTopProducts($searchResults);
         $resultCount = count($searchResults);
         $primaryUrl = $this->resolvePrimaryUrl($topProducts, $searchResults);
@@ -31,7 +49,87 @@ final class ProductRecommendationBuilder
             'primary_url' => $primaryUrl,
             'recommendation_reason' => $this->buildRecommendationReason($batsSearchIntent, $customerQuery, $resultCount),
             'preference_hints' => self::PREFERENCE_HINTS,
+            'search_policy' => isset($searchPolicyMeta['policy']) ? (string) $searchPolicyMeta['policy'] : 'none',
+            'keyword_preference' => isset($searchPolicyMeta['keyword_preference'])
+                ? (string) $searchPolicyMeta['keyword_preference']
+                : null,
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $batsSearchIntent
+     * @param array<string, mixed> $searchPolicyMeta
+     * @return array<string, mixed>
+     */
+    private function buildProductTypeMismatchSummary(array $batsSearchIntent, array $searchPolicyMeta): array
+    {
+        $productType = trim((string) ($searchPolicyMeta['product_type'] ?? ($batsSearchIntent['product_type'] ?? '')));
+        $destination = trim((string) ($searchPolicyMeta['destination'] ?? ($batsSearchIntent['destination'] ?? '')));
+        $dateLabel = trim((string) ($searchPolicyMeta['date_label'] ?? ''));
+
+        return [
+            'result_count' => 0,
+            'top_products' => [],
+            'primary_url' => '',
+            'recommendation_reason' => $this->buildProductTypeMismatchReason($destination, $dateLabel, $productType),
+            'product_type_mismatch' => true,
+            'requested_product_type' => $productType,
+            'alternative_recommendations' => $this->buildAlternativeRecommendations($searchPolicyMeta, $destination),
+            'preference_hints' => self::PREFERENCE_HINTS,
+            'search_policy' => isset($searchPolicyMeta['policy']) ? (string) $searchPolicyMeta['policy'] : 'product_type_strict',
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $searchPolicyMeta
+     * @return list<array<string, mixed>>
+     */
+    private function buildAlternativeRecommendations(array $searchPolicyMeta, string $destination): array
+    {
+        $items = isset($searchPolicyMeta['alternative_results']) && is_array($searchPolicyMeta['alternative_results'])
+            ? $searchPolicyMeta['alternative_results']
+            : [];
+        if ($items === []) {
+            return [];
+        }
+
+        $groups = [];
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $title = isset($item['title']) ? trim((string) $item['title']) : '';
+            if ($title === '') {
+                continue;
+            }
+            $inferred = $this->searchPolicyRuntime->inferProductType($title) ?? '其他';
+            if (!isset($groups[$inferred])) {
+                $groups[$inferred] = [];
+            }
+            $groups[$inferred][] = $item;
+        }
+
+        $out = [];
+        foreach ($groups as $type => $groupItems) {
+            $label = $destination !== '' ? $destination . $type : $type;
+            $out[] = [
+                'label' => $label,
+                'product_type' => $type,
+                'top_products' => $this->selectTopProducts($groupItems),
+            ];
+        }
+
+        return $out;
+    }
+
+    private function buildProductTypeMismatchReason(string $destination, string $dateLabel, string $productType): string
+    {
+        $focus = $dateLabel . $destination . $productType;
+        if ($focus === '') {
+            return '目前沒有找到符合您需求的商品。';
+        }
+
+        return '目前沒有找到 ' . $focus . '商品。';
     }
 
     /**

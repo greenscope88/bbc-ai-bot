@@ -1558,7 +1558,8 @@ class SaaSRouter
                 $recommendationSummary = $recommendationBuilder->build(
                     $plan->getItems(),
                     $intentArray,
-                    $queryText
+                    $queryText,
+                    $structuredResult->getSearchPolicyMeta()
                 );
                 $geminiContext = $renderer->renderDocument($plan, [
                     'schema_version' => GeminiContextDocument::SCHEMA_VERSION_V2,

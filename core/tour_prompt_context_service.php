@@ -31,6 +31,7 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'B
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'BatsSearchIntentMapper.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'ClarificationPolicy.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'TourPromptContextResult.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'ProductSearchPolicyRuntime.php';
 
 
 
@@ -392,7 +393,8 @@ final class TourPromptContextService
                 $batsIntent,
                 $searchCondition,
                 $pipeline['search_results'],
-                $pipeline['legacy_context']
+                $pipeline['legacy_context'],
+                isset($pipeline['search_policy']) && is_array($pipeline['search_policy']) ? $pipeline['search_policy'] : []
             );
         } catch (\Throwable $e) {
             return TourPromptContextResult::empty($userText);
@@ -556,9 +558,19 @@ final class TourPromptContextService
             }
         }
 
+        $policyRuntime = isset($params['productSearchPolicyRuntime']) && $params['productSearchPolicyRuntime'] instanceof ProductSearchPolicyRuntime
+            ? $params['productSearchPolicyRuntime']
+            : new ProductSearchPolicyRuntime();
+        $searchPolicy = $policyRuntime->apply($condition, array_values($items));
+        $primaryItems = $searchPolicy['primary_results'] ?? array_values($items);
+
+        $apiResultForContext = $apiResult;
+        $apiResultForContext['items'] = $primaryItems;
+
         return [
-            'legacy_context' => $contextBuilder->build($apiResult, $buildOptions),
-            'search_results' => array_values($items),
+            'legacy_context' => $contextBuilder->build($apiResultForContext, $buildOptions),
+            'search_results' => array_values($primaryItems),
+            'search_policy' => $searchPolicy,
         ];
     }
 
