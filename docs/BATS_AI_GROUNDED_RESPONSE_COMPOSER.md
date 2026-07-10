@@ -2,18 +2,21 @@
 
 **專案：** BBC AI SaaS / BATS / Phase 2-E
 **定位：** L3 架構 SSOT — **Grounded Response Composer** 唯一正式依據（定位 / 職責 / Boundary / Input-Output Contract / Persona 整合 / Conversation Continuity / Conversation Commerce）
-**版本：** v1.2 Freeze（SSOT Refinement — Express）  
-**狀態：** ✅ Architecture Freeze（Phase 2-E-0 + v1.2 Express Refinement）— 後續 Coding 之唯一架構依據
+**版本：** Grounded Response Composer v1.2 Rev.1 — Frozen  
+**狀態：** Frozen
 **主機參考：** 103.1.222.14（主機 A · `C:\bbc-ai-bot`）
 **Branch：** feature/api-gateway-mvp
 
 > 本文件為 **Grounded Response Composer** 之 **L3 架構 SSOT**。它在 `BATS_AI_CONVERSATION_ARCHITECTURE.md`（L2）所定義之統一 Pipeline 下，正式定位 Composer 的職責、邊界、輸入輸出契約，以及與 Persona / Memory / Human Takeover 之整合原則。
 >
-> 本文件 **不重複定義 Persona**（一律引用 `BATS_AI_PERSONA.md`）、**不重複定義 Intent / Routing / State**（引用 L2 與 `BATS_AI_INTENT_UNDERSTANDING_V2.md`）、**不重複定義 Memory 內容本體**（引用 `BATS_AI_CONVERSATION_MEMORY.md`）。
+> **Rev.1（0710）：** Composer 正式定位為 **Express Layer**（表達層）。**不是** Understanding、Normalize、Runtime、Execution。
+>
+> 本文件 **不重複定義 Persona**（一律引用 `BATS_AI_PERSONA.md` 為 **Read Only Persona**）、**不重複定義 Intent / Routing / State**（引用 L2、`BATS_AI_INTENT_UNDERSTANDING_V2.md`、`BATS_AI_NORMALIZE.md`、`BATS_AI_RUNTIME.md`）、**不重複定義 Memory 內容本體**（引用 `BATS_AI_CONVERSATION_MEMORY.md`）。
 >
 > **v1.1 契約收斂：** `GroundedInput` / `GroundedOutput` **唯一欄位表** 以本文件 **§8.5 / §9.5** 為準。`PHASE_9C2C_GROUNDED_RESPONSE_COMPOSER.md` 降為 **implementation companion**（接入 Phase / 元件對照 / 測試策略）；欄位語意衝突時以本文件為準。
 
-> **Architecture Freeze（Phase 2-E-0）：** 本文件已凍結 Responsibilities、Out of Scope、Input / Output Contract（§8.5 / §9.5）、Grounded Output Validator、Response Prioritization、Human Takeover Guard、Next Best Action Boundary、P3 Future Boundary。後續 Phase 2-E Coding **不得**反向修改本文件之架構決策；不一致時依 SSOT Authority 修正程式。
+> **Architecture Freeze（Phase 2-E-0）：** 本文件已凍結 Responsibilities、Out of Scope、Input / Output Contract（§8.5 / §9.5）、Grounded Output Validator、Response Prioritization、Human Takeover Guard、Next Best Action Boundary、P3 Future Boundary。後續 Phase 2-E Coding **不得**反向修改本文件之架構決策；不一致時依 SSOT Authority 修正程式。  
+> **Rev.1 Correction** 僅對齊 AIU v2 主線定位／Input／Golden Rules／Persona／Out of Scope；**不**重新設計 Architecture，**不**修改 §8.5／§9.5 欄位表。
 
 ---
 
@@ -55,9 +58,11 @@
 | L0 | `BATS_AI_PERSONA.md` §0 | BBC Core Principles（**Core Principle #2**） |
 | L2 | `BATS_AI_CONVERSATION_ARCHITECTURE.md` | 統一 Pipeline（CA-001）/ Grounding（CA-008）/ Owner & Status |
 | L3 | **本文件** | **Composer 架構 / Contract / Boundary** 唯一 SSOT |
-| L3 | `BATS_AI_INTENT_UNDERSTANDING_V2.md` | AIU Runtime；Composer **不得**消費 `dispatch_plan` 作路由 |
-| L3 | `BATS_AI_CONVERSATION_MEMORY.md` | Customer Memory Card 欄位語意 |
-| L3 | `BATS_AI_RUNTIME_DESIGN.md` | Runtime 接入 / Legacy Governance |
+| L3 | `BATS_AI_INTENT_UNDERSTANDING_V2.md` | AIU Understanding；Composer **不得**做 Intent Understanding |
+| L3 | `BATS_AI_NORMALIZE.md` | AIU Normalize；Composer **不得**做 Normalize |
+| L3 | `BATS_AI_RUNTIME.md` | BBC AI Runtime（Execution）；Composer **不得**做 Routing／Dispatch／Execution |
+| L3 | `BATS_AI_CONVERSATION_MEMORY.md` | Customer Memory Card 欄位語意；Composer **不得**實作 Memory Runtime |
+| L3 | `BATS_AI_RUNTIME_DESIGN.md` | Runtime 接入 / Legacy Governance（實作參考；Execution 架構以 `BATS_AI_RUNTIME.md` 為準） |
 | L3 | `PHASE_9C2C_GROUNDED_RESPONSE_COMPOSER.md` | Implementation companion（接入 Phase / 元件 / 測試；**契約欄位見本文件 §8.5 / §9.5**） |
 | L3 | `BATS_AI_TRAVEL_CONSULTANT_POLICY.md` | 旅遊顧問回覆行為政策 |
 
@@ -96,7 +101,9 @@
 
 | 目的 | 說明 |
 |------|------|
-| **定位** | Composer 為 L3 **NLG 層**；Grounding 之後、Channel 之前 |
+| **定位** | Composer 為 L3 **Express Layer（表達層／NLG）**；位於 BBC AI Runtime／Grounding 之後、Channel 之前 |
+| **是** | Express — 依已 Grounded 之事實生成自然語言回覆 |
+| **不是** | Understanding、Normalize、Runtime、Execution |
 | **收斂** | v1.1 合併 `PHASE_9C2C` 契約為 **唯一欄位表**；補強 Response Prioritization、Validator 邊界、Human Guard、NBA Contract |
 | **約束** | Freeze 後 Coding 須依本文件；SSOT Authority 優先於程式 |
 | **非目的** | 不定義 Persona、Intent、Retrieval、State、BI / Dashboard |
@@ -111,10 +118,32 @@
 
 ## 3. Architecture Position
 
+### 3.1 AIU v2 主線位置（Rev.1）
+
 ```
-Customer Message → AIU Runtime → Dispatch → Execution Runtime
+Customer Message
+        → Gemini / AIU Understanding
+        → AIU Normalize
+        → BBC AI Runtime（Execution：Routing / Dispatch / Coordination）
+        → Runtime Modules（Product / Knowledge / Human / …）
+        → Grounding（組裝 GroundedInput）
+        → ★ Grounded Response Composer（Express Layer）★
+        → Channels
+```
+
+| Composer **是** | Composer **不是** |
+|-----------------|-------------------|
+| Express Layer | Understanding |
+| NLG / Presentation | Normalize |
+| Fact-constrained Expression | Runtime / Execution |
+| Read-only consumer of Grounded Input | Product / Knowledge / Human Search |
+
+### 3.2 Pipeline（既有表述，對齊主線）
+
+```
+Customer Message → AIU → BBC AI Runtime → Execution Modules
         → Grounding（組裝 GroundedInput，含 conversation_context）
-        → Grounded Response Composer（NLG + Validator + Prioritization）
+        → Grounded Response Composer（Express / NLG + Validator + Prioritization）
         → Channels
 ```
 
@@ -163,36 +192,52 @@ Composer 在 NLG 前 / 中，依下列 **唯讀輸入** 決定 facts 與段落�
 | ID | Out of Scope | 正式 SSOT |
 |----|--------------|-----------|
 | **GRC-OOS-001** | Intent Understanding | `BATS_AI_INTENT_UNDERSTANDING_V2.md` |
-| **GRC-OOS-002** | Runtime Dispatch / Routing | L2 §13 |
-| **GRC-OOS-003** | Knowledge Retrieval | Knowledge Runtime |
+| **GRC-OOS-002** | Runtime Dispatch / Routing | `BATS_AI_RUNTIME.md`；L2 §13 |
+| **GRC-OOS-003** | Knowledge Retrieval / Knowledge Search | Knowledge Runtime |
 | **GRC-OOS-004** | Product Search | Product Runtime |
-| **GRC-OOS-005** | Conversation State 寫入 | L2 §5～§12 |
-| **GRC-OOS-006** | Conversation Memory 寫入 | `BATS_AI_CONVERSATION_MEMORY.md` |
-| **GRC-OOS-007** | Human Service 派送 | Human Service Runtime SSOT |
-| **GRC-OOS-008** | Persona 定義 | `BATS_AI_PERSONA.md` |
+| **GRC-OOS-005** | Conversation State 寫入／Conversation State Logic | L2 §5～§12；Conversation State Module |
+| **GRC-OOS-006** | Conversation Memory 寫入／Conversation Memory Runtime | `BATS_AI_CONVERSATION_MEMORY.md` |
+| **GRC-OOS-007** | Human Service／Human Runtime | Human Service Runtime SSOT |
+| **GRC-OOS-008** | Persona 定義（Composer 僅 Read Only 引用） | `BATS_AI_PERSONA.md` |
 | **GRC-OOS-009** | Channel Transport | Orchestrator / LineService |
 | **GRC-OOS-010** | Human Takeover 期間 Outbound | §15 |
 | **GRC-OOS-011** | Post-Conversation Promotion Push | §17 P3 |
 | **GRC-OOS-012** | Fact Production | L2 §14 Grounding |
 | **GRC-OOS-013** | **Policy Safety / Content Moderation** | 非 Grounded Output Validator；屬 Persona Safety / 未來 Policy 層 |
 | **GRC-OOS-014** | **BI / Dashboard / CRM / Daily Report** | §17 P3；非 Composer MVP |
-| **GRC-OOS-015** | **`conversation_context` 組裝** | Grounding Layer（§8.4）；Composer 不組裝 |
+| **GRC-OOS-015** | **`conversation_context` 組裝** | Grounding Layer（§8.3）；Composer 不組裝 |
+| **GRC-OOS-016** | **Entity Extraction** | AIU Understanding / Entity Core |
+| **GRC-OOS-017** | **AIU Normalize** | `BATS_AI_NORMALIZE.md` |
+| **GRC-OOS-018** | **BBC AI Runtime Execution**（Lifecycle／Coordination 以外之領域執行） | `BATS_AI_RUNTIME.md` |
+
+> **RC-5：** Composer **不得**負責 Intent Understanding、Entity Extraction、AIU Normalize、Runtime Routing、Runtime Dispatch、Product Search、Knowledge Search、Human Runtime、Conversation Memory Runtime。
 
 ---
 
 ## 6. Golden Rules
 
+### 6.1 Grounded Golden Rules（AIU v2 / Rev.1）
+
 | ID | 規則 |
 |----|------|
-| **GR-001** | Grounded Response Only（`BATS_AI_PERSONA.md` Core Principle #2） |
-| **GR-002** | Facts are Grounded, Language is Generative |
-| **GR-003** | Composer Never Queries Runtime（CA-008） |
-| **GR-004** | Persona by Reference |
+| **GR-1** | Composer 只能根據 Runtime 已存在且已驗證（Grounded）的事實回覆。 |
+| **GR-2** | 允許自然、多樣化語句。 |
+| **GR-3** | 不得新增、推測、修改、補充任何 Runtime 未提供的事實。 |
+| **GR-4** | Persona 只能影響語氣、排版、品牌風格；**不得**改變任何 Grounded Facts。 |
+
+### 6.2 Supporting Golden Rules（既有 Freeze，維持）
+
+| ID | 規則 |
+|----|------|
+| **GR-001** | Grounded Response Only（`BATS_AI_PERSONA.md` Core Principle #2）— 對齊 **GR-1** |
+| **GR-002** | Facts are Grounded, Language is Generative — 對齊 **GR-1** / **GR-2** |
+| **GR-003** | Composer Never Queries Runtime（CA-008）— 不得自行搜尋任何資料 |
+| **GR-004** | Persona by Reference（Read Only）— 對齊 **GR-4** |
 | **GR-005** | One Composer, Multi-Tenant |
 | **GR-006** | Protect Before Extend |
 | **GR-007** | Human Outbound Stop, Context Continue |
 | **GR-008** | SSOT Authority |
-| **GR-009** | **Ordering ≠ Inventing**（Prioritization 不得變更 fact 集合） |
+| **GR-009** | **Ordering ≠ Inventing**（Prioritization 不得變更 fact 集合）— 對齊 **GR-3** |
 
 ---
 
@@ -213,14 +258,32 @@ Composer 在 NLG 前 / 中，依下列 **唯讀輸入** 決定 facts 與段落�
 
 ## 8. Input Contract
 
+### 8.0 Composer Input 原則（Rev.1 / RC-2）
+
+Composer **僅接收**下列語意類別（經 Grounding 組裝為 `GroundedInput`）：
+
+| 允許 Input 類別 | 說明 |
+|-----------------|------|
+| **Runtime Facts** | 已驗證之 Grounded Facts／product_list／links 等 |
+| **Runtime Context** | `runtime_type`、`reply_policy` 等執行呈現信號 |
+| **Conversation Context** | `conversation_context`／owner／status／resume（唯讀 snapshot） |
+| **Tenant Context** | tenant／tone registry 投影 |
+| **AI Persona** | `BATS_AI_PERSONA.md`（Read Only；見 §12） |
+
+**禁止：**
+
+- Composer **不得自行搜尋**任何資料（Product／Knowledge／Memory／外部 API）
+- Composer **不得**回查 Runtime Modules 以補洞
+- Composer **不得**消費 `dispatch_plan`／`execution_hint`（raw）／`runtime_action`／`search_action` 作路由
+
 ### 8.1 語意區塊概覽
 
 | 區塊 | 組裝責任 | Composer 角色 |
 |------|----------|---------------|
-| Execution 產出 facts | Grounding ← Execution Runtime | consume |
-| `conversation_context` | **Grounding** ← Memory Runtime（read） | consume |
+| Execution 產出 facts（Runtime Facts） | Grounding ← BBC AI Runtime / Modules | consume |
+| `conversation_context`（Conversation Context） | **Grounding** ← Memory Runtime（read） | consume |
 | `conversation_owner` / `status` | **Grounding** ← State Runtime（read） | consume |
-| `tone` / `tenant` | Grounding ← Registry | consume |
+| `tone` / `tenant`（Tenant Context + Persona key） | Grounding ← Registry | consume |
 | Orchestrator 識別 | Orchestrator → Grounding（`conversation_id` 等） | — |
 
 ### 8.2 Composer 禁止作為 Input 的內容
@@ -398,7 +461,8 @@ Composer（read-only consumer）
 
 （同 v1.0；補充 Grounding 組裝 `conversation_context`、Validator 為 Composer 內部。）
 
-**單句：** Composer 只消費 `GroundedInput`；只產出經 Validator 之 `GroundedOutput`；只負責 NLG + Presentation Ordering。
+**單句：** Composer 是 **Express Layer**；只消費 `GroundedInput`；只產出經 Validator 之 `GroundedOutput`；只負責 NLG + Presentation Ordering。  
+**不是** Understanding／Normalize／Runtime／Execution；**不得**自行搜尋資料。
 
 ---
 
@@ -406,6 +470,15 @@ Composer（read-only consumer）
 
 （同 v1.0；Persona 一律引用 `BATS_AI_PERSONA.md`。Validator **不**取代 Persona Safety。）
 
+### 12.1 Read Only Persona（Rev.1 / RC-4）
+
+| 項目 | 規格 |
+|------|------|
+| **來源** | `BATS_AI_PERSONA.md` |
+| **Composer 角色** | **Read Only** 引用 |
+| **可影響** | 語氣、排版、品牌風格（對齊 **GR-4**） |
+| **不得影響** | Runtime Facts／Grounded Facts／任何事實內容 |
+| **不得** | 在 Composer 內重新定義或覆寫 Persona SSOT |
 ---
 
 ## 13. Conversation Continuity
@@ -480,19 +553,19 @@ Grounded Response Composer 以 **Gemini** 為自然語言生成核心；依據 *
 - 推測 Facts
 - 補充未 Grounded 之 Facts
 
-**維持既有 Freeze：** GRC-002（Fact Fidelity）、GR-002、GR-009（Ordering ≠ Inventing）、Grounded Output Validator（§10）。
+**維持既有 Freeze：** GRC-002（Fact Fidelity）、**GR-1～GR-4**、GR-002、GR-009（Ordering ≠ Inventing）、Grounded Output Validator（§10）。
 
 ### 16.2 Natural Response Philosophy
 
 Grounded Response Composer **不是**固定 Template Engine。
 
-Gemini 可依據 **Grounded Facts** 自由運用自然語言：
+Gemini 可依據 **Grounded Facts** 自由運用自然語言（對齊 **GR-2**）：
 
 | 允許 | 說明 |
 |------|------|
 | 自然語言 | 符合 Persona 的口語化表達 |
 | 多種句型 | 同義、不同結構的 Grounded 表述 |
-| 多種語氣 | 溫暖、專業等（Persona 約束內） |
+| 多種語氣 | 溫暖、專業等（Persona 約束內；**GR-4**） |
 | 多樣化回覆 | 同一組 Facts 可有多種合法措辭 |
 
 **避免：**
@@ -503,7 +576,7 @@ Gemini 可依據 **Grounded Facts** 自由運用自然語言：
 
 **Invariant（不可突破）：**
 
-- 自然語言變化 **不得**改變任何 Grounded Facts 之語意或數值
+- 自然語言變化 **不得**改變任何 Grounded Facts 之語意或數值（**GR-3**／**GR-4**）
 - 須通過 Grounded Output Validator（§10）
 - Opening/Closing Pool（Consultant Policy §8.7）為 **MVP 過渡**，非長期 Template SSOT（見 AD-007 Semantic Driven）
 
@@ -533,8 +606,10 @@ Gemini 可依據 **Grounded Facts** 自由運用自然語言：
 |------|------|
 | **Input / Output 唯一欄位表** | **本文件 §8.5 / §9.5** |
 | Pipeline / Grounding | `BATS_AI_CONVERSATION_ARCHITECTURE.md` |
-| Persona | `BATS_AI_PERSONA.md` |
-| AIU | `BATS_AI_INTENT_UNDERSTANDING_V2.md` |
+| Persona | `BATS_AI_PERSONA.md`（Read Only） |
+| AIU Understanding | `BATS_AI_INTENT_UNDERSTANDING_V2.md` |
+| AIU Normalize | `BATS_AI_NORMALIZE.md` |
+| BBC AI Runtime | `BATS_AI_RUNTIME.md` |
 | Memory Card | `BATS_AI_CONVERSATION_MEMORY.md` |
 | 9-C-2C 接入 / 測試 | `PHASE_9C2C_GROUNDED_RESPONSE_COMPOSER.md` |
 
@@ -545,22 +620,23 @@ Gemini 可依據 **Grounded Facts** 自由運用自然語言：
 | 凍結項目 | 章節 | 狀態 |
 |----------|------|------|
 | Responsibilities（GRC-001～010） | §4 | ✅ Frozen |
-| Out of Scope（GRC-OOS-001～015） | §5 | ✅ Frozen |
-| Golden Rules（GR-001～009） | §6 | ✅ Frozen |
-| Input Contract / 唯一欄位表 | §8.5 | ✅ Frozen |
+| Out of Scope（GRC-OOS-001～018） | §5 | ✅ Frozen（Rev.1 補強 AIU v2 排除項） |
+| Golden Rules（**GR-1～GR-4** + GR-001～009） | §6 | ✅ Frozen（Rev.1 補強） |
+| Input Contract / 唯一欄位表 | §8.5 | ✅ Frozen（Rev.1 僅補強 §8.0 原則；欄位表未改） |
 | Output Contract / 唯一欄位表 | §9.5 | ✅ Frozen |
 | Grounded Output Validator Boundary | §10 | ✅ Frozen |
 | Response Prioritization Boundary | §4.1 | ✅ Frozen |
 | Human Takeover Guard | §15 | ✅ Frozen |
 | Next Best Action Boundary | §8.4 / §9.2 | ✅ Frozen |
 | P3 Future Boundary | §17 | ✅ Frozen |
-| Persona Integration（引用） | §12 | ✅ Frozen |
+| Persona Integration（Read Only 引用） | §12 | ✅ Frozen（Rev.1 補強） |
 | Conversation Continuity / Commerce | §13 / §14 | ✅ Frozen |
-| Design Philosophy（Facts / Expression / Natural Response） | §16 | ✅ Frozen（v1.2 Refinement） |
+| Design Philosophy（Facts / Expression / Natural Response） | §16 | ✅ Frozen（v1.2 + Rev.1 對齊 GR-1～GR-4） |
+| Express Layer 定位（AIU v2 主線） | §1 / §3 | ✅ Frozen（Rev.1） |
 
-**Freeze 日期：** 2026-07-01（v1.0）；2026-07-04（v1.2 Express Refinement）  
-**Freeze Phase：** Phase 2-E-0 + v1.2 SSOT Refinement（Express）  
-**下一階段：** Phase 2-E-1 Contract Foundation Coding（待指令）
+**Freeze 日期：** 2026-07-01（v1.0）；2026-07-04（v1.2 Express Refinement）；2026-07-10（**v1.2 Rev.1** AIU v2 Mainline Alignment）  
+**Freeze Phase：** Phase 2-E-0 + v1.2 SSOT Refinement（Express）+ Rev.1 Correction  
+**下一階段：** 依 0710 AIU v2 主線後續指令（非本文件重新設計）
 
 ---
 
@@ -583,10 +659,12 @@ Gemini 可依據 **Grounded Facts** 自由運用自然語言：
 
 | 版本 | 日期 | 狀態 | 說明 |
 |------|------|------|------|
+| **1.2 Rev.1 Frozen** | 2026-07-10 | **Frozen** | Phase A Freeze：狀態標示 Frozen；對齊 AIU Normalize／BBC AI Runtime Frozen。 |
+| **1.2 Rev.1** | 2026-07-10 | **Freeze Correction** | AIU v2 主線對齊：Express Layer 定位；Input 原則；GR-1～GR-4；Read Only Persona；Out of Scope 補強。不重新設計 Architecture；不修改 §8.5／§9.5 欄位表。 |
 | **1.2** | 2026-07-04 | **Freeze（Refinement）** | §16 聚焦 Express：Facts vs Expression、Natural Response（反 Template/公版/固定回覆）；移除 §16.3 Runtime Boundary。不修改其它 SSOT。 |
 | **1.1** | 2026-07-04 | **Freeze（Refinement）** | 擴充 §16 Design Philosophy（§16.1 / §16.2）。 |
 | **1.0** | 2026-07-01 | **Freeze** | Phase 2-E-0 Architecture Freeze。 |
 
 ---
 
-*本文件為 Phase 2-E Grounded Response Composer **Architecture Freeze** L3 SSOT。Coding 須完全依本文件；程式與 SSOT 不一致時修正程式。*
+*本文件為 Phase 2-E Grounded Response Composer **Architecture Freeze** L3 SSOT（含 Rev.1 AIU v2 主線對齊）。Coding 須完全依本文件；程式與 SSOT 不一致時修正程式。*
