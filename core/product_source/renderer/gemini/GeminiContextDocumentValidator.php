@@ -197,16 +197,12 @@ final class GeminiContextDocumentValidator
             $violations[] = 'bats_search_intent.clarification_required is required';
         }
 
-        if (!array_key_exists('destination', $intent)) {
-            $violations[] = 'bats_search_intent.destination key is required';
+        if (!isset($intent['destination']) || !is_array($intent['destination'])) {
+            $violations[] = 'bats_search_intent.destination must be an array';
         }
 
-        if (!isset($intent['multi_destination']) || !is_array($intent['multi_destination'])) {
-            $violations[] = 'bats_search_intent.multi_destination must be an array';
-        }
-
-        if (!isset($intent['travel_type']) || !is_array($intent['travel_type'])) {
-            $violations[] = 'bats_search_intent.travel_type must be an array';
+        if (!isset($intent['destination_alias']) || !is_array($intent['destination_alias'])) {
+            $violations[] = 'bats_search_intent.destination_alias must be an array';
         }
 
         foreach ([

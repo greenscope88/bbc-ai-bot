@@ -60,7 +60,7 @@ nr_assert(strpos((string) $case3Policy['primary_results'][0]['title'], '鐵道')
 $runtime = AiIntentUnderstandingRuntime::createForTesting();
 $case4 = $runtime->understand('北海道', ['conversation_id' => $pilotSno . ':line:U-nr4', 'tenant_sno' => $pilotSno, 'now' => $ref, 'reference_date' => $ref]);
 nr_assert($case4->isClarificationRequired() === true, 'case4: date clarification required');
-nr_assert(($case4->getEntity()['destination'] ?? '') === '北海道', 'case4: destination preserved');
+nr_assert(($case4->getEntities()['destination'] ?? []) === ['北海道'], 'case4: destination preserved');
 $case5Intent = BatsSearchIntent::empty('我想去賞楓');
 $case5Applied = (new ClarificationPolicy())->apply($case5Intent);
 nr_assert($case5Applied->isClarificationRequired() === true, 'case5: destination clarification');

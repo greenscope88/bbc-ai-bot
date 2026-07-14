@@ -6,10 +6,7 @@ declare(strict_types=1);
  */
 
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'BatsSearchIntent.php';
-require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'BatsSearchIntentBuilder.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'ClarificationPolicy.php';
-require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'DateParser.php';
-require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridSearchConditionBuilder.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'channel_publish_plan' . DIRECTORY_SEPARATOR . 'ChannelPublishPlan.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'channel_publish_plan' . DIRECTORY_SEPARATOR . 'ChannelPublishPlanValidator.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'renderer' . DIRECTORY_SEPARATOR . 'gemini' . DIRECTORY_SEPARATOR . 'GeminiRenderer.php';
@@ -69,15 +66,54 @@ function baseContextDocument(array $overrides = []): array
 
 function buildIntentFromQuery(string $query): array
 {
-    $ref = new DateTimeImmutable('2026-06-05', new DateTimeZone('Asia/Taipei'));
-    $builder = new BatsSearchIntentBuilder(
-        new HybridSearchConditionBuilder(new DateParser($ref))
-    );
+    if ($query === '北海道7月') {
+        return (new BatsSearchIntent(
+            $query,
+            BatsSearchIntent::INTENT_TOUR_SEARCH,
+            ['北海道'],
+            [],
+            null,
+            '2026-07-01',
+            '2026-07-31'
+        ))->toArray();
+    }
 
-    return $builder->parse($query, [
-        'reference_date' => $ref,
-        'merge_legacy_keyword' => true,
-    ])->toArray();
+    if ($query === '北海道') {
+        return (new BatsSearchIntent(
+            $query,
+            BatsSearchIntent::INTENT_TOUR_SEARCH,
+            ['北海道'],
+            [],
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            [],
+            [],
+            true,
+            ClarificationPolicy::REASON_DATE_REQUIRED
+        ))->toArray();
+    }
+
+    if ($query === '東京7月') {
+        return (new BatsSearchIntent(
+            $query,
+            BatsSearchIntent::INTENT_TOUR_SEARCH,
+            ['東京'],
+            [],
+            null,
+            '2026-07-01',
+            '2026-07-31'
+        ))->toArray();
+    }
+
+    throw new InvalidArgumentException('fixture intent only: ' . $query);
 }
 
 $validator = new GeminiContextDocumentValidator();
@@ -103,7 +139,7 @@ try {
     $context = $validator->validate($document);
     test_assert($context->getSchemaVersion() === GeminiContextDocument::SCHEMA_VERSION_V2, 'caseA schema_version=2');
     test_assert($context->getBatsSearchIntent() !== null, 'caseA bats_search_intent present');
-    test_assert($context->getBatsSearchIntent()['destination'] === '北海道', 'caseA destination');
+    test_assert($context->getBatsSearchIntent()['destination'] === ['北海道'], 'caseA destination');
     test_assert(array_key_exists('bats_search_intent', $context->toArray()), 'caseA toArray includes bats_search_intent');
     test_assert(true, 'caseA schema_version=2 with bats_search_intent PASS');
 } catch (\Throwable $e) {
@@ -185,7 +221,7 @@ try {
 
     test_assert($rendered->getSchemaVersion() === GeminiContextDocument::SCHEMA_VERSION_V2, 'caseE renderer schema_version=2');
     test_assert($rendered->getBatsSearchIntent() !== null, 'caseE renderer bats_search_intent');
-    test_assert($rendered->getBatsSearchIntent()['destination'] === '東京', 'caseE renderer destination');
+    test_assert($rendered->getBatsSearchIntent()['destination'] === ['東京'], 'caseE renderer destination');
     test_assert($validator->collectViolations($rendered->toArray()) === [], 'caseE rendered document validates');
     test_assert(true, 'caseE renderer builds schema_version=2 PASS');
 } catch (\Throwable $e) {

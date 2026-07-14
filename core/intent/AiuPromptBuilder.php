@@ -4,9 +4,9 @@ declare(strict_types=1);
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuPromptRequest.php';
 
 /**
- * Phase 2-D Step 2-D-4 — AIU Prompt Scheme v1.0 Builder（B-01～B-11）.
+ * AIU Prompt Scheme Builder（B-01～B-11）.
  *
- * SSOT: docs/BATS_AI_INTENT_UNDERSTANDING_V2.md §16.4
+ * SSOT: AIU v2 Gemini Output Contract v1.0 Rev.1 (Frozen) + Gap Matrix B0-6.
  */
 final class AiuPromptBuilder
 {
@@ -42,14 +42,14 @@ TXT;
     private function blockIntentTaxonomy(): string
     {
         return <<<'TXT'
-[B-02 Intent Taxonomy — CA-009]
+[B-02 Intent Taxonomy]
 Classify intent as exactly one of:
-- "Product Search" — customer wants tour/product search, quotes, dates, destinations, itineraries
-- "Knowledge" — FAQ, policies, contact info, services, passport/visa, company info
-- "Ambiguous" — intent too vague to route (e.g. "想出去玩" without destination or topic)
+- "product_search" — customer wants tour/product search, quotes, dates, destinations, itineraries
+- "knowledge" — FAQ, policies, contact info, services, passport/visa, company info
+- "human_service" — explicit request for human agent / 真人客服 / 轉人工 / 找客服
+- "ambiguous" — intent too vague to route (e.g. "想出去玩" without destination or topic)
 
-Special: if customer explicitly requests human agent / 真人客服 / 轉人工 / 找客服,
-set intent "Knowledge" and entity.human_service_request = true.
+Legacy labels "Product Search" / "Knowledge" / "Ambiguous" are also accepted by Normalize.
 TXT;
     }
 
@@ -57,14 +57,32 @@ TXT;
     {
         return <<<'TXT'
 [B-03 Entity Schema Reference]
-For Product Search, extract semantic entities into entity object:
-destination, destination_alias (array), multi_destination (array), departure_city,
-date_from, date_to (YYYY-MM-DD when possible), travel_type (array), duration (string),
-budget_min, budget_max, people_count, landmark, must_have (array), avoid (array),
-free_text (original semantic summary), human_service_request (bool, default false).
+Extract into entities object (fixed keys). Use null for missing scalars; [] for missing arrays.
+Keys:
+destination (array of strings — country/city/subnational/landmark; do NOT pick a primary),
+travel_area (string|null — continent/large region e.g. 歐洲),
+date_range (object|null — {"from":"YYYY-MM-DD","to":"YYYY-MM-DD"} when parsed; null if unparsed),
+date_expression (string|null — original date phrasing),
+duration_days (number|null),
+date_flexibility (string|null),
+product_type (string|null),
+theme (array),
+occasion (string|null),
+travel_style (string|null),
+departure (string|null),
+route (array),
+people_count / adult_count / child_count / senior_count (number|null — never invent counts),
+group_type (string|null),
+budget_amount (number|null), budget_unit (string|null), currency (string|null),
+price_sensitivity (string|null),
+hotel_preference / transportation_preference / airline_preference /
+meal_preference / room_preference (arrays),
+constraint / exclusion / special_need (arrays),
+preserved_keywords (array — only terms that cannot fit a formal entity),
+unclassified_terms (array).
 
-Normalize spacing in semantic meaning (e.g. "火星五日遊8月" and "火星五日遊 8月" should yield same destination/dates).
-For Knowledge/Ambiguous, entity may be {} or minimal; human_service_request when applicable.
+Do not put destination/theme/meal_preference values into preserved_keywords.
+"希望直飛" → transportation_preference; "不要轉機" → exclusion.
 TXT;
     }
 
@@ -73,8 +91,8 @@ TXT;
         return <<<'TXT'
 [B-04 Clarification Detection Policy]
 Set clarification.required = true when:
-- intent is Ambiguous, OR
-- Product Search but critical slots missing (e.g. destination without dates when dates needed), OR
+- intent is ambiguous, OR
+- product_search but critical slots missing (e.g. destination without usable dates), OR
 - confidence < 0.55
 Set clarification.reason to a short machine reason (e.g. missing_travel_dates, intent_ambiguous).
 Detection only — do NOT write clarification questions for the customer.
@@ -114,15 +132,16 @@ TXT;
     private function blockOutputSchema(): string
     {
         return <<<'TXT'
-[B-10 Output Schema — Semantic JSON v1.0]
+[B-10 Output Schema — AIU v2 Gemini Output Contract]
 Respond with JSON only (no markdown):
 {
-  "intent": "Product Search | Knowledge | Ambiguous",
-  "entity": {},
+  "intent": "product_search | knowledge | human_service | ambiguous",
+  "entities": {},
   "confidence": 0.0,
-  "clarification": { "required": false, "reason": "" },
-  "semantic_notes": ""
+  "clarification": { "required": false, "reason": "" }
 }
+entities must include all fixed keys. Do NOT output semantic_notes.
+Do NOT output dispatch_plan, execution_hint, runtime_action, or search_action.
 TXT;
     }
 
@@ -130,10 +149,11 @@ TXT;
     {
         return <<<'TXT'
 [B-11 Guardrails]
-- Do NOT output dispatch_plan or execution_hint
-- Do NOT generate reply话术 or clarification questions for the customer
+- Do NOT output dispatch_plan, execution_hint, runtime_action, search_action, or semantic_notes
+- Do NOT generate reply text or clarification questions for the customer
 - Do NOT change owner or conversation state
 - Use natural language understanding, not keyword tables
+- Keep destination as an array; never invent child_count without explicit number
 TXT;
     }
 }

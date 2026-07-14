@@ -6,7 +6,7 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiIntentCategory.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuGeminiUnderstandingClientInterface.php';
 
 /**
- * Test-only Gemini client stub — simulates Semantic JSON for unit tests (not production path).
+ * Test-only Gemini client stub — Output Contract shape (entities, no semantic_notes).
  */
 final class AiuGeminiUnderstandingClientStub implements AiuGeminiUnderstandingClientInterface
 {
@@ -29,14 +29,11 @@ final class AiuGeminiUnderstandingClientStub implements AiuGeminiUnderstandingCl
     }
 
     /**
-     * Default deterministic semantic responses for existing AIU unit tests.
-     *
      * @return array{
      *   intent: string,
-     *   entity: array<string, mixed>,
+     *   entities: array<string, mixed>,
      *   confidence: float,
-     *   clarification: array{required: bool, reason: string},
-     *   semantic_notes?: string
+     *   clarification: array{required: bool, reason: string}
      * }
      */
     public static function defaultResolver(AiuPromptRequest $request): array
@@ -45,21 +42,15 @@ final class AiuGeminiUnderstandingClientStub implements AiuGeminiUnderstandingCl
         $compact = preg_replace('/\s+/u', '', $text) ?? $text;
 
         if (self::containsAny($text, ['真人客服', '找真人', '轉人工', '人工客服', '找客服'])) {
-            return self::semantic(
-                AiIntentCategory::KNOWLEDGE,
-                ['human_service_request' => true, 'free_text' => $text],
-                0.95,
-                false,
-                ''
-            );
+            return self::semantic('human_service', [], 0.95, false, '');
         }
 
         if (self::containsAny($text, ['客服電話', '公司地址', '護照', '有哪些服務', '取消規定', '可以刷卡'])) {
-            return self::semantic(AiIntentCategory::KNOWLEDGE, ['free_text' => $text], 0.9, false, '');
+            return self::semantic('knowledge', [], 0.9, false, '');
         }
 
         if (self::containsAny($text, ['想出去玩', '幫我看看', '有推薦嗎', '我想旅遊', '我要去', '怎麼安排'])) {
-            return self::semantic(AiIntentCategory::AMBIGUOUS, [], 0.4, true, 'intent_ambiguous');
+            return self::semantic('ambiguous', [], 0.4, true, 'intent_ambiguous');
         }
 
         if (self::containsAny($text, ['東京', '北海道', '火星', '大阪', '京都', '首爾', '曼谷', '新加坡', '歐洲', '日本', '自由行', '旅遊', '行程', '團'])) {
@@ -69,57 +60,62 @@ final class AiuGeminiUnderstandingClientStub implements AiuGeminiUnderstandingCl
             }
             $hasDate = self::containsMonthOrDate($text);
             $duration = self::extractDuration($compact);
-            $entity = [
-                'destination' => $destination,
-                'free_text' => $text,
+            $entities = [
+                'destination' => $destination !== '' ? [$destination] : [],
             ];
             if ($duration !== null) {
-                $entity['duration'] = $duration;
+                $entities['duration'] = $duration;
+                $days = (int) preg_replace('/\D+/', '', $duration);
+                if ($days > 0) {
+                    $entities['duration_days'] = $days;
+                }
             }
             if ($hasDate) {
-                $entity['date_from'] = self::extractMonthIso($text);
+                $range = self::extractMonthRange($text);
+                $entities['date_range'] = ['from' => $range['from'], 'to' => $range['to']];
+                $entities['date_expression'] = $range['expression'];
+                $entities['date_from'] = $range['from'];
+                $entities['date_to'] = $range['to'];
             }
 
             $needsClarification = !$hasDate;
 
             return self::semantic(
-                AiIntentCategory::PRODUCT_SEARCH,
-                $entity,
+                'product_search',
+                $entities,
                 $needsClarification ? 0.5 : 0.92,
                 $needsClarification,
                 $needsClarification ? 'missing_travel_dates' : ''
             );
         }
 
-        return self::semantic(AiIntentCategory::KNOWLEDGE, ['free_text' => $text], 0.7, false, '');
+        return self::semantic('knowledge', [], 0.7, false, '');
     }
 
     /**
-     * @param array<string, mixed> $entity
+     * @param array<string, mixed> $entities
      * @return array{
      *   intent: string,
-     *   entity: array<string, mixed>,
+     *   entities: array<string, mixed>,
      *   confidence: float,
-     *   clarification: array{required: bool, reason: string},
-     *   semantic_notes?: string
+     *   clarification: array{required: bool, reason: string}
      * }
      */
     private static function semantic(
         string $intent,
-        array $entity,
+        array $entities,
         float $confidence,
         bool $clarificationRequired,
         string $clarificationReason
     ): array {
         return [
             'intent' => $intent,
-            'entity' => $entity,
+            'entities' => $entities,
             'confidence' => $confidence,
             'clarification' => [
                 'required' => $clarificationRequired,
                 'reason' => $clarificationReason,
             ],
-            'semantic_notes' => '',
         ];
     }
 
@@ -162,20 +158,55 @@ final class AiuGeminiUnderstandingClientStub implements AiuGeminiUnderstandingCl
         return null;
     }
 
+    /**
+     * Stub-only Gemini simulation of month expressions (not Normalize re-inference).
+     *
+     * @return array{from: string, to: string, expression: string}
+     */
+    private static function extractMonthRange(string $text): array
+    {
+        $year = 2026;
+        if (preg_match('/(20\d{2})\s*年/u', $text, $ym) === 1) {
+            $year = (int) $ym[1];
+        }
+
+        $month = 8;
+        if (preg_match('/(\d{1,2})月/u', $text, $m) === 1) {
+            $month = max(1, min(12, (int) $m[1]));
+        } elseif (mb_strpos($text, '八月', 0, 'UTF-8') !== false) {
+            $month = 8;
+        } elseif (mb_strpos($text, '三月', 0, 'UTF-8') !== false) {
+            $month = 3;
+        }
+
+        $lastDay = (int) (new \DateTimeImmutable(sprintf('%04d-%02d-01', $year, $month)))
+            ->modify('last day of this month')
+            ->format('d');
+
+        $fromDay = 1;
+        $toDay = $lastDay;
+        $expression = $month . '月';
+        if (mb_strpos($text, '月初', 0, 'UTF-8') !== false) {
+            $toDay = 10;
+            $expression = $month . '月初';
+        } elseif (mb_strpos($text, '月中', 0, 'UTF-8') !== false) {
+            $fromDay = 11;
+            $toDay = 20;
+            $expression = $month . '月中';
+        } elseif (mb_strpos($text, '月底', 0, 'UTF-8') !== false) {
+            $fromDay = 21;
+            $expression = $month . '月底';
+        }
+
+        return [
+            'from' => sprintf('%04d-%02d-%02d', $year, $month, $fromDay),
+            'to' => sprintf('%04d-%02d-%02d', $year, $month, $toDay),
+            'expression' => $expression,
+        ];
+    }
+
     private static function extractMonthIso(string $text): string
     {
-        if (preg_match('/(\d{1,2})月/u', $text, $m) === 1) {
-            $month = (int) $m[1];
-
-            return sprintf('2026-%02d-01', max(1, min(12, $month)));
-        }
-        if (mb_strpos($text, '八月', 0, 'UTF-8') !== false) {
-            return '2026-08-01';
-        }
-        if (mb_strpos($text, '3月', 0, 'UTF-8') !== false || mb_strpos($text, '三月', 0, 'UTF-8') !== false) {
-            return '2026-03-01';
-        }
-
-        return '2026-08-01';
+        return self::extractMonthRange($text)['from'];
     }
 }

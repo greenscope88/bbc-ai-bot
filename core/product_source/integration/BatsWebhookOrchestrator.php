@@ -332,7 +332,6 @@ final class BatsWebhookOrchestrator
             'line_render' => $lineRender,
             'line_sender' => $lineSender,
             'reason_code' => $reasonCode,
-            'fallthrough_to_legacy' => true,
             'generated_at_unix' => time(),
         ];
     }
@@ -593,7 +592,6 @@ final class BatsWebhookOrchestrator
                 'payload_size' => null,
             ],
             'reason_code' => isset($snapshot['reason_code']) ? trim((string) $snapshot['reason_code']) : '',
-            'fallthrough_to_legacy' => isset($snapshot['fallthrough_to_legacy']) ? (bool) $snapshot['fallthrough_to_legacy'] : true,
             'generated_at_unix' => isset($snapshot['generated_at_unix']) ? (int) $snapshot['generated_at_unix'] : time(),
         ];
     }

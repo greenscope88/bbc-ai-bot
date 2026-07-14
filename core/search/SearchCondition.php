@@ -17,7 +17,7 @@ final class SearchCondition
     /** @var string|null */
     private $area;
 
-    /** @var string|null */
+    /** @var list<string> */
     private $destination;
 
     /** @var string|null */
@@ -81,7 +81,7 @@ final class SearchCondition
         string $intent = self::INTENT_TOUR_SEARCH,
         ?string $keyword = null,
         ?string $area = null,
-        ?string $destination = null,
+        array $destination = [],
         ?string $departure_city = null,
         ?string $date_from = null,
         ?string $date_to = null,
@@ -103,7 +103,7 @@ final class SearchCondition
         $this->intent = $intent;
         $this->keyword = $keyword;
         $this->area = $area;
-        $this->destination = $destination;
+        $this->destination = self::stringList($destination);
         $this->departure_city = $departure_city;
         $this->date_from = $date_from;
         $this->date_to = $date_to;
@@ -130,7 +130,7 @@ final class SearchCondition
             $text = null;
         }
 
-        return new self(self::INTENT_TOUR_SEARCH, null, null, null, null, null, null, null, null, null, null, null, null, [], [], [], $text);
+        return new self(self::INTENT_TOUR_SEARCH, null, null, [], null, null, null, null, null, null, null, null, null, [], [], [], $text);
     }
 
     public function getIntent(): string
@@ -148,7 +148,8 @@ final class SearchCondition
         return $this->area;
     }
 
-    public function getDestination(): ?string
+    /** @return list<string> */
+    public function getDestination(): array
     {
         return $this->destination;
     }
@@ -251,7 +252,7 @@ final class SearchCondition
             isset($patch['intent']) && is_string($patch['intent']) ? $patch['intent'] : $this->intent,
             array_key_exists('keyword', $patch) ? self::nullableString($patch['keyword']) : $this->keyword,
             array_key_exists('area', $patch) ? self::nullableString($patch['area']) : $this->area,
-            array_key_exists('destination', $patch) ? self::nullableString($patch['destination']) : $this->destination,
+            array_key_exists('destination', $patch) ? self::stringList($patch['destination']) : $this->destination,
             array_key_exists('departure_city', $patch)
                 ? self::nullableString($patch['departure_city'])
                 : $this->departure_city,
@@ -327,6 +328,34 @@ final class SearchCondition
         ];
     }
 
+    private static function stringList($value): array
+    {
+        if ($value === null || $value === '') {
+            return [];
+        }
+        if (is_string($value) || is_numeric($value)) {
+            $s = trim((string) $value);
+
+            return $s === '' ? [] : [$s];
+        }
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($value as $v) {
+            if (!is_scalar($v)) {
+                continue;
+            }
+            $s = trim((string) $v);
+            if ($s !== '') {
+                $out[] = $s;
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
     /**
      * @param mixed $value
      */
@@ -351,30 +380,6 @@ final class SearchCondition
         }
 
         return (int) $value;
-    }
-
-    /**
-     * @param mixed $value
-     * @return list<string>
-     */
-    private static function stringList($value): array
-    {
-        if (!is_array($value)) {
-            return [];
-        }
-
-        $out = [];
-        foreach ($value as $v) {
-            if (!is_scalar($v)) {
-                continue;
-            }
-            $s = trim((string) $v);
-            if ($s !== '') {
-                $out[] = $s;
-            }
-        }
-
-        return array_values(array_unique($out));
     }
 
     /**

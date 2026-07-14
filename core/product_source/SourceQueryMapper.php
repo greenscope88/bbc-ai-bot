@@ -90,9 +90,11 @@ final class SourceQueryMapper
             $candidates[] = $area;
         }
 
-        $destination = self::trimNonEmpty($condition->getDestination());
-        if ($destination !== null) {
-            $candidates[] = $destination;
+        foreach ($condition->getDestination() as $destToken) {
+            $part = self::trimNonEmpty($destToken);
+            if ($part !== null) {
+                $candidates[] = $part;
+            }
         }
 
         $keyword = self::trimNonEmpty($condition->getKeyword());
@@ -129,8 +131,12 @@ final class SourceQueryMapper
     public static function buildHostBKeywordFromSearchCondition(SearchCondition $condition): string
     {
         $exclude = [];
-        foreach ([$condition->getArea(), $condition->getDestination()] as $scalar) {
-            $part = self::trimNonEmpty($scalar);
+        $area = self::trimNonEmpty($condition->getArea());
+        if ($area !== null) {
+            $exclude[$area] = true;
+        }
+        foreach ($condition->getDestination() as $destToken) {
+            $part = self::trimNonEmpty($destToken);
             if ($part !== null) {
                 $exclude[$part] = true;
             }
@@ -138,8 +144,13 @@ final class SourceQueryMapper
 
         $candidates = [];
         $keyword = self::trimNonEmpty($condition->getKeyword());
-        if ($keyword !== null && !isset($exclude[$keyword])) {
-            $candidates[] = $keyword;
+        if ($keyword !== null) {
+            foreach (preg_split('/\s+/u', $keyword) ?: [] as $token) {
+                $part = self::trimNonEmpty($token);
+                if ($part !== null && !isset($exclude[$part])) {
+                    $candidates[] = $part;
+                }
+            }
         }
         foreach ($condition->getTravelStyle() as $token) {
             $part = self::trimNonEmpty($token);
@@ -170,11 +181,23 @@ final class SourceQueryMapper
     {
         $candidates = [];
 
-        foreach (['area', 'destination', 'keyword', 'product_type'] as $scalarField) {
-            if (!isset($document[$scalarField])) {
-                continue;
+        $area = isset($document['area']) ? self::trimNonEmpty(is_string($document['area']) ? $document['area'] : null) : null;
+        if ($area !== null) {
+            $candidates[] = $area;
+        }
+
+        if (isset($document['destination']) && is_array($document['destination'])) {
+            foreach ($document['destination'] as $token) {
+                $part = self::trimNonEmpty(is_string($token) ? $token : null);
+                if ($part !== null) {
+                    $candidates[] = $part;
+                }
             }
-            $candidates[] = (string) $document[$scalarField];
+        }
+
+        $keyword = isset($document['keyword']) ? self::trimNonEmpty(is_string($document['keyword']) ? $document['keyword'] : null) : null;
+        if ($keyword !== null) {
+            $candidates[] = $keyword;
         }
 
         foreach (['travel_style', 'must_have', 'special_tags'] as $listField) {
@@ -184,6 +207,13 @@ final class SourceQueryMapper
             foreach ($document[$listField] as $token) {
                 $candidates[] = (string) $token;
             }
+        }
+
+        $productType = isset($document['product_type'])
+            ? self::trimNonEmpty(is_string($document['product_type']) ? $document['product_type'] : null)
+            : null;
+        if ($productType !== null) {
+            $candidates[] = $productType;
         }
 
         return self::joinUniqueTokens($candidates);
@@ -286,11 +316,16 @@ final class SourceQueryMapper
             if ($part === null) {
                 continue;
             }
-            if (isset($seen[$part])) {
-                continue;
+
+            $tokens = preg_split('/\s+/u', $part) ?: [];
+            foreach ($tokens as $token) {
+                $normalized = self::trimNonEmpty($token);
+                if ($normalized === null || isset($seen[$normalized])) {
+                    continue;
+                }
+                $seen[$normalized] = true;
+                $parts[] = $normalized;
             }
-            $seen[$part] = true;
-            $parts[] = $part;
         }
 
         return implode(' ', $parts);

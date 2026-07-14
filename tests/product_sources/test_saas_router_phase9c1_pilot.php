@@ -9,7 +9,14 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPA
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'Phase9C1FeatureGate.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'ConversationStatusResolver.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'AcknowledgementReplyComposer.php';
-require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'DateParser.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'intent'
+    . DIRECTORY_SEPARATOR . 'AiRuntimeIntent.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'intent'
+    . DIRECTORY_SEPARATOR . 'AiIntentUnderstandingRuntimeSelector.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'intent'
+    . DIRECTORY_SEPARATOR . 'AiIntentUnderstandingRuntime.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'intent'
+    . DIRECTORY_SEPARATOR . 'AiuGeminiUnderstandingClientStub.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridDateRequiredGate.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'knowledge'
     . DIRECTORY_SEPARATOR . 'LocalTenantPrivateKnowledgeProvider.php';
@@ -133,6 +140,93 @@ function buildPilotMockSearchClientRichLayout(): TourSearchApiClient
     });
 }
 
+/**
+ * Deterministic Gemini Semantic Result fixture (Output Contract shape).
+ *
+ * @param array<string, mixed> $entities
+ * @return array{
+ *   intent: string,
+ *   entities: array<string, mixed>,
+ *   confidence: float,
+ *   clarification: array{required: bool, reason: string}
+ * }
+ */
+function pilotGeminiSemantic(
+    string $intent,
+    array $entities = [],
+    float $confidence = 0.92,
+    bool $clarificationRequired = false,
+    string $clarificationReason = ''
+): array {
+    return [
+        'intent' => $intent,
+        'entities' => $entities,
+        'confidence' => $confidence,
+        'clarification' => [
+            'required' => $clarificationRequired,
+            'reason' => $clarificationReason,
+        ],
+    ];
+}
+
+function pilotAiuRuntimeFromSemantic(array $semantic): AiIntentUnderstandingRuntime
+{
+    return AiIntentUnderstandingRuntime::createForTesting(
+        new AiuGeminiUnderstandingClientStub(static function () use ($semantic): array {
+            return $semantic;
+        })
+    );
+}
+
+$pilotSemanticHokkaidoClarify = pilotGeminiSemantic(
+    'Product Search',
+    ['destination' => ['北海道']],
+    0.5,
+    true,
+    'missing_travel_dates'
+);
+$pilotSemanticHokkaidoJuly = pilotGeminiSemantic(
+    'Product Search',
+    [
+        'destination' => ['北海道'],
+        'date_range' => ['from' => '2026-07-01', 'to' => '2026-07-31'],
+        'date_expression' => '7月',
+        'date_from' => '2026-07-01',
+        'date_to' => '2026-07-31',
+    ]
+);
+$pilotSemanticKnowledge = pilotGeminiSemantic('Knowledge', [], 0.9, false, '');
+$pilotSemanticAmbiguous = pilotGeminiSemantic('Ambiguous', [], 0.4, true, 'intent_ambiguous');
+$pilotSemanticRecentTokyo = pilotGeminiSemantic(
+    'Product Search',
+    [
+        'destination' => ['東京'],
+        'date_range' => ['from' => '2026-06-06', 'to' => '2026-08-05'],
+        'date_expression' => '近期',
+        'date_from' => '2026-06-06',
+        'date_to' => '2026-08-05',
+    ]
+);
+$pilotSemanticRecentTokyoFiveDays = pilotGeminiSemantic(
+    'Product Search',
+    [
+        'destination' => ['東京'],
+        'duration' => '5日',
+        'duration_days' => 5,
+        'date_range' => ['from' => '2026-06-06', 'to' => '2026-08-05'],
+        'date_expression' => '近期',
+        'date_from' => '2026-06-06',
+        'date_to' => '2026-08-05',
+    ]
+);
+
+$pilotRuntimeHokkaidoClarify = pilotAiuRuntimeFromSemantic($pilotSemanticHokkaidoClarify);
+$pilotRuntimeHokkaidoJuly = pilotAiuRuntimeFromSemantic($pilotSemanticHokkaidoJuly);
+$pilotRuntimeKnowledge = pilotAiuRuntimeFromSemantic($pilotSemanticKnowledge);
+$pilotRuntimeAmbiguous = pilotAiuRuntimeFromSemantic($pilotSemanticAmbiguous);
+$pilotRuntimeRecentTokyo = pilotAiuRuntimeFromSemantic($pilotSemanticRecentTokyo);
+$pilotRuntimeRecentTokyoFiveDays = pilotAiuRuntimeFromSemantic($pilotSemanticRecentTokyoFiveDays);
+
 // Case 1: gate false → path returns null (legacy unchanged)
 $resultOff = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     $otherTenant,
@@ -192,9 +286,11 @@ $resultClarify = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     null,
     null,
     null,
-    null,
     $pilotUserId,
-    $clarifyPushSender
+    $clarifyPushSender,
+    null,
+    null,
+    $pilotRuntimeHokkaidoClarify
 );
 test_assert(is_array($resultClarify), 'case2: clarification result array');
 test_assert(($resultClarify['phase_9c1']['clarification_required'] ?? false) === true, 'case2: clarification_required');
@@ -240,15 +336,29 @@ $resultSearch = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     null,
     null,
     null,
-    null,
     $pilotUserId,
-    $productPushSender
+    $productPushSender,
+    null,
+    null,
+    $pilotRuntimeHokkaidoJuly
 );
 test_assert(count($waitingCalls) === 1, 'case3: waiting reply once');
 test_assert(($waitingCalls[0]['text'] ?? '') === $waitingText, 'case3: fixed waiting text');
 test_assert(count($finalPushCalls) === 1, 'case3: final push once');
 test_assert($finalReplyCalls === 0, 'case3: final not via reply');
 test_assert(($resultSearch['phase_9c1']['final_transport'] ?? '') === 'push', 'case3: final transport push');
+test_assert(
+    ($resultSearch['phase_9c1']['runtime_source'] ?? '') === AiIntentUnderstandingRuntimeSelector::SOURCE_AIU,
+    'case3: runtime_source aiu'
+);
+test_assert(
+    ($resultSearch['phase_9c1']['intent_type'] ?? '') === AiRuntimeIntent::PRODUCT_SEARCH,
+    'case3: product_search intent'
+);
+test_assert(
+    !array_key_exists('legacy_understanding_used', $resultSearch['phase_9c1'] ?? []),
+    'case3: legacy_understanding_used absent'
+);
 
 // Case 4: BATS-enabled tenant without prefix → enters pilot path
 $resultNoPrefix = SaaSRouter::attemptPhase9C1StructuredPilotPath(
@@ -269,9 +379,11 @@ $resultNoPrefix = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     null,
     null,
     null,
-    null,
     $pilotUserId,
-    $productPushSender
+    $productPushSender,
+    null,
+    null,
+    $pilotRuntimeHokkaidoJuly
 );
 test_assert(is_array($resultNoPrefix), 'case4: enabled tenant without prefix enters pilot');
 test_assert(($resultNoPrefix['message'] ?? '') === 'phase_9c1_structured_pilot', 'case4: pilot message without prefix');
@@ -290,7 +402,6 @@ test_assert(
         buildPilotMockSearchClient(),
         $referenceDate,
         $mockLineSender,
-        null,
         null,
         null,
         null,
@@ -331,7 +442,6 @@ $resultHuman = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     $humanResolver,
     null,
     null,
-    null,
     $pilotUserId
 );
 test_assert(($resultHuman['message'] ?? '') === 'phase_9c1_structured_pilot_blocked', 'case5: blocked message');
@@ -370,11 +480,13 @@ $resultKnowledge = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     null,
     null,
     $knowledgeProvider,
-    null,
     $pilotUserId,
-    $knowledgePushSender
+    $knowledgePushSender,
+    null,
+    null,
+    $pilotRuntimeKnowledge
 );
-test_assert(($resultKnowledge['phase_9c1']['intent_type'] ?? '') === KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY, 'case6: knowledge intent');
+test_assert(($resultKnowledge['phase_9c1']['intent_type'] ?? '') === AiRuntimeIntent::KNOWLEDGE_QUERY, 'case6: knowledge intent');
 test_assert($knowledgeReplyCalls === 1, 'case6: knowledge reply once');
 test_assert($knowledgePushCalls === 0, 'case6: no push for knowledge');
 
@@ -414,9 +526,11 @@ $resultAmbiguous = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     null,
     null,
     null,
-    null,
     $pilotUserId,
-    $ambiguousPushSender
+    $ambiguousPushSender,
+    null,
+    null,
+    $pilotRuntimeAmbiguous
 );
 test_assert($ambiguousWaitingCalls === 0, 'case7: ambiguous no waiting reply');
 test_assert($ambiguousPushCalls === 0, 'case7: ambiguous no push');
@@ -458,9 +572,11 @@ $resultNoUser = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     null,
     null,
     null,
-    null,
     '',
-    $noUserPushSender
+    $noUserPushSender,
+    null,
+    null,
+    $pilotRuntimeHokkaidoJuly
 );
 test_assert($noUserWaitingCalls === 0, 'case8: missing userId no waiting');
 test_assert($noUserPushCalls === 0, 'case8: missing userId no push');
@@ -493,9 +609,11 @@ $resultCouponName = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     null,
     null,
     null,
-    null,
     $pilotUserId,
-    $couponNamePushSender
+    $couponNamePushSender,
+    null,
+    null,
+    $pilotRuntimeRecentTokyo
 );
 $pushText = (string) ($couponNamePushCalls[0]['text'] ?? '');
 test_assert(is_array($resultCouponName), 'case9: couponName-only result array');
@@ -536,9 +654,11 @@ $resultLayout10 = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     null,
     null,
     null,
-    null,
     $pilotUserId,
-    $layoutPushSender10
+    $layoutPushSender10,
+    null,
+    null,
+    $pilotRuntimeRecentTokyo
 );
 $layoutPushText10 = (string) ($layoutPushCalls10[0]['text'] ?? '');
 test_assert(is_array($resultLayout10), 'case10: layout result array');
@@ -585,9 +705,11 @@ $resultLayout11 = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     null,
     null,
     null,
-    null,
     $pilotUserId,
-    $layoutPushSender11
+    $layoutPushSender11,
+    null,
+    null,
+    $pilotRuntimeRecentTokyoFiveDays
 );
 $layoutPushText11 = (string) ($layoutPushCalls11[0]['text'] ?? '');
 test_assert(is_array($resultLayout11), 'case11: layout result array');

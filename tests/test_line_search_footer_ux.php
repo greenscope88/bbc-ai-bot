@@ -6,10 +6,11 @@ declare(strict_types=1);
  */
 
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tour_prompt_context_service.php';
-require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridSearchConditionBuilder.php';
-require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'DateParser.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'support' . DIRECTORY_SEPARATOR . 'GeminiDerivedSearchConditionFixtures.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'MockShortUrlProvider.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tour_fallback_formatter.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'gemini_tour_context_builder.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'recommendation' . DIRECTORY_SEPARATOR . 'TravelConsultantPersonaFormatter.php';
 
 $failures = 0;
 
@@ -30,12 +31,6 @@ $multiSourceConfig = [
     'enabled' => true,
     'tenant_sno' => $travelBSno,
     'source_instance_keys' => ['dayitravel_grp', 'dayitravel_bbctravel', 'dayitravel_tourcenter'],
-];
-$hybridConfig = [
-    'enabled' => true,
-    'allowed_sno' => [$travelBSno],
-    'allowed_channels' => [],
-    'dry_run_log_enabled' => false,
 ];
 
 $mockClient = new TourSearchApiClient('https://example.test/tour/search', 5, static function (): array {
@@ -64,25 +59,26 @@ $service = new TourPromptContextService();
  */
 function build_line_reply(
     TourPromptContextService $service,
+    BatsSearchIntent $intent,
     string $userText,
     DateTimeImmutable $referenceDate,
     TourSearchApiClient $mockClient,
-    array $hybridConfig,
     array $multiSourceConfig,
     MockShortUrlProvider $mockProvider,
     string $travelBSno
 ): array {
-    $context = $service->buildTourContextForPrompt([
+    $result = $service->buildTourContextResult([
         'userText' => $userText,
         'sno' => $travelBSno,
         'featureEnabled' => true,
         'searchClient' => $mockClient,
-        'hybridSearchConfig' => $hybridConfig,
         'travelBMultiSourceLinksConfig' => $multiSourceConfig,
         'multiSourceShortUrlProvider' => $mockProvider,
         'referenceDate' => $referenceDate,
+        'authoritativeIntent' => $intent,
         'includeInstructions' => false,
     ]);
+    $context = $result->getLegacyContext();
 
     return [$context, TourFallbackFormatter::formatFromTourContext($context)];
 }
@@ -135,12 +131,45 @@ function assert_multi_source_url_spacing(string $lineReply, string $multiHeader,
     }
 }
 
+function reply_uses_canonical_opening(string $lineReply): bool
+{
+    foreach (TravelConsultantPersonaFormatter::openingPool() as $opening) {
+        if ($opening !== '' && strpos($lineReply, $opening) === 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function extract_actual_opening_prefix(string $lineReply): string
+{
+    foreach (TravelConsultantPersonaFormatter::openingPool() as $opening) {
+        if ($opening !== '' && strpos($lineReply, $opening) === 0) {
+            return $opening;
+        }
+    }
+
+    $newlinePos = strpos($lineReply, "\n");
+
+    return $newlinePos === false ? $lineReply : substr($lineReply, 0, $newlinePos);
+}
+
+function assert_canonical_opening(string $lineReply, string $label): void
+{
+    ux_assert(reply_uses_canonical_opening($lineReply), $label . ': greeting matches canonical OPENING_POOL');
+    ux_assert(
+        strpos($lineReply, '我是旅遊 AI 客服，以下為您整理最新的出團資訊：') === false,
+        $label . ': no obsolete fixed 客服 greeting'
+    );
+}
+
 function assert_footer_ux(string $lineReply, string $destination, string $label): void
 {
     $searchHeader = '🔎 更多【' . $destination . '】行程 & 出團日：';
     $multiHeader = multi_source_header_for($destination);
 
-    ux_assert(strpos($lineReply, '我是旅遊 AI 客服，以下為您整理最新的出團資訊：') !== false, $label . ': greeting uses 客服');
+    assert_canonical_opening($lineReply, $label);
     ux_assert(strpos($lineReply, '我是旅遊 AI 助理') === false, $label . ': no legacy 助理 greeting');
     ux_assert(strpos($lineReply, $searchHeader) !== false, $label . ': search header with destination');
     ux_assert(strpos($lineReply, $multiHeader) !== false, $label . ': CTA multi-source header');
@@ -165,22 +194,58 @@ function assert_footer_ux(string $lineReply, string $destination, string $label)
 
 // Case 1: 大阪近期
 $ref1 = new DateTimeImmutable('2026-06-06', new DateTimeZone('Asia/Taipei'));
-[, $line1] = build_line_reply($service, '大阪近期', $ref1, $mockClient, $hybridConfig, $multiSourceConfig, $mockProvider, $travelBSno);
+[, $line1] = build_line_reply(
+    $service,
+    GeminiDerivedSearchConditionFixtures::osakaRecentIntent(),
+    '大阪近期',
+    $ref1,
+    $mockClient,
+    $multiSourceConfig,
+    $mockProvider,
+    $travelBSno
+);
 assert_footer_ux($line1, '大阪', 'case1 大阪近期');
 
 // Case 2: 東京本月
 $ref2 = new DateTimeImmutable('2026-06-06', new DateTimeZone('Asia/Taipei'));
-[, $line2] = build_line_reply($service, '東京本月', $ref2, $mockClient, $hybridConfig, $multiSourceConfig, $mockProvider, $travelBSno);
+[, $line2] = build_line_reply(
+    $service,
+    GeminiDerivedSearchConditionFixtures::tokyoThisMonthIntent(),
+    '東京本月',
+    $ref2,
+    $mockClient,
+    $multiSourceConfig,
+    $mockProvider,
+    $travelBSno
+);
 assert_footer_ux($line2, '東京', 'case2 東京本月');
 
 // Case 3: 北海道暑假
 $ref3 = new DateTimeImmutable('2026-06-05', new DateTimeZone('Asia/Taipei'));
-[, $line3] = build_line_reply($service, '北海道暑假', $ref3, $mockClient, $hybridConfig, $multiSourceConfig, $mockProvider, $travelBSno);
+[, $line3] = build_line_reply(
+    $service,
+    GeminiDerivedSearchConditionFixtures::hokkaidoSummerIntent(),
+    '北海道暑假',
+    $ref3,
+    $mockClient,
+    $multiSourceConfig,
+    $mockProvider,
+    $travelBSno
+);
 assert_footer_ux($line3, '北海道', 'case3 北海道暑假');
 
 // Case 4: 高雄東京近期 — grp ignores departure; all sources short URL in footer
 $ref4 = new DateTimeImmutable('2026-06-06', new DateTimeZone('Asia/Taipei'));
-[, $line4] = build_line_reply($service, '高雄東京近期', $ref4, $mockClient, $hybridConfig, $multiSourceConfig, $mockProvider, $travelBSno);
+[, $line4] = build_line_reply(
+    $service,
+    GeminiDerivedSearchConditionFixtures::kaohsiungTokyoRecentIntent(),
+    '高雄東京近期',
+    $ref4,
+    $mockClient,
+    $multiSourceConfig,
+    $mockProvider,
+    $travelBSno
+);
 assert_footer_ux($line4, '東京', 'case4 高雄東京近期');
 ux_assert(strpos($line4, '/khh/') === false, 'case4 高雄東京近期: LINE footer no khh');
 

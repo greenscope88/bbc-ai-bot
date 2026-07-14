@@ -28,7 +28,8 @@ final class HybridDateRequiredGate
     {
         $keyword = $condition->getKeyword();
         if ($keyword === null || trim($keyword) === '') {
-            $keyword = $condition->getDestination();
+            $destinations = $condition->getDestination();
+            $keyword = $destinations !== [] ? implode(' ', $destinations) : null;
         }
         if ($keyword === null || trim($keyword) === '') {
             $keyword = $condition->getArea();

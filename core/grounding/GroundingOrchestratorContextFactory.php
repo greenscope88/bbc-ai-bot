@@ -148,13 +148,12 @@ final class GroundingOrchestratorContextFactory
             ? $params['bats_search_intent']
             : [];
 
-        $customerQuery = (string) ($params['customer_query'] ?? '');
-        $entity = self::projectEntityFromBatsSearchIntent($searchIntent, $customerQuery);
+        $entity = self::projectEntityFromBatsSearchIntent($searchIntent);
         if ($entity === []) {
             return [];
         }
 
-        return ['entity' => $entity];
+        return ['entities' => $entity];
     }
 
     /**
@@ -162,55 +161,40 @@ final class GroundingOrchestratorContextFactory
      *
      * @return array<string, mixed>
      */
-    private static function projectEntityFromBatsSearchIntent(array $searchIntent, string $customerQuery): array
+    private static function projectEntityFromBatsSearchIntent(array $searchIntent): array
     {
-        $entity = [];
+        $entities = [];
 
-        $destination = isset($searchIntent['destination']) ? trim((string) $searchIntent['destination']) : '';
-        if ($destination !== '') {
-            $entity['destination'] = $destination;
+        if (isset($searchIntent['destination']) && is_array($searchIntent['destination'])) {
+            $list = [];
+            foreach ($searchIntent['destination'] as $token) {
+                $part = trim((string) $token);
+                if ($part !== '') {
+                    $list[] = $part;
+                }
+            }
+            if ($list !== []) {
+                $entities['destination'] = array_values(array_unique($list));
+            }
         }
 
         $dateFrom = isset($searchIntent['date_from']) ? trim((string) $searchIntent['date_from']) : '';
         if ($dateFrom !== '') {
-            $entity['travel_dates'] = $dateFrom;
-        } elseif ($customerQuery !== '') {
-            $travelDates = self::extractTravelDatesToken($customerQuery);
-            if ($travelDates !== null) {
-                $entity['travel_dates'] = $travelDates;
-            }
+            $entities['travel_dates'] = $dateFrom;
         }
 
         if (isset($searchIntent['people_count']) && $searchIntent['people_count'] !== null && $searchIntent['people_count'] !== '') {
-            $entity['party_size'] = (string) (int) $searchIntent['people_count'];
+            $entities['party_size'] = (string) (int) $searchIntent['people_count'];
         }
 
-        $duration = self::extractDurationToken($customerQuery);
-        if ($duration !== null) {
-            $entity['duration'] = $duration;
+        $duration = isset($searchIntent['duration']) ? trim((string) $searchIntent['duration']) : '';
+        if ($duration === '' && isset($searchIntent['duration_days'])) {
+            $duration = trim((string) $searchIntent['duration_days']);
+        }
+        if ($duration !== '') {
+            $entities['duration'] = $duration;
         }
 
-        return $entity;
-    }
-
-    private static function extractTravelDatesToken(string $text): ?string
-    {
-        if (preg_match('/(\d{1,2}\s*月)/u', $text, $matches) === 1) {
-            return trim((string) $matches[1]);
-        }
-
-        return null;
-    }
-
-    private static function extractDurationToken(string $text): ?string
-    {
-        if (preg_match('/(\d+\s*天)/u', $text, $matches) === 1) {
-            return trim((string) $matches[1]);
-        }
-        if (preg_match('/((?:[一二三四五六七八九十]+)天)/u', $text, $matches) === 1) {
-            return trim((string) $matches[1]);
-        }
-
-        return null;
+        return $entities;
     }
 }

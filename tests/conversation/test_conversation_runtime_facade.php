@@ -1,6 +1,9 @@
 <?php
 
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core'
+    . DIRECTORY_SEPARATOR . 'intent'
+    . DIRECTORY_SEPARATOR . 'AiRuntimeIntent.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core'
     . DIRECTORY_SEPARATOR . 'conversation'
     . DIRECTORY_SEPARATOR . 'ConversationRuntimeFacade.php';
 
@@ -131,7 +134,7 @@ $p0 = new \DateTimeImmutable('2026-06-27 13:00:00', $tz);
 $active = $facade4->handleCustomerMessage('conv-policy', [
     'current_stage' => ConversationLifecycle::STAGE_ACTIVE,
     'completion_signals' => [],
-    'intent_type' => RecommendationEligibilityEvaluator::INTENT_PRODUCT_SEARCH,
+    'intent_type' => AiRuntimeIntent::PRODUCT_SEARCH,
     'tenant_policy' => ConversationPolicy::create(),
 ], $p0);
 test_assert($active['lifecycle_stage'] === ConversationLifecycle::STAGE_ACTIVE, 'facade: stage Active');
@@ -145,7 +148,7 @@ test_assert(
 $resolved = $facade4->handleCustomerMessage('conv-policy', [
     'current_stage' => ConversationLifecycle::STAGE_ACTIVE,
     'completion_signals' => ['requirement_resolved' => true],
-    'intent_type' => RecommendationEligibilityEvaluator::INTENT_PRODUCT_SEARCH,
+    'intent_type' => AiRuntimeIntent::PRODUCT_SEARCH,
     'tenant_policy' => ConversationPolicy::create(),
 ], $p0->modify('+1 minute'));
 test_assert($resolved['lifecycle_stage'] === ConversationLifecycle::STAGE_RESOLVED, 'facade: stage Resolved');

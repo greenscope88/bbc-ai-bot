@@ -47,22 +47,23 @@ test_assert(
 );
 
 // ============================================================================
-// 3. understand() returns a contract object (Phase 2-D-2 logic implemented)
+// 3. understand() returns a contract object (B0 keys)
 // ============================================================================
 $runtimeT = AiIntentUnderstandingRuntime::createForTesting();
 $out = $runtimeT->understand('hello', ['tenant_sno' => '5f99b8d665e8444d', 'trace_id' => 't1']);
 test_assert($out instanceof AiIntentUnderstandingResult, 'logic: understand() returns AiIntentUnderstandingResult');
 test_assert(array_keys($out->toArray()) === [
     'intent',
-    'entity',
+    'entities',
     'context_snapshot',
     'owner_snapshot',
     'conversation_stage',
     'resume_context',
     'clarification',
-    'dispatch_plan',
-    'execution_hint',
-], 'logic: result carries 9 frozen contract keys');
+    'confidence',
+], 'logic: result carries B0 contract keys');
+test_assert(!array_key_exists('dispatch_plan', $out->toArray()), 'logic: no dispatch_plan');
+test_assert(!array_key_exists('execution_hint', $out->toArray()), 'logic: no execution_hint');
 
 // ----------------------------------------------------------------------------
 if ($failures === 0) {

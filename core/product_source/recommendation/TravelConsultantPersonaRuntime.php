@@ -217,39 +217,10 @@ final class TravelConsultantPersonaRuntime
             return false;
         }
 
-        $destination = isset($batsSearchIntent['destination']) && is_string($batsSearchIntent['destination'])
-            ? trim($batsSearchIntent['destination'])
-            : '';
-        if ($destination !== '') {
-            return true;
-        }
-
-        $multi = isset($batsSearchIntent['multi_destination']) && is_array($batsSearchIntent['multi_destination'])
-            ? $batsSearchIntent['multi_destination']
+        $destination = isset($batsSearchIntent['destination']) && is_array($batsSearchIntent['destination'])
+            ? $batsSearchIntent['destination']
             : [];
-        if ($multi !== []) {
-            return true;
-        }
 
-        $freeText = isset($batsSearchIntent['free_text']) ? trim((string) $batsSearchIntent['free_text']) : '';
-        if ($freeText === '') {
-            return false;
-        }
-
-        $travelKeywords = ['團', '行程', '旅遊', '旅遊團', '跟團', '自由行', 'tour'];
-        foreach ($travelKeywords as $keyword) {
-            if (mb_strpos($freeText, $keyword) !== false) {
-                return true;
-            }
-        }
-
-        $destinations = ['北海道', '東京', '大阪', '京都', '沖繩', '日本', '韓國', '泰國', '歐洲', '美國'];
-        foreach ($destinations as $place) {
-            if (mb_strpos($freeText, $place) !== false) {
-                return true;
-            }
-        }
-
-        return preg_match('/\d{1,2}\s*月/u', $freeText) === 1;
+        return $destination !== [];
     }
 }

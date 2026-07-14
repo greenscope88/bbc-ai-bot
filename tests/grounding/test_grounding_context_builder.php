@@ -47,7 +47,7 @@ $builder = new GroundingContextBuilder();
 // --- Hokkaido full entity ---
 $full = $builder->build(gcb_context([
     'aiu_projection' => [
-        'entity' => [
+        'entities' => [
             'destination' => '北海道',
             'travel_dates' => '8月',
             'duration' => '五天',
@@ -69,7 +69,7 @@ $memoryWins = $builder->build(gcb_context([
         'current_requirement' => '東京 3月',
     ],
     'aiu_projection' => [
-        'entity' => ['destination' => '北海道'],
+        'entities' => ['destination' => '北海道'],
     ],
 ]));
 gcb_assert(($memoryWins['destination'] ?? '') === '東京', 'memory P1 wins destination');
@@ -78,27 +78,27 @@ gcb_assert(($memoryWins['current_requirement'] ?? '') === '東京 3月', 'memory
 // --- Partial entities ---
 $augOnly = $builder->build(gcb_context([
     'customer_query' => '北海道 8月',
-    'aiu_projection' => ['entity' => ['destination' => '北海道', 'travel_dates' => '8月']],
+    'aiu_projection' => ['entities' => ['destination' => '北海道', 'travel_dates' => '8月']],
 ]));
 gcb_assert(!isset($augOnly['duration']), 'aug only: no duration');
 gcb_assert(($augOnly['destination'] ?? '') === '北海道', 'aug only destination');
 
 $daysOnly = $builder->build(gcb_context([
     'customer_query' => '北海道 五天',
-    'aiu_projection' => ['entity' => ['destination' => '北海道', 'duration' => '五天']],
+    'aiu_projection' => ['entities' => ['destination' => '北海道', 'duration' => '五天']],
 ]));
 gcb_assert(!isset($daysOnly['travel_dates']), 'days only: no travel_dates');
 
 $datesDays = $builder->build(gcb_context([
     'customer_query' => '8月 五天',
-    'aiu_projection' => ['entity' => ['travel_dates' => '8月', 'duration' => '五天']],
+    'aiu_projection' => ['entities' => ['travel_dates' => '8月', 'duration' => '五天']],
 ]));
 gcb_assert(!isset($datesDays['destination']), 'dates+days: no destination');
 
 // --- List slots memory only ---
 $listOnly = $builder->build(gcb_context([
     'memory_snapshot' => ['outstanding_issues' => ['確認人數']],
-    'aiu_projection' => ['entity' => ['outstanding_issues' => ['ignored']]],
+    'aiu_projection' => ['entities' => ['outstanding_issues' => ['ignored']]],
 ]));
 gcb_assert(
     isset($listOnly['outstanding_issues']) && $listOnly['outstanding_issues'] === ['確認人數'],

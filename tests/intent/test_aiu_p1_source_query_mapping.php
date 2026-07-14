@@ -87,7 +87,7 @@ sq_assert(!array_key_exists('source_keyword_query', $apiParams), 'hostb: api has
 
 // Keyword-only: destination + keyword (no product_type).
 $caseKw = TravelBMultiSourceLinkBuilder::hybridConditionToSearchDocument($caseHostB);
-sq_assert(($caseKw['destination'] ?? '') === '北海道', 'kw: document destination');
+sq_assert(($caseKw['destination'] ?? []) === ['北海道'], 'kw: document destination');
 sq_assert(($caseKw['keyword'] ?? '') === '賞楓', 'kw: document keyword');
 sq_assert(($caseKw['source_keyword_query'] ?? '') === '北海道 賞楓', 'kw: source_keyword_query');
 
@@ -109,13 +109,13 @@ $case1 = SearchCondition::empty('北海道自由行10月')->with([
     'date_to' => '2026-10-31',
 ]);
 $case1Doc = TravelBMultiSourceLinkBuilder::hybridConditionToSearchDocument($case1);
-sq_assert(($case1Doc['destination'] ?? '') === '北海道', 'case1: runtime destination');
+sq_assert(($case1Doc['destination'] ?? []) === ['北海道'], 'case1: runtime destination');
 sq_assert(($case1Doc['keyword'] ?? '') === '' || ($case1Doc['keyword'] ?? null) === null, 'case1: keyword still empty');
 sq_assert(($case1Doc['product_type'] ?? '') === '自由行', 'case1: product_type independent');
 sq_assert(($case1Doc['source_keyword_query'] ?? '') === '北海道 自由行', 'case1: source_keyword_query');
 sq_assert($case1->getKeyword() === null, 'case1: SearchCondition.keyword null');
 sq_assert($case1->getProductType() === '自由行', 'case1: SearchCondition.product_type');
-sq_assert($case1->getDestination() === '北海道', 'case1: SearchCondition.destination');
+sq_assert($case1->getDestination() === ['北海道'], 'case1: SearchCondition.destination');
 
 $grpUrl1 = (new ProductSourceSearchUrlBuilder($registry))->buildSearchUrl([
     'tenant_instance' => 'dayitravel_grp',
@@ -157,7 +157,7 @@ $case2Doc = TravelBMultiSourceLinkBuilder::hybridConditionToSearchDocument($case
 sq_assert(($case2Doc['source_keyword_query'] ?? '') === '北海道 賞楓 自由行', 'case2: source_keyword_query');
 sq_assert(($case2Doc['keyword'] ?? '') === '賞楓', 'case2: keyword not polluted by product_type');
 sq_assert(($case2Doc['product_type'] ?? '') === '自由行', 'case2: product_type retained');
-sq_assert($case2->getDestination() === '北海道', 'case2: destination unchanged');
+sq_assert($case2->getDestination() === ['北海道'], 'case2: destination unchanged');
 sq_assert($case2->getKeyword() === '賞楓', 'case2: keyword unchanged');
 
 $bbcUrl2 = (new ProductSourceSearchUrlBuilder($registry))->buildSearchUrl([
@@ -215,7 +215,7 @@ $authIntent = BatsSearchIntent::empty($utterance)->with([
     'date_to' => '2026-10-31',
     'product_type' => '自由行',
 ]);
-sq_assert($authIntent->getDestination() === '北海道', 'case4: intent destination');
+sq_assert($authIntent->getDestination() === ['北海道'], 'case4: intent destination');
 sq_assert($authIntent->getProductType() === '自由行', 'case4: intent product_type');
 
 // Direct SearchCondition path: keyword stays null; product_type independent.
@@ -237,7 +237,7 @@ sq_assert(($doc4Direct['keyword'] ?? '') !== '自由行', 'case4: keyword not po
 $mapper = new BatsSearchIntentMapper();
 $cond4 = $mapper->toSearchCondition($authIntent);
 sq_assert($cond4 !== null, 'case4: SearchCondition built');
-sq_assert($cond4->getDestination() === '北海道', 'case4: condition destination');
+sq_assert($cond4->getDestination() === ['北海道'], 'case4: condition destination');
 sq_assert($cond4->getProductType() === '自由行', 'case4: condition product_type');
 sq_assert($cond4->getKeyword() !== '自由行', 'case4: mapped keyword not product_type');
 
@@ -274,7 +274,7 @@ $result4 = $service->buildTourContextResult([
 ]);
 sq_assert(!$result4->isClarificationRequired(), 'case4: product search executes (no date clarification)');
 sq_assert($result4->getIntent()->getProductType() === '自由行', 'case4: runtime product_type retained after search');
-sq_assert($result4->getIntent()->getDestination() === '北海道', 'case4: runtime destination retained');
+sq_assert($result4->getIntent()->getDestination() === ['北海道'], 'case4: runtime destination retained');
 sq_assert(count($result4->getSearchResults()) > 0, 'case4: product search returned results');
 
 $bonusmeeUrl4 = (new SearchUrlBuilder(false))->build('5f99b8d665e8444d', $cond4Direct);

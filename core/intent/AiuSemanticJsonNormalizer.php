@@ -1,29 +1,60 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuPromptRequest.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiIntentCategory.php';
-require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuGeminiUnderstandingClientInterface.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuDateEntityResolver.php';
-require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'BatsSearchIntent.php';
 
 /**
- * Phase 2-D Step 2-D-4 — Semantic JSON v1.0 Normalizer（§16.6 / §16.7）.
+ * AIU v2 Normalize — Translation Layer.
+ *
+ * SSOT: docs/BATS_AI_NORMALIZE.md (Frozen) — Gap B0-1～B0-5.
+ * Does NOT produce dispatch_plan / execution_hint / semantic_notes.
  */
 final class AiuSemanticJsonNormalizer
 {
-    private AiuDateEntityResolver $dateEntityResolver;
+    /** @var list<string> */
+    private const FROZEN_SCALAR_KEYS = [
+        'travel_area',
+        'date_from',
+        'date_to',
+        'date_expression',
+        'duration_days',
+        'date_flexibility',
+        'product_type',
+        'occasion',
+        'travel_style',
+        'departure',
+        'people_count',
+        'adult_count',
+        'child_count',
+        'senior_count',
+        'group_type',
+        'budget_amount',
+        'budget_unit',
+        'currency',
+        'price_sensitivity',
+    ];
 
     /** @var list<string> */
-    private const PRODUCT_TYPE_TOKENS = [
-        '自由行',
-        '跟團',
-        '半自助',
-        '包車',
-        '郵輪',
-        '團體',
-        '迷你團',
+    private const FROZEN_ARRAY_KEYS = [
+        'destination',
+        'theme',
+        'route',
+        'hotel_preference',
+        'transportation_preference',
+        'airline_preference',
+        'meal_preference',
+        'room_preference',
+        'constraint',
+        'exclusion',
+        'special_need',
+        'preserved_keywords',
+        'unclassified_terms',
+        'must_have',
+        'avoid',
     ];
+
+    private AiuDateEntityResolver $dateEntityResolver;
 
     public function __construct(?AiuDateEntityResolver $dateEntityResolver = null)
     {
@@ -31,17 +62,10 @@ final class AiuSemanticJsonNormalizer
     }
 
     /**
-     * @param array{
-     *   intent: string,
-     *   entity: array<string, mixed>,
-     *   confidence: float,
-     *   clarification: array{required: bool, reason: string},
-     *   semantic_notes?: string
-     * } $semantic
-     *
+     * @param array<string, mixed> $semantic
      * @return array{
      *   intent: string,
-     *   entity: array<string, mixed>,
+     *   entities: array<string, mixed>,
      *   clarification_required: bool,
      *   clarification_reason: string,
      *   confidence: float
@@ -52,12 +76,12 @@ final class AiuSemanticJsonNormalizer
         string $customerUtterance,
         ?\DateTimeImmutable $referenceDate = null
     ): array {
+        unset($customerUtterance);
+
         $intent = $this->normalizeIntent((string) ($semantic['intent'] ?? ''));
-        $entity = $this->normalizeEntity(
-            isset($semantic['entity']) && is_array($semantic['entity']) ? $semantic['entity'] : [],
-            $customerUtterance,
-            $intent
-        );
+        $rawEntities = $this->extractEntitiesMap($semantic);
+        $entities = $this->normalizeEntities($rawEntities);
+
         $clarification = isset($semantic['clarification']) && is_array($semantic['clarification'])
             ? $semantic['clarification']
             : [];
@@ -67,13 +91,13 @@ final class AiuSemanticJsonNormalizer
 
         if ($intent === AiIntentCategory::PRODUCT_SEARCH) {
             $dateResolved = $this->dateEntityResolver->resolve(
-                $entity,
-                $customerUtterance,
+                $entities,
+                '',
                 $clarificationRequired,
                 $clarificationReason,
                 $referenceDate
             );
-            $entity = $dateResolved['entity'];
+            $entities = $dateResolved['entities'];
             $clarificationRequired = $dateResolved['clarification_required'];
             $clarificationReason = $dateResolved['clarification_reason'];
         }
@@ -87,7 +111,7 @@ final class AiuSemanticJsonNormalizer
 
         return [
             'intent' => $intent,
-            'entity' => $entity,
+            'entities' => $entities,
             'clarification_required' => $clarificationRequired,
             'clarification_reason' => $clarificationReason,
             'confidence' => max(0.0, min(1.0, $confidence)),
@@ -97,11 +121,20 @@ final class AiuSemanticJsonNormalizer
     private function normalizeIntent(string $intent): string
     {
         $intent = trim($intent);
-        if (strcasecmp($intent, 'Product Search') === 0 || strcasecmp($intent, 'product_search') === 0) {
+        if (
+            strcasecmp($intent, 'Product Search') === 0
+            || strcasecmp($intent, 'product_search') === 0
+        ) {
             return AiIntentCategory::PRODUCT_SEARCH;
         }
         if (strcasecmp($intent, 'Knowledge') === 0 || strcasecmp($intent, 'knowledge') === 0) {
             return AiIntentCategory::KNOWLEDGE;
+        }
+        if (
+            strcasecmp($intent, 'human_service') === 0
+            || strcasecmp($intent, 'Human Service') === 0
+        ) {
+            return AiIntentCategory::HUMAN_SERVICE;
         }
         if (strcasecmp($intent, 'Ambiguous') === 0 || strcasecmp($intent, 'ambiguous') === 0) {
             return AiIntentCategory::AMBIGUOUS;
@@ -111,87 +144,95 @@ final class AiuSemanticJsonNormalizer
     }
 
     /**
-     * @param array<string, mixed> $entity
+     * @param array<string, mixed> $semantic
      * @return array<string, mixed>
      */
-    private function normalizeEntity(array $entity, string $customerUtterance, string $intent): array
+    private function extractEntitiesMap(array $semantic): array
     {
-        if ($intent !== AiIntentCategory::PRODUCT_SEARCH) {
-            if ($this->isHumanServiceEntity($entity)) {
-                return [
-                    'human_service_request' => true,
-                    'free_text' => $customerUtterance,
-                ];
-            }
+        if (isset($semantic['entities']) && is_array($semantic['entities'])) {
+            return $semantic['entities'];
+        }
 
+        return [];
+    }
+
+    /**
+     * @param array<string, mixed> $raw
+     * @return array<string, mixed>
+     */
+    private function normalizeEntities(array $raw): array
+    {
+        $out = [];
+        foreach (self::FROZEN_ARRAY_KEYS as $key) {
+            $out[$key] = [];
+        }
+        foreach (self::FROZEN_SCALAR_KEYS as $key) {
+            $out[$key] = null;
+        }
+
+        // B0-4: destination[] preserved as array — never split to primary.
+        $out['destination'] = $this->destinationList($raw['destination'] ?? null);
+
+        foreach (self::FROZEN_SCALAR_KEYS as $key) {
+            if ($key === 'date_from' || $key === 'date_to') {
+                continue;
+            }
+            if ($key === 'people_count' || $key === 'adult_count' || $key === 'child_count'
+                || $key === 'senior_count' || $key === 'duration_days') {
+                $out[$key] = $this->nullableInt($raw[$key] ?? null);
+                continue;
+            }
+            if ($key === 'budget_amount') {
+                $out[$key] = $this->nullableNumber($raw[$key] ?? null);
+                continue;
+            }
+            $out[$key] = $this->nullableString($raw[$key] ?? null);
+        }
+
+        foreach (self::FROZEN_ARRAY_KEYS as $key) {
+            if ($key === 'destination' || $key === 'must_have' || $key === 'avoid') {
+                continue;
+            }
+            $out[$key] = $this->stringList($raw[$key] ?? []);
+        }
+
+        // Frozen §7.6 — semantic-equivalent projection only.
+        $out['must_have'] = $this->stringList(
+            !empty($raw['must_have']) ? $raw['must_have'] : ($raw['constraint'] ?? [])
+        );
+        $out['avoid'] = $this->stringList(
+            !empty($raw['avoid']) ? $raw['avoid'] : ($raw['exclusion'] ?? [])
+        );
+
+        // Frozen §7.3 — date_range flatten only; no re-inference.
+        $dateRange = $raw['date_range'] ?? null;
+        if (is_array($dateRange)) {
+            $out['date_from'] = $this->nullableString($dateRange['from'] ?? null);
+            $out['date_to'] = $this->nullableString($dateRange['to'] ?? null);
+        } else {
+            $out['date_from'] = $this->nullableString($raw['date_from'] ?? null);
+            $out['date_to'] = $this->nullableString($raw['date_to'] ?? null);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param mixed $value
+     * @return list<string>
+     */
+    private function destinationList($value): array
+    {
+        if ($value === null || $value === '') {
             return [];
         }
+        if (is_string($value) || is_numeric($value)) {
+            $s = trim((string) $value);
 
-        $freeText = trim((string) ($entity['free_text'] ?? $customerUtterance));
-        $destination = isset($entity['destination']) ? trim((string) $entity['destination']) : null;
-        if ($destination === '') {
-            $destination = null;
+            return $s === '' ? [] : [$s];
         }
 
-        $peopleCount = $this->nullableInt($entity['people_count'] ?? null);
-        $peopleLabel = $this->nullableString($entity['people_label'] ?? null);
-        if ($peopleLabel === null && isset($entity['people']) && is_scalar($entity['people'])) {
-            $peopleRaw = trim((string) $entity['people']);
-            if ($peopleRaw !== '') {
-                if (is_numeric($peopleRaw)) {
-                    $peopleCount = (int) $peopleRaw;
-                } else {
-                    $peopleLabel = $peopleRaw;
-                    $peopleCount = null;
-                }
-            }
-        }
-        if (
-            $peopleCount === null
-            && $peopleLabel === null
-            && isset($entity['people_count'])
-            && $entity['people_count'] !== null
-            && $entity['people_count'] !== ''
-            && !is_numeric($entity['people_count'])
-        ) {
-            $peopleLabel = trim((string) $entity['people_count']);
-        }
-
-        $travelType = $this->stringList($entity['travel_type'] ?? []);
-        $productType = $this->nullableString($entity['product_type'] ?? null);
-        if ($productType === null) {
-            foreach ($travelType as $token) {
-                if ($this->isProductTypeToken($token)) {
-                    $productType = $token;
-                    break;
-                }
-            }
-        }
-
-        return [
-            'intent' => BatsSearchIntent::INTENT_TOUR_SEARCH,
-            'destination' => $destination,
-            'destination_alias' => $this->stringList($entity['destination_alias'] ?? []),
-            'multi_destination' => $this->stringList($entity['multi_destination'] ?? []),
-            'departure_city' => $this->nullableString($entity['departure_city'] ?? null),
-            'date_from' => $this->nullableString($entity['date_from'] ?? null),
-            'date_to' => $this->nullableString($entity['date_to'] ?? null),
-            'travel_type' => $travelType,
-            'budget_min' => $this->nullableInt($entity['budget_min'] ?? null),
-            'budget_max' => $this->nullableInt($entity['budget_max'] ?? null),
-            'people_count' => $peopleCount,
-            'people_label' => $peopleLabel,
-            'duration' => $this->nullableString($entity['duration'] ?? null),
-            'product_type' => $productType,
-            'landmark' => $this->nullableString($entity['landmark'] ?? null),
-            'must_have' => $this->stringList($entity['must_have'] ?? []),
-            'avoid' => $this->stringList($entity['avoid'] ?? []),
-            'clarification_required' => (bool) ($entity['clarification_required'] ?? false),
-            'clarification_reason' => $this->nullableString($entity['clarification_reason'] ?? null),
-            'confidence' => isset($entity['confidence']) ? (float) $entity['confidence'] : 0.0,
-            'free_text' => $freeText,
-            'human_service_request' => $this->isHumanServiceEntity($entity),
-        ];
+        return $this->stringList($value);
     }
 
     /**
@@ -206,13 +247,16 @@ final class AiuSemanticJsonNormalizer
 
         $out = [];
         foreach ($value as $item) {
+            if (!is_scalar($item)) {
+                continue;
+            }
             $s = trim((string) $item);
             if ($s !== '') {
                 $out[] = $s;
             }
         }
 
-        return $out;
+        return array_values(array_unique($out));
     }
 
     /**
@@ -241,15 +285,15 @@ final class AiuSemanticJsonNormalizer
     }
 
     /**
-     * @param array<string, mixed> $entity
+     * @param mixed $value
+     * @return int|float|null
      */
-    private function isHumanServiceEntity(array $entity): bool
+    private function nullableNumber($value)
     {
-        return ($entity['human_service_request'] ?? false) === true;
-    }
+        if ($value === null || $value === '') {
+            return null;
+        }
 
-    private function isProductTypeToken(string $token): bool
-    {
-        return in_array(trim($token), self::PRODUCT_TYPE_TOKENS, true);
+        return is_numeric($value) ? 0 + $value : null;
     }
 }

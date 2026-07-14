@@ -17,11 +17,15 @@ final class AiIntentCategory
     public const KNOWLEDGE = 'Knowledge';
     public const AMBIGUOUS = 'Ambiguous';
 
+    /** AIU v2 Output Contract enum (also accepted by Normalize). */
+    public const HUMAN_SERVICE = 'human_service';
+
     /** @var list<string> */
     private const VALID = [
         self::PRODUCT_SEARCH,
         self::KNOWLEDGE,
         self::AMBIGUOUS,
+        self::HUMAN_SERVICE,
     ];
 
     public static function isValid(string $intent): bool

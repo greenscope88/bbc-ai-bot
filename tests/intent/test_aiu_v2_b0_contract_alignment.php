@@ -1,0 +1,208 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * B0 Contract Alignment — Gemini Output + Normalize contract tests.
+ */
+
+$root = dirname(__DIR__, 2);
+require_once $root . '/core/intent/AiuPromptBuilder.php';
+require_once $root . '/core/intent/AiuPromptRequest.php';
+require_once $root . '/core/intent/AiuGeminiUnderstandingClient.php';
+require_once $root . '/core/intent/AiuSemanticJsonNormalizer.php';
+require_once $root . '/core/intent/AiIntentUnderstandingRuntime.php';
+require_once $root . '/core/intent/AiIntentUnderstandingResult.php';
+require_once $root . '/core/intent/AiIntentCategory.php';
+require_once $root . '/core/intent/AiIntentUnderstandingRuntimeSelector.php';
+require_once $root . '/core/conversation/ConversationOwner.php';
+
+function b0_assert(bool $cond, string $msg): void
+{
+    if (!$cond) {
+        fwrite(STDERR, "FAIL: {$msg}\n");
+        exit(1);
+    }
+    echo "PASS: {$msg}\n";
+}
+
+function b0_assert_contract_failure(callable $fn, string $label): void
+{
+    try {
+        $fn();
+        fwrite(STDERR, "FAIL: {$label} must throw RuntimeException\n");
+        exit(1);
+    } catch (\RuntimeException $e) {
+        b0_assert(
+            strpos($e->getMessage(), 'Gemini output contract invalid') !== false,
+            "{$label} throws contract validation failure"
+        );
+    }
+}
+
+// --- B0-6 Prompt ---
+$builder = new AiuPromptBuilder();
+$req = new AiuPromptRequest('sno', 'line', '京都自由行10月', [], ConversationOwner::AI, 'active', null, null);
+$prompt = $builder->build($req);
+b0_assert(strpos($prompt, '"entities"') !== false, 'B0-6 prompt mentions entities');
+b0_assert(strpos($prompt, 'semantic_notes') === false || strpos($prompt, 'Do NOT output semantic_notes') !== false, 'B0-6 prompt forbids semantic_notes');
+b0_assert(strpos($prompt, 'dispatch_plan') !== false && strpos($prompt, 'Do NOT output dispatch_plan') !== false, 'B0-6 prompt forbids dispatch_plan');
+
+// --- B0-1 / B0-2 Client shape ---
+$client = new AiuGeminiUnderstandingClient(null, static function () {
+    return [
+        'ok' => true,
+        'text' => json_encode([
+            'intent' => 'product_search',
+            'entities' => [
+                'destination' => ['京都', '大阪'],
+                'date_range' => ['from' => '2026-10-01', 'to' => '2026-10-31'],
+                'date_expression' => '10月',
+                'product_type' => '自由行',
+            ],
+            'confidence' => 0.9,
+            'clarification' => ['required' => false, 'reason' => ''],
+            'semantic_notes' => 'should be dropped',
+            'dispatch_plan' => 'product',
+            'execution_hint' => 'product_search',
+        ], JSON_UNESCAPED_UNICODE),
+        'error' => null,
+    ];
+});
+$shaped = $client->understand($req);
+b0_assert(isset($shaped['entities']) && is_array($shaped['entities']), 'B0-1 client outputs entities');
+b0_assert(!array_key_exists('entity', $shaped), 'B0-1 client does not output entity key');
+b0_assert(!array_key_exists('semantic_notes', $shaped), 'B0-2 client drops semantic_notes');
+b0_assert(!array_key_exists('dispatch_plan', $shaped), 'B0-3 client does not pass dispatch_plan');
+b0_assert(!array_key_exists('execution_hint', $shaped), 'B0-3 client does not pass execution_hint');
+
+// FR-1: Legacy entity input → contract validation failure (no silent empty entities)
+$clientLegacy = new AiuGeminiUnderstandingClient(null, static function () {
+    return [
+        'ok' => true,
+        'text' => json_encode([
+            'intent' => 'Product Search',
+            'entity' => ['destination' => '東京', 'date_from' => '2026-08-01'],
+            'confidence' => 0.8,
+            'clarification' => ['required' => false, 'reason' => ''],
+        ], JSON_UNESCAPED_UNICODE),
+        'error' => null,
+    ];
+});
+b0_assert_contract_failure(
+    static fn () => $clientLegacy->understand($req),
+    'FR-1 legacy entity only'
+);
+
+// FR-1: Missing entities → contract validation failure
+$clientMissingEntities = new AiuGeminiUnderstandingClient(null, static function () {
+    return [
+        'ok' => true,
+        'text' => json_encode([
+            'intent' => 'product_search',
+            'confidence' => 0.8,
+            'clarification' => ['required' => false, 'reason' => ''],
+        ], JSON_UNESCAPED_UNICODE),
+        'error' => null,
+    ];
+});
+b0_assert_contract_failure(
+    static fn () => $clientMissingEntities->understand($req),
+    'FR-1 missing entities'
+);
+
+// FR-1: Wrong-type entities → contract validation failure
+$clientWrongType = new AiuGeminiUnderstandingClient(null, static function () {
+    return [
+        'ok' => true,
+        'text' => json_encode([
+            'intent' => 'product_search',
+            'entities' => 'not-an-array',
+            'confidence' => 0.8,
+            'clarification' => ['required' => false, 'reason' => ''],
+        ], JSON_UNESCAPED_UNICODE),
+        'error' => null,
+    ];
+});
+b0_assert_contract_failure(
+    static fn () => $clientWrongType->understand($req),
+    'FR-1 wrong-type entities'
+);
+
+// FR-1: Invalid contract stops runtime — selector returns Formal Fail-closed Result
+$runtimeInvalid = new AiIntentUnderstandingRuntime($clientLegacy);
+b0_assert_contract_failure(
+    static fn () => $runtimeInvalid->understand('東京', ['conversation_id' => 'c-fr1', 'tenant_sno' => '5f99b8d665e8444d']),
+    'FR-1 runtime stops on invalid contract'
+);
+$flagOn = [
+    AiIntentUnderstandingRuntimeSelector::FLAG_ENABLED => true,
+    AiIntentUnderstandingRuntimeSelector::FLAG_TENANTS => ['5f99b8d665e8444d'],
+];
+$selectorRes = AiIntentUnderstandingRuntimeSelector::resolve([
+    'tenant_sno' => '5f99b8d665e8444d',
+    'conversation_id' => 'c-fr1',
+    'message' => '東京',
+    'config' => $flagOn,
+], $runtimeInvalid);
+b0_assert(
+    ($selectorRes['runtime_source'] ?? '') === AiIntentUnderstandingRuntimeSelector::SOURCE_FAIL_CLOSED,
+    'FR-1 selector fail_closed on contract failure'
+);
+b0_assert(
+    ($selectorRes['failure_reason'] ?? '') === AiIntentUnderstandingRuntimeSelector::FAILURE_REASON_RUNTIME,
+    'FR-1 selector failure_reason is AIU_RUNTIME_FAILURE'
+);
+b0_assert(count($selectorRes) === 2, 'FR-1 selector only 2 fields');
+b0_assert(!array_key_exists('fallback_reason', $selectorRes), 'FR-1 selector no fallback_reason');
+b0_assert(!array_key_exists('intent_type', $selectorRes), 'FR-1 selector no intent_type');
+b0_assert(!array_key_exists('legacy_intent_type', $selectorRes), 'FR-1 selector no legacy_intent_type');
+
+// --- B0-4 / B0-5 Normalize ---
+$normalizer = new AiuSemanticJsonNormalizer();
+$norm = $normalizer->normalize($shaped, '想安排京都大阪自由行，10月出發');
+b0_assert(isset($norm['entities']), 'Normalize returns entities');
+b0_assert(is_array($norm['entities']['destination']), 'B0-4 destination is array');
+b0_assert($norm['entities']['destination'] === ['京都', '大阪'], 'B0-4 destination array preserved order');
+b0_assert(!array_key_exists('travel_type', $norm['entities']), 'Frozen: no travel_type in entities');
+b0_assert(!array_key_exists('human_service_request', $norm['entities']), 'Frozen: no human_service_request in entities');
+b0_assert(($norm['entities']['date_from'] ?? null) === '2026-10-01', 'B0-5 date_from mapped from date_range');
+b0_assert(($norm['entities']['date_to'] ?? null) === '2026-10-31', 'B0-5 date_to mapped from date_range');
+b0_assert(!array_key_exists('dispatch_plan', $norm), 'B0-3 normalize has no dispatch_plan');
+b0_assert(!array_key_exists('execution_hint', $norm), 'B0-3 normalize has no execution_hint');
+b0_assert(!array_key_exists('semantic_notes', $norm), 'B0-2 normalize has no semantic_notes');
+
+// Fuzzy date: expression only → date_range null, no invent
+$fuzzy = $normalizer->normalize([
+    'intent' => 'product_search',
+    'entities' => [
+        'destination' => ['日本'],
+        'date_range' => null,
+        'date_expression' => '有空再去',
+    ],
+    'confidence' => 0.6,
+    'clarification' => ['required' => true, 'reason' => 'missing_travel_dates'],
+], '有空再去日本');
+b0_assert(($fuzzy['entities']['date_from'] ?? null) === null, 'B0-5 fuzzy date_from null');
+b0_assert(($fuzzy['entities']['date_to'] ?? null) === null, 'B0-5 fuzzy date_to null');
+b0_assert(($fuzzy['entities']['date_expression'] ?? null) === '有空再去', 'B0-5 keeps date_expression');
+
+// --- B0-3 Runtime Result ---
+$runtime = AiIntentUnderstandingRuntime::createForTesting(
+    new AiuGeminiUnderstandingClientStub(static function () use ($shaped): array {
+        return $shaped;
+    })
+);
+$result = $runtime->understand('京都自由行10月', [
+    'conversation_id' => 'c1',
+    'tenant_sno' => '5f99b8d665e8444d',
+]);
+$arr = $result->toArray();
+b0_assert(isset($arr['entities']), 'Result toArray has entities');
+b0_assert(!array_key_exists('dispatch_plan', $arr), 'B0-3 Result toArray has no dispatch_plan');
+b0_assert(!array_key_exists('execution_hint', $arr), 'B0-3 Result toArray has no execution_hint');
+b0_assert(!array_key_exists('entity', $arr), 'B0-1 Result toArray has no entity alias');
+b0_assert(!array_key_exists('travel_type', $arr['entities']), 'Frozen: Result entities have no travel_type');
+b0_assert(is_array($result->getEntities()['destination']), 'Result entities.destination array');
+
+echo "\nB0 CONTRACT VALIDATION: ALL PASS\n";
+exit(0);

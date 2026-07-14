@@ -216,8 +216,9 @@ $hokkaidoPipeline = GroundingPipelineRuntime::composeProductReply([
     'tenant' => $tenant,
     'legacy_tenant' => $tenant,
     'bats_search_intent' => [
-        'destination' => '北海道',
+        'destination' => ['北海道'],
         'date_from' => '8月',
+        'duration' => '五天',
         'free_text' => $hokkaidoQuery,
     ],
     'composer' => $composer,
@@ -232,8 +233,9 @@ $hokkaidoAssembled = $groundingRuntime->assemble(GroundingOrchestratorContextFac
     'dispatch_result' => ['reply_purpose' => GroundedInput::PURPOSE_PRODUCT_REPLY],
     'tenant' => $tenant,
     'bats_search_intent' => [
-        'destination' => '北海道',
+        'destination' => ['北海道'],
         'date_from' => '8月',
+        'duration' => '五天',
     ],
 ]));
 $hokkaidoCtx = $hokkaidoAssembled->getConversationContext();

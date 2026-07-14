@@ -10,7 +10,6 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPA
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tenant_resolver.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tenant_context_resolver.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tour_prompt_feature_gate.php';
-require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridSearchFeatureGate.php';
 
 $failures = 0;
 
@@ -62,7 +61,6 @@ $gateCtx = [
     'tenantRegistry' => $registry,
 ];
 test_assert(TourPromptFeatureGate::isEnabled($gateCtx) === true, 'TourPromptFeatureGate ON for travel_b');
-test_assert(HybridSearchFeatureGate::isEnabled($gateCtx, null) === true, 'HybridSearchFeatureGate ON for travel_b');
 test_assert(TourPromptFeatureGate::isFixedFormatterEnabled($gateCtx, $registry) === true, 'isFixedFormatterEnabled ON for travel_b');
 
 // 6. TenantContextResolver shape (registry bridge path)

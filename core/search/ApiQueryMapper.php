@@ -42,7 +42,8 @@ final class ApiQueryMapper
             }
         }
 
-        $hasDestinationParam = $canonical['destination'] !== null && $canonical['destination'] !== '';
+        $destinations = $canonical['destination'];
+        $hasDestinationParam = is_array($destinations) && $destinations !== [];
         $wireKeyword = $hasDestinationParam
             ? SourceQueryMapper::buildHostBKeywordFromSearchCondition($condition)
             : SourceQueryMapper::buildSourceKeywordQueryFromSearchCondition($condition);
@@ -53,8 +54,10 @@ final class ApiQueryMapper
             $params['keyword'] = $wireKeyword;
         }
 
-        if ($canonical['destination'] !== null && $canonical['destination'] !== '') {
-            $params['destination'] = $canonical['destination'];
+        if ($hasDestinationParam) {
+            $params['destination'] = count($destinations) === 1
+                ? $destinations[0]
+                : implode(' ', $destinations);
         }
 
         if ($canonical['country'] !== null && $canonical['country'] !== '') {

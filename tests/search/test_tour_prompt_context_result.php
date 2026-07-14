@@ -15,8 +15,8 @@ function test_assert(bool $cond, string $message): void
     }
 }
 
-$intent = new BatsSearchIntent('北海道7月', BatsSearchIntent::INTENT_TOUR_SEARCH, '北海道');
-$condition = SearchCondition::empty('北海道7月')->with(['destination' => '北海道', 'keyword' => '北海道']);
+$intent = new BatsSearchIntent('北海道7月', BatsSearchIntent::INTENT_TOUR_SEARCH, ['北海道']);
+$condition = SearchCondition::empty('北海道7月')->with(['destination' => ['北海道'], 'keyword' => '北海道']);
 
 // Case 1: empty()
 $empty = TourPromptContextResult::empty();
@@ -29,7 +29,7 @@ test_assert($empty->getClarificationReason() === null, 'case1: no clarification_
 
 // Case 2: clarificationRequired()
 $clarifyIntent = BatsSearchIntent::empty('北海道')->with([
-    'destination' => '北海道',
+    'destination' => ['北海道'],
     'clarification_required' => true,
     'clarification_reason' => ClarificationPolicy::REASON_DATE_REQUIRED,
 ]);

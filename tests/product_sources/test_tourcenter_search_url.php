@@ -4,8 +4,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'SearchUrlBuilder.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'SearchUrlBuilderRegistry.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'TravelBMultiSourceLinkBuilder.php';
-require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridSearchConditionBuilder.php';
-require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'DateParser.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'support' . DIRECTORY_SEPARATOR . 'GeminiDerivedSearchConditionFixtures.php';
 
 $failures = 0;
 
@@ -106,21 +105,13 @@ $multiConfig = [
 ];
 $multiBuilder = new TravelBMultiSourceLinkBuilder($multiConfig);
 $sno = TravelBMultiSourceLinkBuilder::TRAVEL_B_SNO;
-$ref = new DateTimeImmutable('2026-06-06', new DateTimeZone('Asia/Taipei'));
-$hybridBuilder = new HybridSearchConditionBuilder(new DateParser($ref));
 
-$conditionTpe = $hybridBuilder->parse('松山東京6月底', [
-    'reference_date' => $ref,
-    'merge_legacy_keyword' => true,
-]);
+$conditionTpe = GeminiDerivedSearchConditionFixtures::songshanTokyoLateJune();
 $urlTpe = tc_tourcenter_url_from_multi($multiBuilder, $conditionTpe, $sno);
 tc_url_assert($conditionTpe->getDepartureCity() === '松山', 'hybrid keeps departure_city 松山');
 tc_url_assert(strpos($urlTpe, 'DepartureID=TPE') !== false, 'hybrid 松山 -> tourcenter DepartureID=TPE');
 
-$conditionAll = $hybridBuilder->parse('東京6月底', [
-    'reference_date' => $ref,
-    'merge_legacy_keyword' => true,
-]);
+$conditionAll = GeminiDerivedSearchConditionFixtures::tokyoLateJuneOnly();
 $urlAll = tc_tourcenter_url_from_multi($multiBuilder, $conditionAll, $sno);
 tc_url_assert($conditionAll->getDepartureCity() === null, 'hybrid unlimited departure_city null');
 tc_url_assert(strpos($urlAll, 'DepartureID=&') !== false || preg_match('/DepartureID=$/', $urlAll) === 1, 'hybrid unlimited -> DepartureID=');

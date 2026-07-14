@@ -3,8 +3,7 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'TenantSourceRuntimeBridge.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'TravelBMultiSourceLinkBuilder.php';
-require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridSearchConditionBuilder.php';
-require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'DateParser.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'support' . DIRECTORY_SEPARATOR . 'GeminiDerivedSearchConditionFixtures.php';
 
 $failures = 0;
 
@@ -66,12 +65,7 @@ $multiConfig = [
     'source_instance_keys' => $legacyKeys,
 ];
 $multiBuilder = new TravelBMultiSourceLinkBuilder($multiConfig);
-$ref = new DateTimeImmutable('2026-06-06', new DateTimeZone('Asia/Taipei'));
-$hybridBuilder = new HybridSearchConditionBuilder(new DateParser($ref));
-$condition = $hybridBuilder->parse('東京近期', [
-    'reference_date' => $ref,
-    'merge_legacy_keyword' => true,
-]);
+$condition = GeminiDerivedSearchConditionFixtures::recentTokyoCondition();
 $links = $multiBuilder->buildFromHybridCondition($condition, $travelBSno);
 tsrb_assert(count($links) === 3, 'link builder returns 3 links');
 $platforms = array_map(static function (array $row): string {

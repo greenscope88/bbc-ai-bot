@@ -1,6 +1,9 @@
 <?php
 
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core'
+    . DIRECTORY_SEPARATOR . 'intent'
+    . DIRECTORY_SEPARATOR . 'AiRuntimeIntent.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core'
     . DIRECTORY_SEPARATOR . 'conversation'
     . DIRECTORY_SEPARATOR . 'ConversationRuntimeShadowProbe.php';
 
@@ -58,7 +61,7 @@ $resOff = ConversationRuntimeShadowProbe::run([
     'config' => $flagOff,
     'tenant_sno' => $pilotSno,
     'conversation_id' => 'conv-off',
-    'intent_type' => 'product_search',
+    'intent_type' => AiRuntimeIntent::PRODUCT_SEARCH,
     'legacy_allowed' => true,
     'now' => $now,
 ], ConversationRuntimeFacade::createForTesting(), $logger);
@@ -72,7 +75,7 @@ $resMismatch = ConversationRuntimeShadowProbe::run([
     'config' => $flagOn,
     'tenant_sno' => 'not-pilot',
     'conversation_id' => 'conv-mismatch',
-    'intent_type' => 'product_search',
+    'intent_type' => AiRuntimeIntent::PRODUCT_SEARCH,
     'legacy_allowed' => true,
     'now' => $now,
 ], ConversationRuntimeFacade::createForTesting(), $logger);
@@ -86,7 +89,7 @@ $resOn = ConversationRuntimeShadowProbe::run([
     'config' => $flagOn,
     'tenant_sno' => $pilotSno,
     'conversation_id' => 'conv-on',
-    'intent_type' => 'product_search',
+    'intent_type' => AiRuntimeIntent::PRODUCT_SEARCH,
     'legacy_conversation_status' => 'AI_ACTIVE',
     'legacy_allowed' => true,
     'trace_id' => 'trace-on',
@@ -107,7 +110,7 @@ $resParity = ConversationRuntimeShadowProbe::run([
     'config' => $flagOn,
     'tenant_sno' => $pilotSno,
     'conversation_id' => 'conv-parity',
-    'intent_type' => 'product_search',
+    'intent_type' => AiRuntimeIntent::PRODUCT_SEARCH,
     'legacy_conversation_status' => 'HUMAN_ACTIVE',
     'legacy_allowed' => false,
     'now' => $now,
@@ -121,7 +124,7 @@ $resNoConv = ConversationRuntimeShadowProbe::run([
     'config' => $flagOn,
     'tenant_sno' => $pilotSno,
     'conversation_id' => '',
-    'intent_type' => 'product_search',
+    'intent_type' => AiRuntimeIntent::PRODUCT_SEARCH,
     'legacy_allowed' => true,
     'now' => $now,
 ], ConversationRuntimeFacade::createForTesting(), $logger);
@@ -141,7 +144,7 @@ try {
         'config' => $flagOn,
         'tenant_sno' => $pilotSno,
         'conversation_id' => 'conv-exc',
-        'intent_type' => 'product_search',
+        'intent_type' => AiRuntimeIntent::PRODUCT_SEARCH,
         'legacy_allowed' => true,
         'now' => $now,
     ], ConversationRuntimeFacade::createForTesting(), $throwingLogger);

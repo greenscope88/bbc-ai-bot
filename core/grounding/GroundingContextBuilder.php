@@ -85,40 +85,50 @@ final class GroundingContextBuilder
      */
     private function mapAiuEntity(array $aiuProjection): array
     {
-        $entity = isset($aiuProjection['entity']) && is_array($aiuProjection['entity'])
-            ? $aiuProjection['entity']
+        $entities = isset($aiuProjection['entities']) && is_array($aiuProjection['entities'])
+            ? $aiuProjection['entities']
             : [];
 
-        if ($entity === []) {
+        if ($entities === []) {
             return [];
         }
 
         $out = [];
-        $destination = $this->nullableTrimmedString($entity['destination'] ?? null);
-        if ($destination !== null) {
-            $out['destination'] = $destination;
+        $destination = $entities['destination'] ?? null;
+        if (is_array($destination)) {
+            $list = $this->toStringList($destination);
+            if ($list !== []) {
+                $out['destination'] = implode(' ', $list);
+            }
+        } else {
+            $scalar = $this->nullableTrimmedString($destination);
+            if ($scalar !== null) {
+                $out['destination'] = $scalar;
+            }
         }
 
         $travelDates = $this->nullableTrimmedString(
-            $entity['travel_dates'] ?? $entity['dates'] ?? $entity['date_from'] ?? null
+            $entities['travel_dates'] ?? $entities['dates'] ?? $entities['date_from'] ?? null
         );
         if ($travelDates !== null) {
             $out['travel_dates'] = $travelDates;
         }
 
         $partySize = $this->nullableTrimmedString(
-            $entity['party_size'] ?? $entity['people_count'] ?? null
+            $entities['party_size'] ?? $entities['people_count'] ?? null
         );
         if ($partySize !== null) {
             $out['party_size'] = is_numeric($partySize) ? (string) (int) $partySize : $partySize;
         }
 
-        $duration = $this->nullableTrimmedString($entity['duration'] ?? $entity['days'] ?? null);
+        $duration = $this->nullableTrimmedString(
+            $entities['duration'] ?? $entities['duration_days'] ?? $entities['days'] ?? null
+        );
         if ($duration !== null) {
             $out['duration'] = $duration;
         }
 
-        $budget = $this->nullableTrimmedString($entity['budget'] ?? null);
+        $budget = $this->nullableTrimmedString($entities['budget'] ?? $entities['budget_amount'] ?? null);
         if ($budget !== null) {
             $out['budget'] = $budget;
         }
@@ -152,9 +162,17 @@ final class GroundingContextBuilder
         }
 
         $out = [];
-        $destination = $this->nullableTrimmedString($searchIntent['destination'] ?? null);
-        if ($destination !== null) {
-            $out['destination'] = $destination;
+        $destination = $searchIntent['destination'] ?? null;
+        if (is_array($destination)) {
+            $list = $this->toStringList($destination);
+            if ($list !== []) {
+                $out['destination'] = implode(' ', $list);
+            }
+        } else {
+            $scalar = $this->nullableTrimmedString($destination);
+            if ($scalar !== null) {
+                $out['destination'] = $scalar;
+            }
         }
 
         $dateFrom = $this->nullableTrimmedString($searchIntent['date_from'] ?? null);
@@ -165,6 +183,13 @@ final class GroundingContextBuilder
         $peopleCount = $searchIntent['people_count'] ?? null;
         if ($peopleCount !== null && $peopleCount !== '') {
             $out['party_size'] = (string) (int) $peopleCount;
+        }
+
+        $duration = $this->nullableTrimmedString(
+            $searchIntent['duration'] ?? $searchIntent['duration_days'] ?? null
+        );
+        if ($duration !== null) {
+            $out['duration'] = $duration;
         }
 
         return $out;

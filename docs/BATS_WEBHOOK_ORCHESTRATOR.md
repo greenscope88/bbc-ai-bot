@@ -292,7 +292,7 @@ C:\Web\xampp\php\php.exe C:\bbc-ai-bot\tests\product_sources\test_saas_router_ba
 
 ### 2. Safety Guard（必須維持）
 
-- `fallthrough_to_legacy = true`（由 router trace 與 snapshot 都標示）
+- dry-run／snapshot 不接管正式回覆，不改既有 LINE OA 行為
 - 不呼叫 Gemini API / LINE Reply API / Host B / SQL
 - 不修改 hello / weather / legacy tour 正式流程
 
@@ -310,7 +310,6 @@ C:\Web\xampp\php\php.exe C:\bbc-ai-bot\tests\product_sources\test_saas_router_ba
 - `channel_publish_plan.available = false`
 - `gemini_context.available = false`
 - `reason_code`
-- `fallthrough_to_legacy = true`
 - `generated_at_unix`
 
 ### 4. reason_code 說明（26C-2）
@@ -370,7 +369,7 @@ C:\Web\xampp\php\php.exe C:\bbc-ai-bot\tests\product_sources\test_saas_router_ba
 
 ### 4. 安全原則
 
-- `fallthrough_to_legacy` 持續為 `true`
+- dry-run／snapshot 不接管正式回覆
 - 不帶入完整商品明細到 snapshot
 - 不紀錄 token / secret / apiKey / replyToken
 - 不更動 SaaSRouter 正式回覆 return path

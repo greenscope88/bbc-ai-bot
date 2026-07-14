@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/logger.php';
 require_once __DIR__ . '/tenant_resolver.php';
-require_once __DIR__ . '/intent_router.php';
 require_once __DIR__ . '/tour_service.php';
 require_once __DIR__ . '/ai_prompt_builder.php';
 require_once __DIR__ . '/line_service.php';
@@ -26,10 +25,8 @@ require_once __DIR__ . '/product_source/channel_publish_plan/ChannelPublishPlanV
 require_once __DIR__ . '/product_source/renderer/gemini/GeminiRenderer.php';
 require_once __DIR__ . '/product_source/integration/GeminiClient.php';
 require_once __DIR__ . '/product_source/recommendation/ProductRecommendationBuilder.php';
-require_once __DIR__ . '/search/KnowledgeIntentDetector.php';
 require_once __DIR__ . '/search/ConversationQueryMerger.php';
 require_once __DIR__ . '/knowledge/HumanServiceResponseComposer.php';
-require_once __DIR__ . '/search/BatsSearchIntentBuilder.php';
 require_once __DIR__ . '/knowledge/TenantPrivateKnowledgeRuntime.php';
 require_once __DIR__ . '/knowledge/TenantPrivateKnowledgeProviderInterface.php';
 require_once __DIR__ . '/response/GroundedResponseComposer.php';
@@ -39,6 +36,7 @@ require_once __DIR__ . '/conversation/ConversationEventIngestProbe.php';
 require_once __DIR__ . '/conversation/event/ConversationIdentityBuilder.php';
 require_once __DIR__ . '/intent/AiIntentUnderstandingShadowProbe.php';
 require_once __DIR__ . '/intent/AiIntentUnderstandingRuntimeSelector.php';
+require_once __DIR__ . '/intent/AiRuntimeIntent.php';
 require_once __DIR__ . '/intent/AiuProductIntentTranslator.php';
 require_once __DIR__ . '/intent/DispatchPlan.php';
 require_once __DIR__ . '/grounding/GroundingShadowProbe.php';
@@ -163,32 +161,6 @@ class SaaSRouter
             return ['ok' => true, 'message' => 'hello_replied'];
         }
 
-        $intent = IntentRouter::detect($userMessage);
-
-        // Weather must go to Gemini directly (no SQL path)
-        if ($intent['intent'] === 'weather_query') {
-            $geminiResult = callGemini($userMessage);
-            if ($geminiResult['ok']) {
-                $replyText = (string) $geminiResult['text'];
-            } else {
-                $replyText = '天氣查詢暫時無法取得，請稍後再試，或換個方式提問。';
-            }
-
-            $lineReplyRes = LineService::replyToLine($lineReplyUrl, $lineToken, $replyToken, $replyText);
-            self::appendWebhookLog('line_api_response', [
-                'trace_id' => $traceId,
-                'response' => $lineReplyRes,
-            ]);
-
-            Logger::log('saas_router.log', 'weather_reply', [
-                'trace_id' => $traceId,
-                'line_reply_status' => $lineReplyRes['status'],
-                'ai_ok' => $geminiResult['ok'],
-            ]);
-
-            return ['ok' => true, 'message' => 'weather_replied'];
-        }
-
         $tenant = [
             'sno' => '',
             'company_name' => '旅行社客服',
@@ -199,6 +171,7 @@ class SaaSRouter
         ];
         $serviceData = [];
         $limits = [];
+        $userMessageForPrompt = trim($userMessage);
 
         try {
             $pdo = self::createPdo($config);
@@ -218,7 +191,7 @@ class SaaSRouter
                 ]);
             }
 
-            $intent = IntentRouter::detect($userMessage);
+            $userMessageForPrompt = trim($userMessage);
 
             $batsFeatureConfig = self::loadBatsFeatureConfig();
 
@@ -248,7 +221,6 @@ class SaaSRouter
                     $lineReplyUrl,
                     $lineToken,
                     (string) ($tenant['channel_id'] ?? ''),
-                    null,
                     null,
                     null,
                     null,
@@ -303,9 +275,9 @@ class SaaSRouter
                 }
             }
 
-            $supportCheck = TourService::isServiceSupported($pdo, (string) $tenant['sno'], (string) $intent['service_name']);
+            $supportCheck = TourService::isServiceSupported($pdo, (string) $tenant['sno'], '');
             if (!$supportCheck['supported']) {
-                $replyText = '目前我們暫時沒有提供【' . (string) $intent['service_name'] . '】，若您需要，我可以協助您查詢其他目前有提供的服務。';
+                $replyText = '目前我們暫時沒有提供該服務，若您需要，我可以協助您查詢其他目前有提供的服務。';
                 $replyRes = LineService::replyToLine($lineReplyUrl, $lineToken, $replyToken, $replyText);
                 self::appendWebhookLog('line_api_response', [
                     'trace_id' => $traceId,
@@ -314,14 +286,14 @@ class SaaSRouter
                 Logger::log('saas_router.log', 'unsupported_service', [
                     'trace_id' => $traceId,
                     'sno' => $tenant['sno'],
-                    'service' => $intent['service_name'],
+                    'service' => '',
                     'line_reply' => $replyRes,
                 ]);
                 UsageTracker::track((string) $tenant['sno'], 'unsupported_service', mb_strlen($userMessage, 'UTF-8'), mb_strlen($replyText, 'UTF-8'));
                 return ['ok' => true, 'message' => 'unsupported handled'];
             }
 
-            $serviceData = TourService::fetchServiceData($pdo, (string) $tenant['sno'], $intent);
+            $serviceData = TourService::fetchServiceData($pdo, (string) $tenant['sno'], ['user_message' => $userMessageForPrompt]);
             $limits = self::fetchServiceLimits($pdo, (string) $tenant['sno']);
         } catch (Throwable $e) {
             Logger::log('saas_router.log', 'db_layer_fallback', [
@@ -330,28 +302,17 @@ class SaaSRouter
             ]);
         }
 
-        $prompt = AiPromptBuilder::build($tenant, $intent, $serviceData, $limits);
-
-        // Stage 1-B-18: governed by TourPromptFeatureGate (default OFF, empty allowlists).
         $channelId = (string) ($tenant['channel_id'] ?? '');
         if ($channelId === '' && isset($event['destination'])) {
             $channelId = (string) $event['destination'];
         }
 
-        $enableTourPromptContext = TourPromptFeatureGate::isEnabled([
-            'sno' => (string) ($tenant['sno'] ?? ''),
-            'channelId' => $channelId !== '' ? $channelId : null,
-        ]);
-        $tourContext = (new TourPromptContextService())->buildTourContextForPrompt([
-            'userText' => $userMessage,
-            'sno' => (string) ($tenant['sno'] ?? ''),
-            'channelId' => $channelId !== '' ? $channelId : null,
-            'traceId' => $traceId,
-            'featureEnabled' => $enableTourPromptContext,
-        ]);
-        if ($tourContext !== '') {
-            $prompt = AiPromptBuilder::appendTourContext($prompt, $tourContext);
-        }
+        $prompt = AiPromptBuilder::build(
+            $tenant,
+            ['user_message' => $userMessageForPrompt ?? trim($userMessage)],
+            $serviceData,
+            $limits
+        );
 
         $gateCtx = [
             'sno' => (string) ($tenant['sno'] ?? ''),
@@ -361,7 +322,7 @@ class SaaSRouter
 
         $composed = TourLineReplyComposer::resolve(
             $prompt,
-            $tourContext,
+            '',
             static fn (): array => callGemini($prompt),
             $allowFixedFormatter
         );
@@ -375,11 +336,10 @@ class SaaSRouter
             'response' => $lineReplyRes,
         ]);
 
-        UsageTracker::track((string) $tenant['sno'], (string) $intent['intent'], mb_strlen($userMessage, 'UTF-8'), mb_strlen($replyText, 'UTF-8'));
+        UsageTracker::track((string) $tenant['sno'], 'legacy_sql_prompt', mb_strlen($userMessage, 'UTF-8'), mb_strlen($replyText, 'UTF-8'));
         Logger::log('saas_router.log', 'router_complete', [
             'trace_id' => $traceId,
             'sno' => $tenant['sno'],
-            'intent' => $intent,
             'line_reply_status' => $lineReplyRes['status'],
             'elapsed_ms' => (int) ((microtime(true) - $start) * 1000),
             'ai_ok' => $composed['ai_ok'],
@@ -447,7 +407,6 @@ class SaaSRouter
             'bats_dry_run_enabled' => $dryRunEnabled,
             'bats_hook_called' => true,
             'bats_hook_decision' => $featureEnabled ? 'gate_enabled_channel' : 'gate_disabled_channel',
-            'fallthrough_to_legacy' => true,
         ];
 
         Logger::log('saas_router.log', 'bats_hook_trace', $payload);
@@ -531,7 +490,6 @@ class SaaSRouter
             'reason_code' => $snapshotReasonCode,
             'candidate_source_count' => $candidateSourceCount,
             'result_count' => $resultCount,
-            'fallthrough_to_legacy' => true,
         ];
 
         Logger::log('saas_router.log', 'bats_hook_trace_post_resolve', $payload);
@@ -740,12 +698,10 @@ class SaaSRouter
             Logger::log('saas_router.log', 'controlled_real_reply_error', [
                 'trace_id' => $traceId,
                 'reason' => 'missing_line_reply_credentials',
-                'fallthrough_to_legacy' => true,
             ]);
             self::appendWebhookLog('controlled_real_reply_error', [
                 'trace_id' => $traceId,
                 'reason' => 'missing_line_reply_credentials',
-                'fallthrough_to_legacy' => true,
             ]);
 
             return null;
@@ -813,13 +769,11 @@ class SaaSRouter
                 'trace_id' => $traceId,
                 'tenant_sno' => (string) ($tenant['sno'] ?? ''),
                 'message' => $e->getMessage(),
-                'fallthrough_to_legacy' => true,
             ]);
             self::appendWebhookLog('controlled_real_reply_error', [
                 'trace_id' => $traceId,
                 'tenant_sno' => (string) ($tenant['sno'] ?? ''),
                 'message' => $e->getMessage(),
-                'fallthrough_to_legacy' => true,
             ]);
 
             return null;
@@ -969,13 +923,11 @@ class SaaSRouter
                 'trace_id' => $traceId,
                 'tenant_sno' => (string) ($tenant['sno'] ?? ''),
                 'message' => $e->getMessage(),
-                'fallthrough_to_legacy' => true,
             ]);
             self::appendWebhookLog('controlled_reply_error', [
                 'trace_id' => $traceId,
                 'tenant_sno' => (string) ($tenant['sno'] ?? ''),
                 'message' => $e->getMessage(),
-                'fallthrough_to_legacy' => true,
             ]);
             return null;
         }
@@ -1040,7 +992,6 @@ class SaaSRouter
         ?ConversationStatusResolver $conversationStatusResolver = null,
         $ackReplySender = null,
         ?TenantPrivateKnowledgeProviderInterface $knowledgeProvider = null,
-        ?KnowledgeIntentDetector $knowledgeIntentDetector = null,
         string $userId = '',
         $linePushSender = null,
         ?KnowledgeFallbackResolver $knowledgeFallbackResolver = null,
@@ -1059,7 +1010,6 @@ class SaaSRouter
             Logger::log('saas_router.log', 'phase_9c1_structured_pilot_error', [
                 'trace_id' => $traceId,
                 'reason' => 'missing_line_reply_credentials',
-                'fallthrough_to_legacy' => true,
             ]);
 
             return null;
@@ -1122,33 +1072,32 @@ class SaaSRouter
                 ];
             }
 
-            $intentDetector = $knowledgeIntentDetector ?? new KnowledgeIntentDetector();
-            $legacyIntentDetection = $intentDetector->detect($queryText);
-            $legacyIntentType = (string) ($legacyIntentDetection['intent_type'] ?? '');
-
-            // Phase 2-D Step 2-D-3-3: Authoritative Runtime Selection (flag default OFF).
-            // When enabled for tenant, AIU dispatch_plan drives routing via legacy-compatible
-            // intent_type mapping. Legacy detect always runs first for Shadow parity; flag OFF
-            // is byte-identical to pre-2-D-3-3 behavior. Never throws; falls back to legacy.
+            // Phase 2-D Step 2-D-3-3: Authoritative Runtime Selection — AIU v2 only (B0 fail-closed).
             $intentSelection = AiIntentUnderstandingRuntimeSelector::resolve([
                 'tenant_sno' => $tenantSno,
                 'conversation_id' => $runtimeConversationId,
                 'message' => $queryText,
-                'legacy_intent_type' => $legacyIntentType,
                 'now' => $now,
                 'reference_date' => $now,
             ], $aiuRuntime);
-            if (($intentSelection['runtime_source'] ?? '') === AiIntentUnderstandingRuntimeSelector::SOURCE_AIU) {
-                Logger::log('saas_router.log', 'intent_understanding_authoritative_selection', [
+
+            if (($intentSelection['runtime_source'] ?? '') === AiIntentUnderstandingRuntimeSelector::SOURCE_FAIL_CLOSED) {
+                $failClosedPayload = [
                     'trace_id' => $traceId,
                     'tenant_sno' => $tenantSno,
-                    'conversation_id' => $runtimeConversationId,
-                    'legacy_intent_type' => $legacyIntentType,
-                    'selected_intent_type' => (string) ($intentSelection['intent_type'] ?? ''),
-                    'dispatch_plan' => $intentSelection['dispatch_plan'] ?? null,
-                    'execution_hint' => $intentSelection['execution_hint'] ?? null,
-                    'human_blocked' => (bool) ($intentSelection['human_blocked'] ?? false),
-                ]);
+                    'conversation_id' => $conversationKey,
+                    'runtime_source' => (string) ($intentSelection['runtime_source'] ?? ''),
+                    'failure_reason' => (string) ($intentSelection['failure_reason'] ?? ''),
+                    'final_route' => 'phase_9c1_aiu_fail_closed',
+                ];
+                Logger::log('saas_router.log', 'phase_9c1_aiu_fail_closed', $failClosedPayload);
+                self::appendWebhookLog('phase_9c1_aiu_fail_closed', $failClosedPayload);
+
+                return [
+                    'ok' => true,
+                    'message' => 'phase_9c1_aiu_fail_closed',
+                    'phase_9c1' => $failClosedPayload,
+                ];
             }
 
             // Phase 2-B Step 4-B: Conversation Runtime shadow probe (flag default OFF).
@@ -1160,7 +1109,7 @@ class SaaSRouter
                 ConversationRuntimeShadowProbe::run([
                     'tenant_sno' => $tenantSno,
                     'conversation_id' => $runtimeConversationId,
-                    'intent_type' => (string) ($intentSelection['intent_type'] ?? $legacyIntentType),
+                    'intent_type' => (string) ($intentSelection['intent_type'] ?? ''),
                     'legacy_conversation_status' => $shadowLegacyStatus,
                     'legacy_allowed' => FinalReplyGate::maySendAiReply($shadowLegacyStatus),
                     'trace_id' => $traceId,
@@ -1174,16 +1123,12 @@ class SaaSRouter
             }
 
             // Phase 2-D Step 2-D-3-1: AI Intent Understanding shadow probe (flag default OFF).
-            // Shadow-only — runs AiIntentUnderstandingRuntime in parallel with the legacy
-            // KnowledgeIntentDetector and logs intent / dispatch_plan / execution_hint /
-            // owner_snapshot parity. Never changes reply text, route, transport, Knowledge /
-            // Product / Human Runtime, or LineService behavior; never throws.
+            // Shadow-only — observability; no Legacy Understanding parity input (B0).
             try {
                 AiIntentUnderstandingShadowProbe::run([
                     'tenant_sno' => $tenantSno,
                     'conversation_id' => $runtimeConversationId,
                     'message' => $queryText,
-                    'legacy_intent_type' => $legacyIntentType,
                     'trace_id' => $traceId,
                     'now' => $now,
                     'reference_date' => $now,
@@ -1214,7 +1159,6 @@ class SaaSRouter
                     'blocked' => true,
                     'block_reason' => 'aiu_human_owner',
                     'runtime_source' => AiIntentUnderstandingRuntimeSelector::SOURCE_AIU,
-                    'dispatch_plan' => $intentSelection['dispatch_plan'] ?? DispatchPlan::HUMAN,
                     'final_route' => 'phase_9c1_structured_pilot_blocked',
                 ];
                 Logger::log('saas_router.log', 'phase_9c1_structured_pilot_blocked', $blockedPayload);
@@ -1227,7 +1171,7 @@ class SaaSRouter
                 ];
             }
 
-            $intentDetection = ['intent_type' => (string) ($intentSelection['intent_type'] ?? $legacyIntentType)];
+            $intentDetection = ['intent_type' => (string) ($intentSelection['intent_type'] ?? '')];
 
             // AIU v2 Last Mile: Contract Translation of authoritative Semantic Result
             // for Product Execute Layer. Legacy BatsSearchIntentBuilder is NOT used when
@@ -1240,6 +1184,23 @@ class SaaSRouter
                 $authoritativeProductIntent = (new AiuProductIntentTranslator())->translate(
                     $intentSelection['aiu_result']
                 );
+            }
+
+            $productUnderstandingTrace = AiIntentUnderstandingRuntimeSelector::resolveProductUnderstandingTrace(
+                $intentSelection,
+                $authoritativeProductIntent,
+                $tenantSno
+            );
+
+            if (($intentSelection['runtime_source'] ?? '') === AiIntentUnderstandingRuntimeSelector::SOURCE_AIU) {
+                Logger::log('saas_router.log', 'intent_understanding_authoritative_selection', [
+                    'trace_id' => $traceId,
+                    'tenant_sno' => $tenantSno,
+                    'conversation_id' => $runtimeConversationId,
+                    'selected_intent_type' => (string) ($intentSelection['intent_type'] ?? ''),
+                    'human_blocked' => (bool) ($intentSelection['human_blocked'] ?? false),
+                    'understanding_source' => $productUnderstandingTrace['understanding_source'] ?? null,
+                ]);
             }
 
             // Phase 2-B Step 2-B-2: Event Source ingest (parse + optional dispatch).
@@ -1265,7 +1226,7 @@ class SaaSRouter
                 ]);
             }
 
-            if (($intentDetection['intent_type'] ?? '') === KnowledgeIntentDetector::INTENT_HUMAN_SERVICE_REQUEST) {
+            if (($intentDetection['intent_type'] ?? '') === AiRuntimeIntent::HUMAN_SERVICE_REQUEST) {
                 $humanServiceComposer = new HumanServiceResponseComposer();
                 $replyText = $humanServiceComposer->compose(
                     trim((string) ($tenant['tenant_key'] ?? '')),
@@ -1285,7 +1246,7 @@ class SaaSRouter
                     'tenant_sno' => $tenantSno,
                     'conversation_id' => $conversationKey,
                     'conversation_status' => $statusResolver->resolveStatus($conversationKey, $now),
-                    'intent_type' => KnowledgeIntentDetector::INTENT_HUMAN_SERVICE_REQUEST,
+                    'intent_type' => AiRuntimeIntent::HUMAN_SERVICE_REQUEST,
                     'reply_text_length' => mb_strlen($replyText),
                     'line_reply' => $replyRes,
                     'final_route' => 'phase_9c2b3_knowledge_human_service_request',
@@ -1300,7 +1261,7 @@ class SaaSRouter
                 ];
             }
 
-            if (($intentDetection['intent_type'] ?? '') === KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY) {
+            if (($intentDetection['intent_type'] ?? '') === AiRuntimeIntent::KNOWLEDGE_QUERY) {
                 $industryCode = trim((string) ($tenant['industry_code'] ?? ''));
                 if ($industryCode === '' && trim((string) ($tenant['tenant_key'] ?? '')) === 'travel_b') {
                     $industryCode = 'travel';
@@ -1412,7 +1373,7 @@ class SaaSRouter
                     'tenant_sno' => $tenantSno,
                     'conversation_id' => $conversationKey,
                     'conversation_status' => $finalGate['conversation_status'],
-                    'intent_type' => KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY,
+                    'intent_type' => AiRuntimeIntent::KNOWLEDGE_QUERY,
                     'knowledge_query_type' => $knowledgeResult['query_type'] ?? null,
                     'knowledge_grounded' => (bool) ($knowledgeResult['grounded'] ?? false),
                     'reply_text_length' => mb_strlen($replyText),
@@ -1471,6 +1432,7 @@ class SaaSRouter
             if ($authoritativeProductIntent instanceof BatsSearchIntent) {
                 $contextParams['authoritativeIntent'] = $authoritativeProductIntent;
             }
+            $contextParams['productUnderstandingTrace'] = $productUnderstandingTrace;
 
             $intentType = (string) ($intentDetection['intent_type'] ?? '');
             $waitingReplySent = false;
@@ -1479,17 +1441,11 @@ class SaaSRouter
             $linePushApiUrl = self::resolveLinePushApiUrl($lineReplyUrl);
             $trimmedUserId = trim($userId);
 
-            if ($intentType === KnowledgeIntentDetector::INTENT_PRODUCT_SEARCH) {
-                // AIU v2 Last Mile: preflight clarification gate uses AIU Contract Translation
-                // when authoritative; legacy builder only as explicit fallback.
-                if ($authoritativeProductIntent instanceof BatsSearchIntent) {
-                    $preflightIntent = $authoritativeProductIntent;
-                } else {
-                    $preflightIntent = (new BatsSearchIntentBuilder())->parse($queryText, [
-                        'reference_date' => $now,
-                        'merge_legacy_keyword' => true,
-                    ]);
-                }
+            if (
+                $intentType === AiRuntimeIntent::PRODUCT_SEARCH
+                && $authoritativeProductIntent instanceof BatsSearchIntent
+            ) {
+                $preflightIntent = $authoritativeProductIntent;
                 $preflightGate = FinalReplyGate::evaluate($statusResolver->resolveStatus($conversationKey, $now));
                 self::recordReplyGateCompare(
                     ConversationReplyGateCompareProbe::GATE_POINT_PRODUCT_PREFLIGHT,
@@ -1531,6 +1487,30 @@ class SaaSRouter
             }
 
             $structuredResult = $service->buildTourContextResult($contextParams);
+
+            if (
+                $intentType === AiRuntimeIntent::PRODUCT_SEARCH
+                && !($authoritativeProductIntent instanceof BatsSearchIntent)
+                && $structuredResult->getSearchCondition() === null
+                && !$structuredResult->isClarificationRequired()
+            ) {
+                $productStoppedPayload = [
+                    'trace_id' => $traceId,
+                    'tenant_sno' => $tenantSno,
+                    'conversation_id' => $conversationKey,
+                    'runtime_source' => AiIntentUnderstandingRuntimeSelector::SOURCE_AIU,
+                    'final_route' => 'phase_9c1_aiu_fail_closed',
+                ];
+                Logger::log('saas_router.log', 'phase_9c1_product_contract_missing', $productStoppedPayload);
+                self::appendWebhookLog('phase_9c1_product_contract_missing', $productStoppedPayload);
+
+                return [
+                    'ok' => true,
+                    'message' => 'phase_9c1_aiu_fail_closed',
+                    'phase_9c1' => $productStoppedPayload,
+                ];
+            }
+
             $geminiContextSchemaVersion = null;
             $replyText = '';
             $groundedReplyType = null;
@@ -1720,8 +1700,9 @@ class SaaSRouter
                 'conversation_id' => $conversationKey,
                 'conversation_status' => $finalGate['conversation_status'],
                 'intent_type' => $intentType,
-                'runtime_source' => (string) ($intentSelection['runtime_source'] ?? AiIntentUnderstandingRuntimeSelector::SOURCE_LEGACY),
+                'runtime_source' => (string) ($intentSelection['runtime_source'] ?? AiIntentUnderstandingRuntimeSelector::SOURCE_AIU),
                 'authoritative_product_path' => $authoritativeProductIntent instanceof BatsSearchIntent,
+                'understanding_source' => $productUnderstandingTrace['understanding_source'] ?? null,
                 'clarification_required' => $structuredResult->isClarificationRequired(),
                 'clarification_reason' => $structuredResult->getClarificationReason(),
                 'gemini_context_schema_version' => $geminiContextSchemaVersion,
@@ -1751,13 +1732,11 @@ class SaaSRouter
                 'trace_id' => $traceId,
                 'tenant_sno' => $tenantSno,
                 'message' => $e->getMessage(),
-                'fallthrough_to_legacy' => true,
             ]);
             self::appendWebhookLog('phase_9c1_structured_pilot_error', [
                 'trace_id' => $traceId,
                 'tenant_sno' => $tenantSno,
                 'message' => $e->getMessage(),
-                'fallthrough_to_legacy' => true,
             ]);
 
             return null;

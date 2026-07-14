@@ -2,8 +2,8 @@
 
 **專案：** BBC AI SaaS / BATS  
 **定位：** L1 架構 SSOT — **BBC AI Runtime** 最高層整合架構唯一正式依據  
-**Version：** v1.0 Freeze  
-**Status：** Architecture Freeze  
+**Version：** v1.1 Freeze（Architecture Refinement）  
+**Status：** Architecture Freeze — Four-Core Doctrine 增補（Backward Compatible）  
 **Layer：** L1 Architecture  
 **主機參考：** 103.1.222.14（主機 A · `C:\bbc-ai-bot`）  
 **Branch：** feature/api-gateway-mvp
@@ -27,12 +27,15 @@
 | §1 | Document Purpose |
 | §2 | Architecture Vision |
 | §3 | BBC AI Core Principles |
+| §3.1 | AI × Runtime Four-Core Doctrine |
+| §3.2 | L1 Operational Doctrine |
 | §4 | BBC AI Runtime Overview |
 | §5 | Runtime Layer Diagram |
 | §6 | Runtime Dependency |
 | §7 | Core Runtime Components |
 | §8 | Runtime Responsibilities |
 | §9 | Runtime Boundary |
+| §9.4 | Gemini × Runtime Architecture Boundary |
 | §10 | Runtime Sequence |
 | §11 | Runtime Data Flow |
 | §12 | Grounded Response Flow |
@@ -118,6 +121,61 @@ Understand → Remember → Continue → Collaborate → Ground → Compose → 
 1. **AI Intent Understanding Before Runtime**（L2 CA-009；L3 `BATS_AI_INTENT_UNDERSTANDING_V2.md`）
 2. **Grounded Response Only**（L2 CA-008；L3 GRC + Grounding Layer）
 3. **Protect Before Extend**（`BATS_AI_RUNTIME_DESIGN.md` §14）
+
+### 3.1 AI × Runtime Four-Core Doctrine
+
+> **定位：** L1 整合架構之 **Four-Core 分工表**；**非**新增 Persona Core Principle（Persona §0 三原則維持 Freeze）。詳細契約仍見各 L3 SSOT。
+
+| Core | Owner | Responsibility |
+|------|-------|----------------|
+| **Understand** | **Gemini**（AI Intent Understanding v2） | 理解使用者真正意圖；Semantic / Context / Conversation / Intent / Entity / Clarification / Confidence |
+| **Execute** | **BBC Runtime** | 執行 Product Runtime、Knowledge Runtime、Conversation Runtime、Human Runtime、Grounding Runtime |
+| **Express** | **Gemini**（Grounded Response Composer） | 僅依 **Grounded Facts** 組織自然、多樣化回覆；**不**新增、**不**修改、**不**推測、**不**補充事實 |
+| **Govern** | **BBC Runtime** | Business Rules、Grounded Safety、多租戶、安全治理、權限、Policy、Feature Flag |
+
+**Cross-Reference：**
+
+| Core | L3 SSOT |
+|------|---------|
+| Understand | `BATS_AI_INTENT_UNDERSTANDING_V2.md` §3.4 |
+| Execute | L2 `BATS_AI_CONVERSATION_ARCHITECTURE.md` §13；L3 Execution / Grounding SSOT |
+| Express | `BATS_AI_GROUNDED_RESPONSE_COMPOSER.md` §16 |
+| Govern | 本文件 §15；`BATS_AI_PERSONA.md` §0；Grounding 附錄 C–E |
+
+**設計信條（與 Core Principle #1 / #2 對映，非新 Principle）：**
+
+```
+Gemini: Understand + Express
+BBC Runtime: Execute + Govern
+Facts are Grounded. Language is Generative.
+```
+
+### 3.2 L1 Operational Doctrine
+
+> **定位：** L1 **Operational Doctrine**（操作層設計紀律）；**不是** Persona Core Principle #4。與 IU-005「不新增 Core Principle」相容。
+
+**能力集中原則：**
+
+| 層 | 能力集中 |
+|----|----------|
+| **AI（Gemini）** | **Understand** + **Express** |
+| **BBC Runtime** | **Execute** + **Govern** |
+
+**新功能歸屬 Gate（Architecture Review 必答）：**
+
+任何新功能上線前，**必須**先判定主要歸屬：
+
+1. 屬於 **AI（Understand / Express）**？→ 走 AIU v2 / Grounded Composer / Gemini 路徑
+2. 屬於 **Runtime（Execute / Govern）**？→ 走 Execution / Grounding / State / Policy / Orchestrator 路徑
+
+**禁止：**
+
+- 能力重疊（同一職責同時由 AI 與 Runtime 各做一套）
+- Responsibility 混亂（Composer 查 Knowledge、Runtime 做 NLG Intent 等）
+- Runtime 耦合（Gemini 直接控制 Dispatch / State）
+- **Keyword Patch** 作為 AI Intent 終態（見 AIU v2 §3.4 Legacy Transition）
+
+**Backward Compatible：** 本 Doctrine **不修改** F-1～F-5、L1-F-001～L1-F-008、Persona 三 Core Principles；僅補充 L1 整合視圖。
 
 ---
 
@@ -348,6 +406,41 @@ L1 BBC_AI_RUNTIME.md
   └── delegates contracts → L3 (AIU, GRC, Grounding, Semantic Search, …)
 ```
 
+### 9.4 Gemini × Runtime Architecture Boundary
+
+> **確認 Four-Core 硬邊界**（§3.1）。本節為 L1 摘要；實作細節見 AIU v2 §3.4、GRC §16。
+
+**Gemini 負責：Understand、Express**
+
+| Gemini 負責 | 說明 |
+|-------------|------|
+| Understand | AI Intent Understanding v2 — Semantic / Intent / Context / Conversation / Confidence |
+| Express | Grounded Response Composer — 在 Grounded Facts 約束下生成自然語言 |
+
+**Gemini 永遠不直接：**
+
+| 禁止 | 歸屬 |
+|------|------|
+| 搜尋商品 / 查知識庫 | Execution Runtime |
+| 決定 Business Rule / Policy | Govern（Orchestrator / State / Policy） |
+| 控制 Runtime Dispatch / State 轉移 | BBC Runtime |
+| 決定或發明 Grounded Facts | Execution + Grounding |
+
+**BBC Runtime 負責：Execute、Govern**
+
+| BBC Runtime 負責 | 說明 |
+|------------------|------|
+| Execute | Product / Knowledge / Conversation / Human / Grounding 業務執行 |
+| Govern | Business Rules、Grounded Safety、多租戶、權限、Feature Flag、Validator Gate |
+
+**BBC Runtime 永遠不直接：**
+
+| 禁止 | 歸屬 |
+|------|------|
+| 理解自然語言（終態 Intent） | Gemini / AIU v2 |
+| Keyword Patch 取代 AI Intent Understanding v2 | 禁止（Legacy Transition 除外，見 AIU §3.4） |
+| Template 化 AI Response 作為長期 SSOT | Express 屬 Generative NLG（GRC §16.2） |
+
 ---
 
 ## 10. Runtime Sequence
@@ -560,9 +653,10 @@ flowchart TB
 | **L1-F-006** | Phase 2 完成定義 BBC AI Runtime **v1.0 基線** | ✅ Frozen |
 | **L1-F-007** | BATS Runtime 為唯一主線；Legacy 僅 Reference | ✅ Frozen |
 | **L1-F-008** | Phase 3 / Phase 4 為 Enhancement / Platform；不修改 v1.0 Core 邊界 | ✅ Frozen |
+| **L1-F-009** | **AI × Runtime Four-Core Doctrine**（§3.1）+ **L1 Operational Doctrine**（§3.2）+ **Gemini × Runtime Boundary**（§9.4） | ✅ Frozen（v1.1 Refinement） |
 
-**Freeze 日期：** 2026-07-03  
-**Freeze Phase：** BBC AI Runtime v1.0 Architecture Freeze（L1）
+**Freeze 日期：** 2026-07-03（v1.0）；2026-07-04（v1.1 Refinement）  
+**Freeze Phase：** BBC AI Runtime v1.1 Architecture Refinement（L1，Backward Compatible）
 
 ---
 
@@ -593,6 +687,7 @@ L3  Runtime Contracts
 | 主題 | SSOT | 本文件角色 |
 |------|------|------------|
 | Core Principles | `BATS_AI_PERSONA.md` §0 | 摘要 + 對映 |
+| Four-Core Doctrine | **本文件 §3.1 / §3.2 / §9.4** | L1 整合 |
 | Pipeline / CA-* | `BATS_AI_CONVERSATION_ARCHITECTURE.md` | 整合對齊 |
 | AIU Contract | `BATS_AI_INTENT_UNDERSTANDING_V2.md` | 引用 |
 | Memory Card | `BATS_AI_CONVERSATION_MEMORY.md` | 引用 |
@@ -713,8 +808,9 @@ Phase 4 — AI Ecosystem / Platform
 
 | Version | 日期 | Status | 說明 |
 |---------|------|--------|------|
+| **1.1** | 2026-07-04 | **Freeze（Refinement）** | Architecture Refinement：新增 §3.1 Four-Core Doctrine、§3.2 L1 Operational Doctrine、§9.4 Gemini × Runtime Boundary；L1-F-009。Backward Compatible；不修改 Persona 三 Core Principles、不修改 L2/L3 契約本體。 |
 | **1.0** | 2026-07-03 | **Freeze** | BBC AI Runtime v1.0 L1 Architecture Freeze |
 
 ---
 
-*本文件為 BBC AI Runtime 最高層 L1 Architecture SSOT（v1.0 Freeze）。不涉及程式實作。*
+*本文件為 BBC AI Runtime 最高層 L1 Architecture SSOT（v1.1 Freeze）。不涉及程式實作。*

@@ -38,7 +38,7 @@ $pilotSno = '5f99b8d665e8444d';
 // --- Contract Translation: 北海道 8月 ---
 $hokkaido = $runtime->understand('北海道 8月', ['conversation_id' => $cid, 'tenant_sno' => $pilotSno]);
 $batsHokkaido = $translator->translate($hokkaido);
-lm_assert($batsHokkaido->getDestination() === '北海道', 'translate: hokkaido destination');
+lm_assert($batsHokkaido->getDestination() === ['北海道'], 'translate: hokkaido destination');
 lm_assert($batsHokkaido->isClarificationRequired() === false, 'translate: hokkaido no clarification');
 lm_assert($batsHokkaido->getDateFrom() !== null, 'translate: hokkaido has date_from');
 
@@ -47,8 +47,8 @@ $marsA = $runtime->understand('火星五日遊 8月', ['conversation_id' => $cid
 $marsB = $runtime->understand('火星五日遊8月', ['conversation_id' => $cid, 'tenant_sno' => $pilotSno]);
 $batsA = $translator->translate($marsA);
 $batsB = $translator->translate($marsB);
-lm_assert($batsA->getDestination() === '火星', 'translate: marsA destination');
-lm_assert($batsB->getDestination() === '火星', 'translate: marsB destination');
+lm_assert($batsA->getDestination() === ['火星'], 'translate: marsA destination');
+lm_assert($batsB->getDestination() === ['火星'], 'translate: marsB destination');
 lm_assert($batsA->getDestination() === $batsB->getDestination(), 'translate: mars destination parity');
 lm_assert($batsA->isClarificationRequired() === $batsB->isClarificationRequired(), 'translate: mars clarification parity');
 lm_assert($batsA->getDateFrom() === $batsB->getDateFrom(), 'translate: mars date parity');
@@ -67,7 +67,7 @@ lm_assert(
 $merged = $runtime->understand('大阪 八月', ['conversation_id' => $cid, 'tenant_sno' => $pilotSno]);
 $batsMerged = $translator->translate($merged);
 lm_assert($merged->getIntent() === AiIntentCategory::PRODUCT_SEARCH, 'translate: merged intent product');
-lm_assert($batsMerged->getDestination() === '大阪', 'translate: merged destination osaka');
+lm_assert($batsMerged->getDestination() === ['大阪'], 'translate: merged destination osaka');
 lm_assert($batsMerged->isClarificationRequired() === false, 'translate: merged no clarification');
 
 // --- Product Execute: authoritativeIntent bypasses BatsSearchIntentBuilder ---
@@ -100,7 +100,7 @@ $authResult = $service->buildTourContextResult([
     'authoritativeIntent' => $batsHokkaido,
 ]);
 lm_assert(!$authResult->isClarificationRequired(), 'execute: authoritative hokkaido searchable');
-lm_assert($authResult->getIntent()->getDestination() === '北海道', 'execute: authoritative destination preserved');
+lm_assert($authResult->getIntent()->getDestination() === ['北海道'], 'execute: authoritative destination preserved');
 lm_assert(count($authResult->getSearchResults()) > 0, 'execute: authoritative search ran');
 
 // --- Product Execute: authoritative clarification (no search) ---
@@ -160,7 +160,6 @@ $routerResult = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     null,
     null,
     $cid,
-    null,
     null,
     null,
     null,

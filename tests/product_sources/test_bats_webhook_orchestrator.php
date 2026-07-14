@@ -86,7 +86,7 @@ try {
     test_assert($result['bats_mode'] === BatsFeatureGate::MODE_ENABLED, 'case1 enabled mode');
     test_assert($result['tenant_sno'] === 'aaaaaaaaaaaaaaaa', 'case1 tenant_sno');
     test_assert(isset($result['decision_snapshot']) && is_array($result['decision_snapshot']), 'case1 snapshot exists');
-    test_assert(($result['decision_snapshot']['fallthrough_to_legacy'] ?? false) === true, 'case1 snapshot fallthrough true');
+    test_assert(!array_key_exists('fallthrough_to_legacy', $result['decision_snapshot'] ?? []), 'case1 snapshot fallthrough_to_legacy absent');
     test_assert(true, 'case1 enabled tenant PASS');
 } catch (\Throwable $e) {
     test_assert(false, 'case1 should pass: ' . $e->getMessage());
@@ -116,7 +116,7 @@ try {
     test_assert($result['bats_mode'] === BatsFeatureGate::MODE_DRY_RUN, 'case3 dry_run mode');
     test_assert(isset($result['decision_snapshot']) && is_array($result['decision_snapshot']), 'case3 snapshot exists');
     test_assert(($result['decision_snapshot']['snapshot_version'] ?? 0) === 1, 'case3 snapshot version');
-    test_assert(($result['decision_snapshot']['fallthrough_to_legacy'] ?? false) === true, 'case3 fallthrough true');
+    test_assert(!array_key_exists('fallthrough_to_legacy', $result['decision_snapshot'] ?? []), 'case3 fallthrough_to_legacy absent');
     test_assert(($result['decision_snapshot']['reason_code'] ?? '') === 'DRY_RUN_SNAPSHOT_NO_CANDIDATES', 'case3 reason code');
     test_assert(($result['decision_snapshot']['query']['raw'] ?? '') === '請推薦大阪三日團', 'case3 raw query');
     test_assert(($result['decision_snapshot']['search_condition']['available'] ?? true) === false, 'case3 search_condition unavailable');
@@ -226,7 +226,7 @@ try {
     test_assert(($summary['source_count'] ?? 0) === 3, 'case8 source_count = 3');
     test_assert(($summary['result_count'] ?? 0) === 30, 'case8 result_count = 30');
     test_assert(($snapshot['reason_code'] ?? '') === 'DRY_RUN_SNAPSHOT_WITH_CANDIDATES', 'case8 reason code with candidates');
-    test_assert(($snapshot['fallthrough_to_legacy'] ?? false) === true, 'case8 fallthrough true');
+    test_assert(!array_key_exists('fallthrough_to_legacy', $snapshot), 'case8 fallthrough_to_legacy absent');
     test_assert(($snapshot['gemini_context']['available'] ?? false) === true, 'case8 gemini_context available');
     test_assert(($snapshot['gemini_context']['prompt_present'] ?? false) === true, 'case8 gemini prompt present');
     test_assert(($snapshot['gemini_context']['renderer_version'] ?? '') !== '', 'case8 renderer version present');

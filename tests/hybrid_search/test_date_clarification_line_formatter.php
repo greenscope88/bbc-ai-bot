@@ -2,21 +2,18 @@
 declare(strict_types=1);
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . '_test_helpers.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'support' . DIRECTORY_SEPARATOR . 'GeminiDerivedSearchConditionFixtures.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'SearchCondition.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'date_clarification_line_formatter.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridDateRequiredGate.php';
-require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridSearchConditionBuilder.php';
-require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'DateParser.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tour_line_reply_composer.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tour_prompt_context_service.php';
 
-$ref = new DateTimeImmutable('2026-06-05', new DateTimeZone('Asia/Taipei'));
-$builder = new HybridSearchConditionBuilder(new DateParser($ref));
 $travelBSno = TravelBMultiSourceLinkBuilder::TRAVEL_B_SNO;
+$ref = new DateTimeImmutable('2026-06-05', new DateTimeZone('Asia/Taipei'));
 
-function clarification_context(HybridSearchConditionBuilder $builder, string $message, DateTimeImmutable $ref): string
+function clarification_context(SearchCondition $condition, string $message): string
 {
-    $condition = $builder->parse($message, ['reference_date' => $ref, 'merge_legacy_keyword' => true]);
-
     return HybridDateRequiredGate::buildClarificationContext($condition, $message);
 }
 
@@ -31,24 +28,27 @@ function assert_customer_clarification(string $reply, string $label): void
     hybrid_test_assert(strpos($reply, 'bbctravel.com.tw') === false, $label . ': no bbctravel URL');
 }
 
-$tokyoCtx = clarification_context($builder, '東京', $ref);
+$tokyoCtx = clarification_context(GeminiDerivedSearchConditionFixtures::tokyoDestinationOnly(), '東京');
 $tokyoReply = DateClarificationLineFormatter::formatFromTourContext($tokyoCtx);
 assert_customer_clarification($tokyoReply, '東京');
 hybrid_test_assert(strpos($tokyoReply, '請問您預計什麼時候出發【東京】呢？') !== false, '東京: destination prompt');
 hybrid_test_assert(strpos($tokyoReply, '📅 近期東京') !== false, '東京: example 近期東京');
 hybrid_test_assert(strpos($tokyoReply, '📅 東京6月底') !== false, '東京: example 東京6月底');
 
-$osakaCtx = clarification_context($builder, '大阪', $ref);
+$osakaCtx = clarification_context(GeminiDerivedSearchConditionFixtures::osakaDestinationOnly(), '大阪');
 $osakaReply = DateClarificationLineFormatter::formatFromTourContext($osakaCtx);
 assert_customer_clarification($osakaReply, '大阪');
 hybrid_test_assert(strpos($osakaReply, '請問您預計什麼時候出發【大阪】呢？') !== false, '大阪: destination prompt');
 
-$hokkaidoCtx = clarification_context($builder, '北海道', $ref);
+$hokkaidoCtx = clarification_context(
+    SearchCondition::empty('北海道')->with(['destination' => ['北海道'], 'keyword' => '北海道']),
+    '北海道'
+);
 $hokkaidoReply = DateClarificationLineFormatter::formatFromTourContext($hokkaidoCtx);
 assert_customer_clarification($hokkaidoReply, '北海道');
 hybrid_test_assert(strpos($hokkaidoReply, '請問您預計什麼時候出發【北海道】呢？') !== false, '北海道: destination prompt');
 
-$freeCtx = clarification_context($builder, '自由行', $ref);
+$freeCtx = clarification_context(GeminiDerivedSearchConditionFixtures::freeTravelGeneric(), '自由行');
 $freeReply = DateClarificationLineFormatter::formatFromTourContext($freeCtx);
 assert_customer_clarification($freeReply, '自由行');
 hybrid_test_assert(strpos($freeReply, '請問您預計什麼時候出發呢？') !== false, '自由行: generic prompt');
@@ -72,15 +72,15 @@ $mockClient = new TourSearchApiClient('https://example.test/tour/search', 5, sta
     return ['ok' => true, 'http_status' => 200, 'body' => '{"success":true,"items":[]}', 'transport_error' => null];
 });
 $service = new TourPromptContextService();
-$ctx = $service->buildTourContextForPrompt([
+$result = $service->buildTourContextResult([
     'userText' => '東京',
     'sno' => $travelBSno,
     'featureEnabled' => true,
     'searchClient' => $mockClient,
-    'hybridSearchConfig' => ['enabled' => true, 'allowed_sno' => [$travelBSno], 'allowed_channels' => [], 'dry_run_log_enabled' => false],
-    'travelBMultiSourceLinksConfig' => ['enabled' => true, 'tenant_sno' => $travelBSno, 'source_instance_keys' => ['dayitravel_bbctravel']],
     'referenceDate' => $ref,
+    'authoritativeIntent' => GeminiDerivedSearchConditionFixtures::tokyoClarifyIntent(),
 ]);
+$ctx = $result->getLegacyContext();
 $e2e = TourLineReplyComposer::resolve('prompt', $ctx, static fn (): array => ['ok' => true, 'text' => 'skip']);
 hybrid_test_assert($GLOBALS['clarify_api_calls'] === 0, 'e2e 東京: no API');
 assert_customer_clarification($e2e['reply_text'], 'e2e 東京');

@@ -1,6 +1,9 @@
 <?php
 
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core'
+    . DIRECTORY_SEPARATOR . 'intent'
+    . DIRECTORY_SEPARATOR . 'AiRuntimeIntent.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core'
     . DIRECTORY_SEPARATOR . 'conversation'
     . DIRECTORY_SEPARATOR . 'ConversationPolicyRuntime.php';
 
@@ -97,40 +100,40 @@ test_assert($runtime->isRequirementCompleted('Completed'), 'Completed completed'
 $tenant = ConversationPolicy::create(); // product on, others off
 
 // requirement not completed -> denied
-$d = $runtime->evaluateRecommendation('product_search', false, $tenant, ConversationPolicy::RECOMMENDATION_PRODUCT);
+$d = $runtime->evaluateRecommendation(AiRuntimeIntent::PRODUCT_SEARCH, false, $tenant, ConversationPolicy::RECOMMENDATION_PRODUCT);
 test_assert($d['eligible'] === false && $d['reason'] === 'requirement_not_completed', 'denied when not completed');
 
 // product_search + completed + product enabled -> eligible
-$d = $runtime->evaluateRecommendation('product_search', true, $tenant, ConversationPolicy::RECOMMENDATION_PRODUCT);
+$d = $runtime->evaluateRecommendation(AiRuntimeIntent::PRODUCT_SEARCH, true, $tenant, ConversationPolicy::RECOMMENDATION_PRODUCT);
 test_assert($d['eligible'] === true, 'product eligible when all conditions met');
 
 // product_search + completed but campaign disabled -> tenant_policy_disabled
-$d = $runtime->evaluateRecommendation('product_search', true, $tenant, ConversationPolicy::RECOMMENDATION_CAMPAIGN);
+$d = $runtime->evaluateRecommendation(AiRuntimeIntent::PRODUCT_SEARCH, true, $tenant, ConversationPolicy::RECOMMENDATION_CAMPAIGN);
 test_assert($d['eligible'] === false && $d['reason'] === 'tenant_policy_disabled', 'campaign denied by tenant policy');
 
 // knowledge_query + product -> intent_incompatible
-$d = $runtime->evaluateRecommendation('knowledge_query', true, $tenant, ConversationPolicy::RECOMMENDATION_PRODUCT);
+$d = $runtime->evaluateRecommendation(AiRuntimeIntent::KNOWLEDGE_QUERY, true, $tenant, ConversationPolicy::RECOMMENDATION_PRODUCT);
 test_assert($d['eligible'] === false && $d['reason'] === 'intent_incompatible', 'knowledge incompatible with product');
 
 // ambiguous -> never eligible
-$d = $runtime->evaluateRecommendation('ambiguous', true, $tenant, ConversationPolicy::RECOMMENDATION_PRODUCT);
+$d = $runtime->evaluateRecommendation(AiRuntimeIntent::AMBIGUOUS, true, $tenant, ConversationPolicy::RECOMMENDATION_PRODUCT);
 test_assert($d['eligible'] === false && $d['reason'] === 'intent_incompatible', 'ambiguous not eligible');
 
 // knowledge_query + review_invite (enabled) -> eligible
 $tenant2 = ConversationPolicy::create()->enableRecommendation(ConversationPolicy::RECOMMENDATION_REVIEW_INVITE);
-$d = $runtime->evaluateRecommendation('knowledge_query', true, $tenant2, ConversationPolicy::RECOMMENDATION_REVIEW_INVITE);
+$d = $runtime->evaluateRecommendation(AiRuntimeIntent::KNOWLEDGE_QUERY, true, $tenant2, ConversationPolicy::RECOMMENDATION_REVIEW_INVITE);
 test_assert($d['eligible'] === true, 'knowledge + review_invite eligible when enabled');
 
 // evaluateRecommendationForStage uses lifecycle completion
-$all = $runtime->evaluateRecommendationForStage('product_search', 'Active', $tenant);
+$all = $runtime->evaluateRecommendationForStage(AiRuntimeIntent::PRODUCT_SEARCH, 'Active', $tenant);
 test_assert($all[ConversationPolicy::RECOMMENDATION_PRODUCT]['eligible'] === false, 'stage Active -> product not eligible');
-$all = $runtime->evaluateRecommendationForStage('product_search', 'Completed', $tenant);
+$all = $runtime->evaluateRecommendationForStage(AiRuntimeIntent::PRODUCT_SEARCH, 'Completed', $tenant);
 test_assert($all[ConversationPolicy::RECOMMENDATION_PRODUCT]['eligible'] === true, 'stage Completed -> product eligible');
 
 // hasAnyEligible via evaluator
 $evaluator = new RecommendationEligibilityEvaluator();
-test_assert($evaluator->hasAnyEligible('product_search', true, $tenant) === true, 'product_search has eligible');
-test_assert($evaluator->hasAnyEligible('ambiguous', true, $tenant) === false, 'ambiguous has none eligible');
+test_assert($evaluator->hasAnyEligible(AiRuntimeIntent::PRODUCT_SEARCH, true, $tenant) === true, 'product_search has eligible');
+test_assert($evaluator->hasAnyEligible(AiRuntimeIntent::AMBIGUOUS, true, $tenant) === false, 'ambiguous has none eligible');
 
 // --- Human Handoff Policy ----------------------------------------------------
 $hand = $runtime->evaluateHumanHandoffPolicy(true);

@@ -22,7 +22,7 @@ final class SearchConditionCanonicalizer
     /**
      * @return array{
      *   keyword: string,
-     *   destination: ?string,
+     *   destination: list<string>,
      *   country: ?string,
      *   city: ?string,
      *   dateFrom: ?string,
@@ -51,8 +51,8 @@ final class SearchConditionCanonicalizer
 
         $country = null;
         $city = null;
-        if ($destination !== null && $destination !== '') {
-            $city = $destination;
+        if ($destination !== []) {
+            $city = count($destination) === 1 ? $destination[0] : implode(' ', $destination);
             if ($area !== null && isset(self::AREA_AS_COUNTRY[$area])) {
                 $country = self::AREA_AS_COUNTRY[$area];
             }
@@ -85,7 +85,7 @@ final class SearchConditionCanonicalizer
      */
     private static function resolveKeyword(
         ?string $keyword,
-        ?string $destination,
+        array $destination,
         ?string $area,
         array $specialTags,
         array $mustHave,
@@ -97,8 +97,8 @@ final class SearchConditionCanonicalizer
             return self::appendMustHave($k, $mustHaveText);
         }
 
-        if ($destination !== null && trim($destination) !== '') {
-            return self::appendMustHave(trim($destination), $mustHaveText);
+        if ($destination !== []) {
+            return self::appendMustHave(implode(' ', $destination), $mustHaveText);
         }
 
         if ($area !== null && trim($area) !== '') {

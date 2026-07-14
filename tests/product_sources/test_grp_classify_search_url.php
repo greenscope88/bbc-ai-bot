@@ -8,8 +8,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'SearchUrlBuilder.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'SearchUrlBuilderRegistry.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'TravelBMultiSourceLinkBuilder.php';
-require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridSearchConditionBuilder.php';
-require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'DateParser.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'support' . DIRECTORY_SEPARATOR . 'GeminiDerivedSearchConditionFixtures.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridDateRequiredGate.php';
 
 $failures = 0;
@@ -108,12 +107,7 @@ grp_test_assert(
 );
 
 // Case 2: 高雄東京近期 — grp ignores departure
-$refRecent = new DateTimeImmutable('2026-06-06', new DateTimeZone('Asia/Taipei'));
-$hybridBuilder = new HybridSearchConditionBuilder(new DateParser($refRecent));
-$condition2 = $hybridBuilder->parse('高雄東京近期', [
-    'reference_date' => $refRecent,
-    'merge_legacy_keyword' => true,
-]);
+$condition2 = GeminiDerivedSearchConditionFixtures::kaohsiungTokyoRecent();
 $url2 = grp_url_from_multi_builder($multiBuilder, $condition2, $sno);
 
 grp_test_assert($condition2->getDepartureCity() === '高雄', 'case2: hybrid departure_city 高雄');
@@ -131,10 +125,7 @@ grp_test_assert(strpos($url2, 'RadDatePicker2=') !== false, 'case2: RadDatePicke
 
 // Case 3: 東京（無日期）— gate blocks; template does not invent dates
 $gate = new HybridDateRequiredGate();
-$condition3 = $hybridBuilder->parse('東京', [
-    'reference_date' => $refRecent,
-    'merge_legacy_keyword' => true,
-]);
+$condition3 = GeminiDerivedSearchConditionFixtures::tokyoDestinationOnly();
 grp_test_assert(!$gate->evaluate($condition3)->allowsSearch(), 'case3: gate blocks 東京 without dates');
 
 $url3Multi = grp_url_from_multi_builder($multiBuilder, $condition3, $sno);

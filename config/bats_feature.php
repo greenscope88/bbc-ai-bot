@@ -65,10 +65,8 @@ return [
         '5f99b8d665e8444d', // travel_b pilot
     ],
     // Phase 2-D Step 2-D-3-1 AI Intent Understanding Shadow Probe.
-    // Shadow-only: runs AiIntentUnderstandingRuntime in parallel with the legacy
-    // KnowledgeIntentDetector and logs intent / dispatch_plan / execution_hint /
-    // owner_snapshot parity. Never changes reply text, route, transport, Knowledge /
-    // Product / Human Runtime, or LineService behavior; never throws.
+    // Shadow-only: runs AiIntentUnderstandingRuntime in parallel with the authoritative
+    // pilot path and logs intent parity. Never changes reply text, route, transport,
     //
     // Phase 2-D Step 2-D-3-2B Live Shadow Validation (travel_b): master switch ON,
     // but strictly tenant-scoped via the allowlist below ??only travel_b runs live

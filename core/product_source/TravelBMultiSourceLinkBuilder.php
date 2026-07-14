@@ -131,8 +131,8 @@ final class TravelBMultiSourceLinkBuilder
         ];
 
         $destination = $condition->getDestination();
-        if ($destination !== null && trim($destination) !== '') {
-            $document['destination'] = trim($destination);
+        if ($destination !== []) {
+            $document['destination'] = $destination;
         }
 
         $area = $condition->getArea();

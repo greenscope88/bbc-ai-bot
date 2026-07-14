@@ -7,9 +7,9 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuPromptBuilder.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'gemini_service.php';
 
 /**
- * Phase 2-D Step 2-D-4 — Production Gemini Understanding Core client.
+ * Production Gemini Understanding Core client.
  *
- * SSOT: docs/BATS_AI_INTENT_UNDERSTANDING_V2.md §15 / §16
+ * SSOT: AIU v2 Gemini Output Contract v1.0 Rev.1 (Frozen) — Gap B0-1 / B0-2 / B0-6.
  */
 final class AiuGeminiUnderstandingClient implements AiuGeminiUnderstandingClientInterface
 {
@@ -40,7 +40,7 @@ final class AiuGeminiUnderstandingClient implements AiuGeminiUnderstandingClient
 
         $decoded = $this->decodeSemanticJson((string) ($result['text'] ?? ''));
 
-        return $this->normalizeSemanticShape($decoded, $request->getCustomerUtterance());
+        return $this->normalizeSemanticShape($decoded);
     }
 
     /**
@@ -106,34 +106,54 @@ final class AiuGeminiUnderstandingClient implements AiuGeminiUnderstandingClient
      * @param array<string, mixed> $decoded
      * @return array{
      *   intent: string,
-     *   entity: array<string, mixed>,
+     *   entities: array<string, mixed>,
      *   confidence: float,
-     *   clarification: array{required: bool, reason: string},
-     *   semantic_notes?: string
+     *   clarification: array{required: bool, reason: string}
      * }
      */
-    private function normalizeSemanticShape(array $decoded, string $utterance): array
+    private function normalizeSemanticShape(array $decoded): array
     {
+        $this->assertOutputContractEntities($decoded);
+
         $intent = trim((string) ($decoded['intent'] ?? ''));
-        $entity = isset($decoded['entity']) && is_array($decoded['entity']) ? $decoded['entity'] : [];
+        $entities = $decoded['entities'];
+
         $confidence = isset($decoded['confidence']) ? (float) $decoded['confidence'] : 0.0;
         $clarification = isset($decoded['clarification']) && is_array($decoded['clarification'])
             ? $decoded['clarification']
             : [];
 
-        if (!isset($entity['free_text']) || trim((string) $entity['free_text']) === '') {
-            $entity['free_text'] = $utterance;
-        }
-
+        // B0-2: never emit semantic_notes.
         return [
             'intent' => $intent,
-            'entity' => $entity,
+            'entities' => $entities,
             'confidence' => max(0.0, min(1.0, $confidence)),
             'clarification' => [
                 'required' => (bool) ($clarification['required'] ?? false),
                 'reason' => trim((string) ($clarification['reason'] ?? '')),
             ],
-            'semantic_notes' => trim((string) ($decoded['semantic_notes'] ?? '')),
         ];
+    }
+
+    /**
+     * FR-1: Output Contract entities gate — invalid shape stops AIU flow (RuntimeException
+     * propagates to Selector legacy fallback per Integration Spec §4).
+     *
+     * @param array<string, mixed> $decoded
+     */
+    private function assertOutputContractEntities(array $decoded): void
+    {
+        if (array_key_exists('entity', $decoded)) {
+            throw new \RuntimeException('Gemini output contract invalid: legacy entity key is forbidden');
+        }
+
+        if (!array_key_exists('entities', $decoded) || !is_array($decoded['entities'])) {
+            throw new \RuntimeException('Gemini output contract invalid: entities must be present as array');
+        }
+
+        $entities = $decoded['entities'];
+        if ($entities !== [] && array_keys($entities) === range(0, count($entities) - 1)) {
+            throw new \RuntimeException('Gemini output contract invalid: entities must be an object');
+        }
     }
 }

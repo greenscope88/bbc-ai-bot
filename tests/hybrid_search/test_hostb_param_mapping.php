@@ -2,15 +2,13 @@
 declare(strict_types=1);
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . '_test_helpers.php';
-require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridSearchConditionBuilder.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'support' . DIRECTORY_SEPARATOR . 'GeminiDerivedSearchConditionFixtures.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'ApiQueryMapper.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HostBTourSearchParamMapper.php';
 
-$ref = new DateTimeImmutable('2026-05-26', new DateTimeZone('Asia/Taipei'));
-$builder = new HybridSearchConditionBuilder();
 $mapper = new ApiQueryMapper();
 
-$condition = $builder->parse('六月底高雄出發的東京親子團三萬以下', ['reference_date' => $ref]);
+$condition = GeminiDerivedSearchConditionFixtures::kaohsiungFamilyTokyoLateJune();
 $internal = $mapper->toClientParams($condition, ['page' => 1, 'pageSize' => 10]);
 $hostb = $mapper->toHostBParams($condition, ['page' => 1, 'pageSize' => 10]);
 $audit = $mapper->hostbMappingAudit($internal);

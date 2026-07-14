@@ -11,14 +11,11 @@ final class BatsSearchIntent
     /** @var string */
     private $intent;
 
-    /** @var string|null */
+    /** @var list<string> */
     private $destination;
 
     /** @var list<string> */
     private $destination_alias;
-
-    /** @var list<string> */
-    private $multi_destination;
 
     /** @var string|null */
     private $departure_city;
@@ -28,9 +25,6 @@ final class BatsSearchIntent
 
     /** @var string|null */
     private $date_to;
-
-    /** @var list<string> */
-    private $travel_type;
 
     /** @var int|null */
     private $budget_min;
@@ -72,22 +66,19 @@ final class BatsSearchIntent
     private $free_text;
 
     /**
+     * @param list<string> $destination
      * @param list<string> $destination_alias
-     * @param list<string> $multi_destination
-     * @param list<string> $travel_type
      * @param list<string> $must_have
      * @param list<string> $avoid
      */
     public function __construct(
         string $free_text,
         string $intent = self::INTENT_TOUR_SEARCH,
-        ?string $destination = null,
+        array $destination = [],
         array $destination_alias = [],
-        array $multi_destination = [],
         ?string $departure_city = null,
         ?string $date_from = null,
         ?string $date_to = null,
-        array $travel_type = [],
         ?int $budget_min = null,
         ?int $budget_max = null,
         ?int $people_count = null,
@@ -103,13 +94,11 @@ final class BatsSearchIntent
     ) {
         $this->free_text = trim($free_text);
         $this->intent = $intent;
-        $this->destination = self::nullableString($destination);
+        $this->destination = self::stringList($destination);
         $this->destination_alias = self::stringList($destination_alias);
-        $this->multi_destination = self::stringList($multi_destination);
         $this->departure_city = self::nullableString($departure_city);
         $this->date_from = self::nullableString($date_from);
         $this->date_to = self::nullableString($date_to);
-        $this->travel_type = self::stringList($travel_type);
         $this->budget_min = $budget_min;
         $this->budget_max = $budget_max;
         $this->people_count = $people_count;
@@ -134,7 +123,8 @@ final class BatsSearchIntent
         return $this->intent;
     }
 
-    public function getDestination(): ?string
+    /** @return list<string> */
+    public function getDestination(): array
     {
         return $this->destination;
     }
@@ -143,12 +133,6 @@ final class BatsSearchIntent
     public function getDestinationAlias(): array
     {
         return $this->destination_alias;
-    }
-
-    /** @return list<string> */
-    public function getMultiDestination(): array
-    {
-        return $this->multi_destination;
     }
 
     public function getDepartureCity(): ?string
@@ -164,12 +148,6 @@ final class BatsSearchIntent
     public function getDateTo(): ?string
     {
         return $this->date_to;
-    }
-
-    /** @return list<string> */
-    public function getTravelType(): array
-    {
-        return $this->travel_type;
     }
 
     public function getBudgetMin(): ?int
@@ -247,19 +225,15 @@ final class BatsSearchIntent
         return new self(
             array_key_exists('free_text', $patch) ? (string) $patch['free_text'] : $this->free_text,
             isset($patch['intent']) && is_string($patch['intent']) ? $patch['intent'] : $this->intent,
-            array_key_exists('destination', $patch) ? self::nullableString($patch['destination']) : $this->destination,
+            array_key_exists('destination', $patch) ? self::stringList($patch['destination']) : $this->destination,
             array_key_exists('destination_alias', $patch)
                 ? self::stringList($patch['destination_alias'])
                 : $this->destination_alias,
-            array_key_exists('multi_destination', $patch)
-                ? self::stringList($patch['multi_destination'])
-                : $this->multi_destination,
             array_key_exists('departure_city', $patch)
                 ? self::nullableString($patch['departure_city'])
                 : $this->departure_city,
             array_key_exists('date_from', $patch) ? self::nullableString($patch['date_from']) : $this->date_from,
             array_key_exists('date_to', $patch) ? self::nullableString($patch['date_to']) : $this->date_to,
-            array_key_exists('travel_type', $patch) ? self::stringList($patch['travel_type']) : $this->travel_type,
             array_key_exists('budget_min', $patch) ? self::nullableInt($patch['budget_min']) : $this->budget_min,
             array_key_exists('budget_max', $patch) ? self::nullableInt($patch['budget_max']) : $this->budget_max,
             array_key_exists('people_count', $patch)
@@ -294,11 +268,9 @@ final class BatsSearchIntent
             'intent' => $this->intent,
             'destination' => $this->destination,
             'destination_alias' => $this->destination_alias,
-            'multi_destination' => $this->multi_destination,
             'departure_city' => $this->departure_city,
             'date_from' => $this->date_from,
             'date_to' => $this->date_to,
-            'travel_type' => $this->travel_type,
             'budget_min' => $this->budget_min,
             'budget_max' => $this->budget_max,
             'people_count' => $this->people_count,
@@ -347,6 +319,14 @@ final class BatsSearchIntent
      */
     private static function stringList($value): array
     {
+        if ($value === null || $value === '') {
+            return [];
+        }
+        if (is_string($value) || is_numeric($value)) {
+            $s = trim((string) $value);
+
+            return $s === '' ? [] : [$s];
+        }
         if (!is_array($value)) {
             return [];
         }

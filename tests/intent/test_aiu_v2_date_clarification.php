@@ -120,7 +120,7 @@ $gold = runDateCase(
 dc_assert($gold['aiu']->isClarificationRequired() === false, 'gold: no clarification');
 dc_assert($gold['bats']->getDateFrom() === '2026-09-01', 'gold: date_from');
 dc_assert($gold['bats']->getDateTo() === '2026-09-30', 'gold: date_to');
-dc_assert(($gold['aiu']->getEntity()['destination'] ?? '') === '北海道', 'gold: destination');
+dc_assert(($gold['aiu']->getEntities()['destination'][0] ?? '') === '北海道', 'gold: destination');
 
 // 7. Product Search 0 results — must not ask for date
 $mockSearchClient = new TourSearchApiClient('https://example.test/tour/search', 5, static function (): array {

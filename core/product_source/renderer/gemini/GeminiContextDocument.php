@@ -280,13 +280,8 @@ final class GeminiContextDocument
     {
         return [
             'intent' => isset($intent['intent']) ? trim((string) $intent['intent']) : 'tour_search',
-            'destination' => array_key_exists('destination', $intent)
-                ? (is_string($intent['destination']) || $intent['destination'] === null
-                    ? ($intent['destination'] === null ? null : trim((string) $intent['destination']))
-                    : null)
-                : null,
+            'destination' => self::normalizeStringList($intent['destination'] ?? []),
             'destination_alias' => self::normalizeStringList($intent['destination_alias'] ?? []),
-            'multi_destination' => self::normalizeStringList($intent['multi_destination'] ?? []),
             'departure_city' => array_key_exists('departure_city', $intent)
                 ? (is_string($intent['departure_city']) || $intent['departure_city'] === null
                     ? ($intent['departure_city'] === null ? null : trim((string) $intent['departure_city']))
@@ -302,7 +297,6 @@ final class GeminiContextDocument
                     ? ($intent['date_to'] === null ? null : trim((string) $intent['date_to']))
                     : null)
                 : null,
-            'travel_type' => self::normalizeStringList($intent['travel_type'] ?? []),
             'budget_min' => array_key_exists('budget_min', $intent) && $intent['budget_min'] !== null && $intent['budget_min'] !== ''
                 ? (int) $intent['budget_min']
                 : null,

@@ -30,7 +30,7 @@ final class ClarificationPolicy
 
     public function apply(BatsSearchIntent $intent, ?SearchCondition $condition = null): BatsSearchIntent
     {
-        if ($intent->getDestination() === null || $intent->getConfidence() < $this->destinationConfidenceThreshold) {
+        if ($intent->getDestination() === [] || $intent->getConfidence() < $this->destinationConfidenceThreshold) {
             return $intent->with([
                 'clarification_required' => true,
                 'clarification_reason' => self::REASON_DESTINATION_UNKNOWN,
@@ -46,7 +46,7 @@ final class ClarificationPolicy
             ]);
         }
 
-        if ($intent->getMultiDestination() !== [] && !$this->hasResolvedDateRange($intent)) {
+        if (count($intent->getDestination()) > 1 && !$this->hasResolvedDateRange($intent)) {
             return $intent->with([
                 'clarification_required' => true,
                 'clarification_reason' => self::REASON_DATE_REQUIRED,
@@ -81,7 +81,7 @@ final class ClarificationPolicy
 
         return SearchCondition::empty($intent->getFreeText())->with([
             'destination' => $destination,
-            'keyword' => $destination,
+            'keyword' => $destination !== [] ? implode(' ', $destination) : null,
             'date_from' => $intent->getDateFrom(),
             'date_to' => $intent->getDateTo(),
         ]);

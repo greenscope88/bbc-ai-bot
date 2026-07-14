@@ -41,7 +41,6 @@ final class AsscSemanticValidationRunner
         $this->expectedRepository = $expectedRepository ?? new AsscGoldExpectedRepository();
         $this->runtime = $runtime ?? AiIntentUnderstandingRuntime::createForTesting(
             null,
-            null,
             AiIntentContextLoader::createForTesting(ConversationRuntimeFacade::createForTesting())
         );
         $this->tenantSno = $tenantSno;

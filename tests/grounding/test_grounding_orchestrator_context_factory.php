@@ -37,8 +37,9 @@ $context = GroundingOrchestratorContextFactory::build([
     ],
     'dispatch_result' => ['reply_purpose' => GroundedInput::PURPOSE_PRODUCT_REPLY],
     'bats_search_intent' => [
-        'destination' => '北海道',
+        'destination' => ['北海道'],
         'date_from' => '8月',
+        'duration' => '五天',
         'free_text' => '北海道 8月 五天',
     ],
 ]);
@@ -48,10 +49,10 @@ gocf_assert($context->getRuntimeType() === RuntimeType::PRODUCT_SEARCH, 'runtime
 gocf_assert($context->getSourceType() === GroundedInput::SOURCE_PRODUCT_SEARCH, 'source_type mapped');
 
 $aiu = $context->getAiuProjection();
-$entity = is_array($aiu['entity'] ?? null) ? $aiu['entity'] : [];
-gocf_assert(($entity['destination'] ?? '') === '北海道', 'entity destination from bats_search_intent');
-gocf_assert(($entity['travel_dates'] ?? '') === '8月', 'entity travel_dates from bats_search_intent');
-gocf_assert(($entity['duration'] ?? '') === '五天', 'entity duration from customer_query token');
+$entities = is_array($aiu['entities'] ?? null) ? $aiu['entities'] : [];
+gocf_assert(($entities['destination'] ?? []) === ['北海道'], 'entities destination from bats_search_intent');
+gocf_assert(($entities['travel_dates'] ?? '') === '8月', 'entities travel_dates from bats_search_intent');
+gocf_assert(($entities['duration'] ?? '') === '五天', 'entities duration from bats_search_intent');
 
 $knowledgeType = GroundingOrchestratorContextFactory::resolveKnowledgeRuntimeType([
     'fallback_layer' => 'industry_shared',

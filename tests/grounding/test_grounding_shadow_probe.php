@@ -51,12 +51,15 @@ $logger = static function (string $step, array $context) use (&$logs): void {
     $logs[] = ['step' => $step, 'context' => $context];
 };
 
+// Duration authority: Gemini-derived bats_search_intent.duration only.
+// customer_query intentionally conflicts ('七天') to prove it is not authoritative.
+$geminiDerivedDuration = '五天';
 $enabled = GroundingShadowProbe::run([
     'path' => 'product',
     'trace_id' => 'trace-shadow',
     'tenant_sno' => '1001',
     'conversation_id' => 'conv-shadow',
-    'customer_query' => '北海道 8月 五天',
+    'customer_query' => '北海道 8月 七天',
     'runtime_type' => RuntimeType::PRODUCT_SEARCH,
     'runtime_result' => [
         'reply_text' => 'legacy product reply',
@@ -68,6 +71,7 @@ $enabled = GroundingShadowProbe::run([
     'bats_search_intent' => [
         'destination' => '北海道',
         'date_from' => '8月',
+        'duration' => $geminiDerivedDuration,
     ],
     'legacy_reply_text' => 'legacy product reply',
     'config' => [
@@ -80,9 +84,13 @@ $enabled = GroundingShadowProbe::run([
 
 gsp_assert($enabled['executed'] === true, 'shadow executes when enabled');
 gsp_assert(($enabled['destination'] ?? '') === '北海道', 'shadow logs destination');
-gsp_assert(($enabled['duration'] ?? '') === '五天', 'shadow logs duration');
+gsp_assert(($enabled['duration'] ?? '') === $geminiDerivedDuration, 'shadow logs duration from bats_search_intent');
+gsp_assert(($enabled['duration'] ?? '') !== '七天', 'customer_query duration text is not authoritative');
 gsp_assert($logs !== [] && $logs[0]['step'] === 'grounding_layer_shadow_probe', 'shadow emits log');
-
+gsp_assert(
+    ($logs[0]['context']['duration'] ?? null) === $geminiDerivedDuration,
+    'shadow probe log duration equals bats_search_intent.duration'
+);
 $authoritativeBlocked = GroundingShadowProbe::run([
     'tenant_sno' => '1001',
     'conversation_id' => 'conv-1',

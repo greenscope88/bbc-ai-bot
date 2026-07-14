@@ -15,8 +15,10 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPA
     . DIRECTORY_SEPARATOR . 'LocalIndustrySharedKnowledgeProvider.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'knowledge'
     . DIRECTORY_SEPARATOR . 'HumanServiceResponseComposer.php';
-require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search'
-    . DIRECTORY_SEPARATOR . 'KnowledgeIntentDetector.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'intent'
+    . DIRECTORY_SEPARATOR . 'AiRuntimeIntent.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'intent'
+    . DIRECTORY_SEPARATOR . 'AiIntentUnderstandingRuntimeSelector.php';
 
 $failures = 0;
 
@@ -107,15 +109,10 @@ test_assert(($missingProfile['grounded'] ?? false) === false, '9: missing profil
 test_assert(($missingProfile['final_route'] ?? '') === 'phase_9c2b2a_knowledge_runtime_missing_profile', '9: missing profile route');
 test_assert(strpos($missingProfile['reply_text'], '目前尚未提供相關資訊') !== false, '9: missing profile fallback text');
 
-// 10. product_search regression (intent detector only)
-$detector = new KnowledgeIntentDetector();
+// 10. AIU Runtime Intent canonical values
 test_assert(
-    ($detector->detect('北海道7月')['intent_type'] ?? '') === KnowledgeIntentDetector::INTENT_PRODUCT_SEARCH,
-    '10: product_search regression'
-);
-test_assert(
-    ($detector->detect('請問客服電話')['intent_type'] ?? '') === KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY,
-    '10: knowledge_query still detected'
+    AiRuntimeIntent::KNOWLEDGE_QUERY === 'knowledge_query',
+    '10: knowledge_query constant'
 );
 
 // 11–14. service_qa acceptance cases
@@ -265,7 +262,10 @@ $japanPrice = $runtime->handle('日本簽證多少錢？');
 test_assert(($japanPrice['final_route'] ?? '') === 'phase_9c2b3_knowledge_human_service', '38: japan visa price fallback regression');
 $petFallbackAfterItems = $noMatchRuntime->handle('可以帶寵物上飛機嗎？', ['company_name' => '旅行蜜優惠']);
 test_assert(($petFallbackAfterItems['final_route'] ?? '') === 'phase_9c2b3_knowledge_human_service', '39: pet fallback regression');
-test_assert(($detector->detect('北海道7月')['intent_type'] ?? '') === KnowledgeIntentDetector::INTENT_PRODUCT_SEARCH, '40: product_search regression');
+test_assert(
+    AiRuntimeIntent::PRODUCT_SEARCH === 'product_search',
+    '40: product_search constant'
+);
 
 // 41–46. external_product_links acceptance cases
 $linkCases = [
@@ -328,7 +328,10 @@ $japanPriceAfterLinks = $runtime->handle('日本簽證多少錢？');
 test_assert(($japanPriceAfterLinks['final_route'] ?? '') === 'phase_9c2b3_knowledge_human_service', '52: japan visa price fallback regression');
 $petFallbackAfterLinks = $noMatchRuntime->handle('可以帶寵物上飛機嗎？', ['company_name' => '旅行蜜優惠']);
 test_assert(($petFallbackAfterLinks['final_route'] ?? '') === 'phase_9c2b3_knowledge_human_service', '53: pet fallback regression');
-test_assert(($detector->detect('北海道7月')['intent_type'] ?? '') === KnowledgeIntentDetector::INTENT_PRODUCT_SEARCH, '54: product_search regression');
+test_assert(
+    AiRuntimeIntent::HUMAN_SERVICE_REQUEST === 'human_service_request',
+    '54: human_service_request constant'
+);
 
 // 55–59. industry shared runtime acceptance (tenant miss -> L2 shared / human)
 $sharedAcceptanceRuntime = new TenantPrivateKnowledgeRuntime(

@@ -6,8 +6,7 @@ declare(strict_types=1);
  */
 
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridDateRequiredGate.php';
-require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridSearchConditionBuilder.php';
-require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'DateParser.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'support' . DIRECTORY_SEPARATOR . 'GeminiDerivedSearchConditionFixtures.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tour_line_reply_composer.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'gemini_tour_context_builder.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tour_prompt_feature_gate.php';
@@ -154,10 +153,10 @@ test_assert(
     'registry miss fixed_formatter legacy true'
 );
 
-$ref = new DateTimeImmutable('2026-06-05', new DateTimeZone('Asia/Taipei'));
-$hybridBuilder = new HybridSearchConditionBuilder(new DateParser($ref));
-$tokyoCondition = $hybridBuilder->parse('東京', ['reference_date' => $ref, 'merge_legacy_keyword' => true]);
-$clarifyCtx = HybridDateRequiredGate::buildClarificationContext($tokyoCondition, '東京');
+$clarifyCtx = HybridDateRequiredGate::buildClarificationContext(
+    GeminiDerivedSearchConditionFixtures::tokyoDestinationOnly(),
+    '東京'
+);
 $clarify = TourLineReplyComposer::resolve('prompt', $clarifyCtx, static fn (): array => ['ok' => true, 'text' => 'gemini']);
 test_assert(strpos($clarify['reply_text'], HybridDateRequiredGate::CLARIFICATION_MARKER) === false, 'clarify: no engineering marker');
 test_assert(strpos($clarify['reply_text'], '請問您預計什麼時候出發【東京】呢？') !== false, 'clarify: customer prompt');

@@ -6,10 +6,7 @@ declare(strict_types=1);
  */
 
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'BatsSearchIntent.php';
-require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'BatsSearchIntentBuilder.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'ClarificationPolicy.php';
-require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'DateParser.php';
-require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridSearchConditionBuilder.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'recommendation' . DIRECTORY_SEPARATOR . 'ProductRecommendationBuilder.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'recommendation' . DIRECTORY_SEPARATOR . 'TravelConsultantPersonaRuntime.php';
 
@@ -26,15 +23,31 @@ function test_assert(bool $cond, string $message): void
 
 function buildIntentFromQuery(string $query): array
 {
-    $ref = new DateTimeImmutable('2026-06-05', new DateTimeZone('Asia/Taipei'));
-    $builder = new BatsSearchIntentBuilder(
-        new HybridSearchConditionBuilder(new DateParser($ref))
-    );
+    if ($query === '北海道7月') {
+        return (new BatsSearchIntent(
+            $query,
+            BatsSearchIntent::INTENT_TOUR_SEARCH,
+            ['北海道'],
+            [],
+            null,
+            '2026-07-01',
+            '2026-07-31'
+        ))->toArray();
+    }
 
-    return $builder->parse($query, [
-        'reference_date' => $ref,
-        'merge_legacy_keyword' => true,
-    ])->toArray();
+    if ($query === '近期東京') {
+        return (new BatsSearchIntent(
+            $query,
+            BatsSearchIntent::INTENT_TOUR_SEARCH,
+            ['東京'],
+            [],
+            null,
+            '2026-06-05',
+            '2026-08-04'
+        ))->toArray();
+    }
+
+    throw new InvalidArgumentException('fixture intent only: ' . $query);
 }
 
 $builder = new ProductRecommendationBuilder();
@@ -58,6 +71,7 @@ $searchResults = [
 
 // Case 1: search_results > 0
 $intentHokkaido = buildIntentFromQuery('北海道7月');
+$intentHokkaido['destination'] = '北海道';
 $summaryWithResults = $builder->build($searchResults, $intentHokkaido, '北海道7月');
 test_assert(($summaryWithResults['result_count'] ?? 0) === 3, 'case1 result_count=3');
 test_assert(count($summaryWithResults['top_products'] ?? []) === 3, 'case1 top_products count');

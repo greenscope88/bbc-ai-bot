@@ -23,7 +23,8 @@ final class ProductSearchVerificationTrace
         string $tenantSno,
         int $resultCount,
         array $searchPolicyMeta = [],
-        ?string $finalSearchUrl = null
+        ?string $finalSearchUrl = null,
+        ?array $productUnderstandingTrace = null
     ): array {
         $document = TravelBMultiSourceLinkBuilder::hybridConditionToSearchDocument($condition);
         $sourceKeywordQuery = isset($document['source_keyword_query'])
@@ -37,7 +38,14 @@ final class ProductSearchVerificationTrace
 
         $apiParams = (new ApiQueryMapper())->toClientParams($condition, ['include_sno' => $tenantSno]);
 
+        $understandingTrace = is_array($productUnderstandingTrace) ? $productUnderstandingTrace : [
+            'understanding_source' => isset($searchPolicyMeta['understanding_source']) ? (string) $searchPolicyMeta['understanding_source'] : null,
+            'fallback_reason' => isset($searchPolicyMeta['fallback_reason']) ? $searchPolicyMeta['fallback_reason'] : null,
+        ];
+
         return [
+            'understanding_source' => $understandingTrace['understanding_source'] ?? null,
+            'fallback_reason' => $understandingTrace['fallback_reason'] ?? null,
             'runtime_entity' => $intent->toArray(),
             'search_condition' => $condition->toArray(),
             'source_keyword_query' => $sourceKeywordQuery,

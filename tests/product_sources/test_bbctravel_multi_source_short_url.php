@@ -7,8 +7,7 @@ declare(strict_types=1);
  */
 
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tour_prompt_context_service.php';
-require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridSearchConditionBuilder.php';
-require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'DateParser.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'support' . DIRECTORY_SEPARATOR . 'GeminiDerivedSearchConditionFixtures.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'MockShortUrlProvider.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tour_fallback_formatter.php';
 
@@ -54,12 +53,6 @@ $multiSourceConfig = [
     'tenant_sno' => $travelBSno,
     'source_instance_keys' => ['dayitravel_bbctravel'],
 ];
-$hybridConfig = [
-    'enabled' => true,
-    'allowed_sno' => [$travelBSno],
-    'allowed_channels' => [],
-    'dry_run_log_enabled' => false,
-];
 
 $mockClient = new TourSearchApiClient('https://example.test/tour/search', 5, static function (): array {
     $body = json_encode([
@@ -89,29 +82,38 @@ $multiBuilder = new TravelBMultiSourceLinkBuilder($multiSourceConfig);
 function build_bbctravel_case(
     TourPromptContextService $service,
     TravelBMultiSourceLinkBuilder $multiBuilder,
+    BatsSearchIntent $intent,
     string $userText,
     DateTimeImmutable $referenceDate,
-    array $hybridConfig,
     array $multiSourceConfig,
     MockShortUrlProvider $mockProvider,
     TourSearchApiClient $mockClient,
     string $travelBSno
 ): array {
-    $hybridBuilder = new HybridSearchConditionBuilder(new DateParser($referenceDate));
-    $condition = $hybridBuilder->parse($userText, ['merge_legacy_keyword' => true, 'reference_date' => $referenceDate]);
+    $departure = $intent->getDepartureCity();
+    if ($departure === '台中') {
+        $condition = GeminiDerivedSearchConditionFixtures::taichungTokyoLateJune();
+    } elseif ($departure === '高雄') {
+        $condition = GeminiDerivedSearchConditionFixtures::kaohsiungTokyoLateJune();
+    } elseif (($intent->getDestination()[0] ?? '') === '大阪') {
+        $condition = GeminiDerivedSearchConditionFixtures::recentOsaka();
+    } else {
+        $condition = GeminiDerivedSearchConditionFixtures::tokyoLateJuneOnly();
+    }
     $longUrl = bbctravel_long_url_from_links($multiBuilder->buildFromHybridCondition($condition, $travelBSno));
 
-    $context = $service->buildTourContextForPrompt([
+    $result = $service->buildTourContextResult([
         'userText' => $userText,
         'sno' => $travelBSno,
         'featureEnabled' => true,
         'searchClient' => $mockClient,
-        'hybridSearchConfig' => $hybridConfig,
         'travelBMultiSourceLinksConfig' => $multiSourceConfig,
         'multiSourceShortUrlProvider' => $mockProvider,
         'referenceDate' => $referenceDate,
+        'authoritativeIntent' => $intent,
         'includeInstructions' => false,
     ]);
+    $context = $result->getLegacyContext();
 
     $displayUrl = bbctravel_line_from_context($context);
     $lineReply = TourFallbackFormatter::formatFromTourContext($context);
@@ -124,9 +126,9 @@ $refCase1 = new DateTimeImmutable('2026-06-06', new DateTimeZone('Asia/Taipei'))
 [$long1, $short1, $line1] = build_bbctravel_case(
     $service,
     $multiBuilder,
+    GeminiDerivedSearchConditionFixtures::osakaRecentIntent(),
     '大阪近期',
     $refCase1,
-    $hybridConfig,
     $multiSourceConfig,
     $mockProvider,
     $mockClient,
@@ -156,9 +158,9 @@ $refCase2 = new DateTimeImmutable('2026-06-05', new DateTimeZone('Asia/Taipei'))
 [$long2, $short2, $line2] = build_bbctravel_case(
     $service,
     $multiBuilder,
+    GeminiDerivedSearchConditionFixtures::kaohsiungTokyoLateJuneIntent(),
     '高雄東京6月底',
     $refCase2,
-    $hybridConfig,
     $multiSourceConfig,
     $mockProvider,
     $mockClient,
@@ -170,12 +172,18 @@ short_url_assert(strpos($line2, 'https://bbcshops.com/') !== false, 'case2: LINE
 short_url_assert(strpos($line2, '/searchlist/khh/') === false, 'case2: LINE reply no long path');
 
 // Case 3: 台中東京6月底 → /RMG/
+$taichungIntent = BatsSearchIntent::empty('台中東京6月底')->with([
+    'destination' => ['東京'],
+    'departure_city' => '台中',
+    'date_from' => '2026-06-21',
+    'date_to' => '2026-06-30',
+]);
 [$long3, $short3, $line3] = build_bbctravel_case(
     $service,
     $multiBuilder,
+    $taichungIntent,
     '台中東京6月底',
     $refCase2,
-    $hybridConfig,
     $multiSourceConfig,
     $mockProvider,
     $mockClient,
@@ -204,8 +212,7 @@ $fullMultiConfig = [
     'source_instance_keys' => ['dayitravel_grp', 'dayitravel_bbctravel', 'dayitravel_tourcenter'],
 ];
 $multiBuilderFull = new TravelBMultiSourceLinkBuilder($fullMultiConfig);
-$hybridBuilderFull = new HybridSearchConditionBuilder(new DateParser($refCase2));
-$conditionFull = $hybridBuilderFull->parse('六月底東京', ['merge_legacy_keyword' => true, 'reference_date' => $refCase2]);
+$conditionFull = GeminiDerivedSearchConditionFixtures::tokyoLateJuneBudget();
 $longGrp = '';
 $longTourcenter = '';
 foreach ($multiBuilderFull->buildFromHybridCondition($conditionFull, $travelBSno) as $row) {
@@ -216,17 +223,23 @@ foreach ($multiBuilderFull->buildFromHybridCondition($conditionFull, $travelBSno
         $longTourcenter = (string) ($row['search_url'] ?? '');
     }
 }
-$contextFull = $service->buildTourContextForPrompt([
+$tokyoLateJuneIntent = BatsSearchIntent::empty('六月底東京')->with([
+    'destination' => ['東京'],
+    'date_from' => '2026-06-21',
+    'date_to' => '2026-06-30',
+]);
+$resultFull = $service->buildTourContextResult([
     'userText' => '六月底東京',
     'sno' => $travelBSno,
     'featureEnabled' => true,
     'searchClient' => $mockClient,
-    'hybridSearchConfig' => $hybridConfig,
     'travelBMultiSourceLinksConfig' => $fullMultiConfig,
     'multiSourceShortUrlProvider' => $mockProvider,
     'referenceDate' => $refCase2,
+    'authoritativeIntent' => $tokyoLateJuneIntent,
     'includeInstructions' => false,
 ]);
+$contextFull = $resultFull->getLegacyContext();
 $shortGrp = platform_url_from_context($contextFull, 'grp');
 $shortTourcenter = platform_url_from_context($contextFull, 'tourcenter');
 short_url_assert(strpos($longGrp, 'ClassifyProduct.aspx') !== false, 'scope: grp long URL has ClassifyProduct');

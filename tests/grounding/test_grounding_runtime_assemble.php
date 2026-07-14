@@ -55,7 +55,7 @@ function gra_product_context(array $entity, array $overrides = []): GroundingAss
             'company_name' => 'Travel B',
         ],
         'tone' => ['persona' => 'travel_consultant', 'allow_emoji' => true],
-        'aiu_projection' => ['entity' => $entity],
+        'aiu_projection' => ['entities' => $entity],
     ];
 
     return GroundingAssemblyContext::fromArray(array_merge($base, $overrides));

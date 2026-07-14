@@ -291,10 +291,7 @@ final class GeminiResponseContractValidator
             return false;
         }
 
-        $destination = isset($intent['destination']) && is_string($intent['destination'])
-            ? trim($intent['destination'])
-            : '';
-        if ($destination !== '') {
+        if (isset($intent['destination']) && is_array($intent['destination']) && $intent['destination'] !== []) {
             return true;
         }
 

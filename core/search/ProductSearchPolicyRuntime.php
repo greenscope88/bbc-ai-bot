@@ -44,7 +44,7 @@ final class ProductSearchPolicyRuntime
 
         if ($keyword !== null && trim($keyword) !== '') {
             $trimmedKeyword = trim($keyword);
-            $trimmedDestination = $destination !== null ? trim($destination) : '';
+            $trimmedDestination = $destination !== [] ? implode(' ', $destination) : '';
             if ($trimmedKeyword !== '' && $trimmedKeyword !== $trimmedDestination) {
                 return $this->applyKeywordPreference($normalizedItems, $trimmedKeyword);
             }
@@ -68,7 +68,7 @@ final class ProductSearchPolicyRuntime
     private function applyProductTypeStrict(
         array $items,
         string $productType,
-        ?string $destination,
+        array $destination,
         SearchCondition $condition
     ): array {
         $primary = [];
@@ -90,7 +90,7 @@ final class ProductSearchPolicyRuntime
             'product_type_mismatch' => $primary === [] && $items !== [],
             'keyword_preference' => null,
             'raw_count' => count($items),
-            'destination' => $destination !== null ? trim($destination) : '',
+            'destination' => $destination !== [] ? implode(' ', $destination) : '',
             'date_label' => $this->buildDateLabel($condition),
         ];
     }

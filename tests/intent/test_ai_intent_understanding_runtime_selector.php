@@ -2,14 +2,15 @@
 declare(strict_types=1);
 
 /**
- * Phase 2-D Step 2-D-3-3 — AI Intent Understanding Runtime Selector tests.
- *
- * Verifies Authoritative Switch capability: flag OFF → Legacy, flag ON → AIU mapping,
- * human_blocked, tenant scoping, config rollback, never-throw, and dispatch contract mapping.
+ * Phase 2-D Step 2-D-3-3 — AI Intent Understanding Runtime Selector tests (B0).
  */
 
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
     . 'intent' . DIRECTORY_SEPARATOR . 'AiIntentUnderstandingRuntimeSelector.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
+    . 'intent' . DIRECTORY_SEPARATOR . 'AiRuntimeIntent.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
+    . 'intent' . DIRECTORY_SEPARATOR . 'AiRuntimeIntentTranslator.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
     . 'intent' . DIRECTORY_SEPARATOR . 'AiIntentUnderstandingRuntime.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
@@ -47,80 +48,78 @@ $flagOn = [
 $runtimeFactory = static function () {
     return AiIntentUnderstandingRuntime::createForTesting(
         null,
-        null,
         AiIntentContextLoader::createForTesting(ConversationRuntimeFacade::createForTesting())
     );
 };
 
-$params = static function (string $message, string $legacyIntent, array $config) use ($pilotSno, $cid, $now): array {
+$params = static function (string $message, array $config) use ($pilotSno, $cid, $now): array {
     return [
         'tenant_sno' => $pilotSno,
         'conversation_id' => $cid,
         'message' => $message,
-        'legacy_intent_type' => $legacyIntent,
         'now' => $now,
         'reference_date' => $now,
         'config' => $config,
     ];
 };
 
-// --- isAuthoritativeEnabled ------------------------------------------------
-test_assert(
-    AiIntentUnderstandingRuntimeSelector::isAuthoritativeEnabled($flagOff, $pilotSno) === false,
-    'isEnabled: flag off => false'
-);
-test_assert(
-    AiIntentUnderstandingRuntimeSelector::isAuthoritativeEnabled($flagOn, $pilotSno) === true,
-    'isEnabled: flag on + tenant match => true'
-);
-test_assert(
-    AiIntentUnderstandingRuntimeSelector::isAuthoritativeEnabled($flagOn, 'other-sno') === false,
-    'isEnabled: tenant mismatch => false'
-);
-
-// --- flag OFF → Legacy (byte-identical selection) --------------------------
-$legacyProduct = KnowledgeIntentDetector::INTENT_PRODUCT_SEARCH;
 $resOff = AiIntentUnderstandingRuntimeSelector::resolve(
-    $params('我想3月去東京自由行', $legacyProduct, $flagOff),
+    $params('我想3月去東京自由行', $flagOff),
     $runtimeFactory()
 );
-test_assert($resOff['runtime_source'] === AiIntentUnderstandingRuntimeSelector::SOURCE_LEGACY, 'flag off: source legacy');
-test_assert($resOff['intent_type'] === $legacyProduct, 'flag off: intent unchanged');
-test_assert($resOff['human_blocked'] === false, 'flag off: not human blocked');
-test_assert($resOff['legacy_intent_type'] === $legacyProduct, 'flag off: legacy preserved');
+test_assert($resOff['runtime_source'] === AiIntentUnderstandingRuntimeSelector::SOURCE_FAIL_CLOSED, 'flag off: fail_closed');
+test_assert(
+    ($resOff['failure_reason'] ?? '') === AiIntentUnderstandingRuntimeSelector::FAILURE_REASON_AUTHORITY_DISABLED,
+    'flag off: authority disabled'
+);
+test_assert(count($resOff) === 2, 'flag off: only 2 fields');
+test_assert(!array_key_exists('intent_type', $resOff), 'flag off: no intent_type');
+test_assert(!array_key_exists('fallback_reason', $resOff), 'flag off: no fallback_reason');
 
-// --- flag ON → AIU drives routing (product) ----------------------------------
+$flagOnTenantMismatch = [
+    AiIntentUnderstandingRuntimeSelector::FLAG_ENABLED => true,
+    AiIntentUnderstandingRuntimeSelector::FLAG_TENANTS => ['other-tenant-sno'],
+];
+$resTenantMismatch = AiIntentUnderstandingRuntimeSelector::resolve(
+    $params('我想3月去東京自由行', $flagOnTenantMismatch),
+    $runtimeFactory()
+);
+test_assert($resTenantMismatch['runtime_source'] === AiIntentUnderstandingRuntimeSelector::SOURCE_FAIL_CLOSED, 'tenant mismatch: fail_closed');
+test_assert(
+    ($resTenantMismatch['failure_reason'] ?? '') === AiIntentUnderstandingRuntimeSelector::FAILURE_REASON_AUTHORITY_DISABLED,
+    'tenant mismatch: authority disabled'
+);
+test_assert(count($resTenantMismatch) === 2, 'tenant mismatch: only 2 fields');
+test_assert(!array_key_exists('intent_type', $resTenantMismatch), 'tenant mismatch: no intent_type');
+test_assert(!array_key_exists('legacy_intent_type', $resTenantMismatch), 'tenant mismatch: no legacy_intent_type');
+test_assert(!array_key_exists('fallback_reason', $resTenantMismatch), 'tenant mismatch: no fallback_reason');
+test_assert(!array_key_exists('aiu_result', $resTenantMismatch), 'tenant mismatch: no aiu_result');
+
 $resOnProduct = AiIntentUnderstandingRuntimeSelector::resolve(
-    $params('我想3月去東京自由行', $legacyProduct, $flagOn),
+    $params('我想3月去東京自由行', $flagOn),
     $runtimeFactory()
 );
 test_assert($resOnProduct['runtime_source'] === AiIntentUnderstandingRuntimeSelector::SOURCE_AIU, 'flag on product: source aiu');
-test_assert($resOnProduct['intent_type'] === KnowledgeIntentDetector::INTENT_PRODUCT_SEARCH, 'flag on product: mapped product_search');
-test_assert(isset($resOnProduct['dispatch_plan']), 'flag on product: dispatch_plan present');
-test_assert($resOnProduct['human_blocked'] === false, 'flag on product: not blocked');
+test_assert($resOnProduct['intent_type'] === AiRuntimeIntent::PRODUCT_SEARCH, 'flag on product: mapped product_search');
+test_assert(!array_key_exists('dispatch_plan', $resOnProduct), 'flag on product: no dispatch_plan');
+test_assert(!array_key_exists('execution_hint', $resOnProduct), 'flag on product: no execution_hint');
 
-// --- flag ON → knowledge ---------------------------------------------------
 $resOnKnowledge = AiIntentUnderstandingRuntimeSelector::resolve(
-    $params('請問客服電話', KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY, $flagOn),
+    $params('請問客服電話', $flagOn),
     $runtimeFactory()
 );
-test_assert($resOnKnowledge['intent_type'] === KnowledgeIntentDetector::INTENT_KNOWLEDGE_QUERY, 'flag on knowledge: mapped knowledge_query');
-test_assert(($resOnKnowledge['dispatch_plan'] ?? '') === DispatchPlan::KNOWLEDGE, 'flag on knowledge: dispatch knowledge');
+test_assert($resOnKnowledge['intent_type'] === AiRuntimeIntent::KNOWLEDGE_QUERY, 'flag on knowledge: mapped knowledge_query');
 
-// --- flag ON → ambiguous → clarification -----------------------------------
 $resOnAmbiguous = AiIntentUnderstandingRuntimeSelector::resolve(
-    $params('我想出去玩', KnowledgeIntentDetector::INTENT_AMBIGUOUS, $flagOn),
+    $params('我想出去玩', $flagOn),
     $runtimeFactory()
 );
-test_assert($resOnAmbiguous['intent_type'] === KnowledgeIntentDetector::INTENT_AMBIGUOUS, 'flag on ambiguous: mapped ambiguous');
-test_assert(($resOnAmbiguous['dispatch_plan'] ?? '') === DispatchPlan::CLARIFICATION, 'flag on ambiguous: dispatch clarification');
+test_assert($resOnAmbiguous['intent_type'] === AiRuntimeIntent::AMBIGUOUS, 'flag on ambiguous: mapped ambiguous');
 
-// --- flag ON + Owner HUMAN → human_blocked ---------------------------------
 $humanFacade = ConversationRuntimeFacade::createForTesting();
 $humanCid = $pilotSno . ':line:Uaiu-human';
 $humanFacade->state()->recordHumanAgentMessage($humanCid, $now);
 $humanRuntime = AiIntentUnderstandingRuntime::createForTesting(
-    null,
     null,
     AiIntentContextLoader::createForTesting($humanFacade)
 );
@@ -128,51 +127,51 @@ $resHuman = AiIntentUnderstandingRuntimeSelector::resolve([
     'tenant_sno' => $pilotSno,
     'conversation_id' => $humanCid,
     'message' => '我想3月去東京自由行',
-    'legacy_intent_type' => $legacyProduct,
     'now' => $now,
     'reference_date' => $now,
     'config' => $flagOn,
 ], $humanRuntime);
 test_assert($resHuman['human_blocked'] === true, 'human owner: human_blocked true');
-test_assert($resHuman['runtime_source'] === AiIntentUnderstandingRuntimeSelector::SOURCE_AIU, 'human owner: source aiu');
-test_assert(($resHuman['dispatch_plan'] ?? '') === DispatchPlan::HUMAN, 'human owner: dispatch human');
+test_assert(!array_key_exists('dispatch_plan', $resHuman), 'human owner: no dispatch_plan');
 
-// --- Config Rollback: ON then OFF → Legacy ---------------------------------
-$resRollback = AiIntentUnderstandingRuntimeSelector::resolve(
-    $params('我想3月去東京自由行', $legacyProduct, $flagOff),
+$productResult = AiIntentUnderstandingResult::create(AiIntentCategory::PRODUCT_SEARCH);
+test_assert(
+    AiRuntimeIntentTranslator::fromUnderstandingResult($productResult)
+        === AiRuntimeIntent::PRODUCT_SEARCH,
+    'translator: product → product_search'
+);
+
+$clarProduct = AiIntentUnderstandingResult::create(AiIntentCategory::PRODUCT_SEARCH)
+    ->setClarification(true, 'missing_travel_dates');
+test_assert(
+    AiRuntimeIntentTranslator::fromUnderstandingResult($clarProduct)
+        === AiRuntimeIntent::PRODUCT_SEARCH,
+    'translator: product clarification → product_search'
+);
+
+$clarAmbiguous = AiIntentUnderstandingResult::create(AiIntentCategory::AMBIGUOUS)
+    ->setClarification(true, 'intent_ambiguous');
+test_assert(
+    AiRuntimeIntentTranslator::fromUnderstandingResult($clarAmbiguous)
+        === AiRuntimeIntent::AMBIGUOUS,
+    'translator: ambiguous → ambiguous'
+);
+
+$humanServiceResult = AiIntentUnderstandingResult::create(AiIntentCategory::HUMAN_SERVICE);
+test_assert(
+    AiRuntimeIntentTranslator::fromUnderstandingResult($humanServiceResult)
+        === AiRuntimeIntent::HUMAN_SERVICE_REQUEST,
+    'translator: human_service → human_service_request'
+);
+
+$resHumanService = AiIntentUnderstandingRuntimeSelector::resolve(
+    $params('我要找真人客服', $flagOn),
     $runtimeFactory()
 );
-test_assert($resRollback['runtime_source'] === AiIntentUnderstandingRuntimeSelector::SOURCE_LEGACY, 'rollback: back to legacy');
-
-// --- mapToLegacyIntentType contract ----------------------------------------
-$productResult = AiIntentUnderstandingResult::create(AiIntentCategory::PRODUCT_SEARCH, DispatchPlan::PRODUCT);
 test_assert(
-    AiIntentUnderstandingRuntimeSelector::mapToLegacyIntentType($productResult)
-        === KnowledgeIntentDetector::INTENT_PRODUCT_SEARCH,
-    'map: product → product_search'
+    $resHumanService['intent_type'] === AiRuntimeIntent::HUMAN_SERVICE_REQUEST,
+    'flag on human service: mapped human_service_request'
 );
-$clarProduct = AiIntentUnderstandingResult::create(AiIntentCategory::PRODUCT_SEARCH, DispatchPlan::CLARIFICATION);
-test_assert(
-    AiIntentUnderstandingRuntimeSelector::mapToLegacyIntentType($clarProduct)
-        === KnowledgeIntentDetector::INTENT_PRODUCT_SEARCH,
-    'map: product clarification → product_search'
-);
-$clarAmbiguous = AiIntentUnderstandingResult::create(AiIntentCategory::AMBIGUOUS, DispatchPlan::CLARIFICATION);
-test_assert(
-    AiIntentUnderstandingRuntimeSelector::mapToLegacyIntentType($clarAmbiguous)
-        === KnowledgeIntentDetector::INTENT_AMBIGUOUS,
-    'map: ambiguous clarification → ambiguous'
-);
-
-// --- never-throw on garbage config -----------------------------------------
-$garbage = AiIntentUnderstandingRuntimeSelector::resolve([
-    'tenant_sno' => $pilotSno,
-    'conversation_id' => $cid,
-    'message' => 'test',
-    'legacy_intent_type' => $legacyProduct,
-    'config' => ['not' => 'valid'],
-]);
-test_assert($garbage['runtime_source'] === AiIntentUnderstandingRuntimeSelector::SOURCE_LEGACY, 'garbage config: fallback legacy');
 
 if ($failures > 0) {
     fwrite(STDERR, "\n{$failures} test failure(s)\n");
