@@ -109,6 +109,9 @@ $productPushSender = static function (string $url, string $token, string $userId
     return ['mock' => true, 'kind' => 'push'];
 };
 
+$logPath = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'logs' . DIRECTORY_SEPARATOR . 'saas_router.log';
+$logOffsetBefore01 = is_file($logPath) ? filesize($logPath) : 0;
+
 $result01 = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     $tenantTravelB,
     'BATS測試 東京 8月 兩個人',
@@ -138,6 +141,83 @@ test_assert(count($waitingCalls) === 1, 'test01: waiting reply once');
 test_assert(($waitingCalls[0]['text'] ?? '') === $waitingText, 'test01: fixed waiting text');
 test_assert(count($pushCalls) === 1, 'test01: final push once');
 test_assert(($result01['phase_9c1']['final_transport'] ?? '') === 'push', 'test01: final transport push');
+
+// B0-LINE-01C-1: one aiu_date_pipeline_observation for this authoritative AIU execution
+$obsLines = [];
+if (is_file($logPath)) {
+    $fh = fopen($logPath, 'rb');
+    if ($fh !== false) {
+        if ($logOffsetBefore01 > 0) {
+            fseek($fh, $logOffsetBefore01);
+        }
+        $appended = stream_get_contents($fh);
+        fclose($fh);
+        if (is_string($appended) && $appended !== '') {
+            foreach (preg_split("/\r\n|\n|\r/", $appended) as $line) {
+                if (
+                    strpos($line, '[aiu_date_pipeline_observation]') !== false
+                    && strpos($line, 'trace-0703-01') !== false
+                ) {
+                    $obsLines[] = $line;
+                }
+            }
+        }
+    }
+}
+test_assert(count($obsLines) === 1, 'test01: aiu_date_pipeline_observation emitted once');
+$obsJson = null;
+if ($obsLines !== []) {
+    $pos = strpos($obsLines[0], '{');
+    if ($pos !== false) {
+        $obsJson = json_decode(substr($obsLines[0], $pos), true);
+    }
+}
+test_assert(is_array($obsJson), 'test01: observation JSON decodable');
+$requiredObsKeys = [
+    'trace_id',
+    'intent_category',
+    'raw_has_date_range',
+    'raw_has_date_from',
+    'raw_has_date_to',
+    'raw_has_date_expression',
+    'normalized_date_from',
+    'normalized_date_to',
+    'normalized_has_date_expression',
+    'clarification_required',
+    'clarification_reason',
+    'translated_date_from',
+    'translated_date_to',
+];
+foreach ($requiredObsKeys as $key) {
+    test_assert(array_key_exists($key, $obsJson ?? []), 'test01: observation has ' . $key);
+}
+test_assert(($obsJson['trace_id'] ?? null) === 'trace-0703-01', 'test01: observation trace_id');
+test_assert(
+    is_bool($obsJson['raw_has_date_range'] ?? null)
+        && is_bool($obsJson['raw_has_date_from'] ?? null)
+        && is_bool($obsJson['raw_has_date_to'] ?? null)
+        && is_bool($obsJson['raw_has_date_expression'] ?? null),
+    'test01: raw date fields are booleans only'
+);
+test_assert(
+    !array_key_exists('customer_query', $obsJson ?? [])
+        && !array_key_exists('message_text', $obsJson ?? [])
+        && !array_key_exists('semantic_raw', $obsJson ?? [])
+        && !array_key_exists('prompt', $obsJson ?? [])
+        && !array_key_exists('user_id', $obsJson ?? []),
+    'test01: observation has no utterance or sensitive payload'
+);
+test_assert(
+    ($obsJson['translated_date_from'] ?? 'MISS') === ($obsJson['normalized_date_from'] ?? 'MISS2'),
+    'test01: translated_date_from equals normalized_date_from (translator copy)'
+);
+test_assert(
+    ($obsJson['translated_date_to'] ?? 'MISS') === ($obsJson['normalized_date_to'] ?? 'MISS2'),
+    'test01: translated_date_to equals normalized_date_to (translator copy)'
+);
+test_assert(is_bool($obsJson['clarification_required'] ?? null), 'test01: clarification_required observed');
+test_assert(is_string($obsJson['clarification_reason'] ?? null), 'test01: clarification_reason observed');
+test_assert(is_bool($obsJson['normalized_has_date_expression'] ?? null), 'test01: normalized_has_date_expression boolean');
 
 // Test 02: clarification for destination without date
 $clarifyReplyCalls = 0;

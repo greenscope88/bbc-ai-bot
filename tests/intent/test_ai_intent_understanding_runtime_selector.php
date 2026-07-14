@@ -103,6 +103,33 @@ test_assert($resOnProduct['runtime_source'] === AiIntentUnderstandingRuntimeSele
 test_assert($resOnProduct['intent_type'] === AiRuntimeIntent::PRODUCT_SEARCH, 'flag on product: mapped product_search');
 test_assert(!array_key_exists('dispatch_plan', $resOnProduct), 'flag on product: no dispatch_plan');
 test_assert(!array_key_exists('execution_hint', $resOnProduct), 'flag on product: no execution_hint');
+test_assert(
+    ($resOnProduct['aiu_result'] ?? null) instanceof AiIntentUnderstandingResult,
+    'flag on product: aiu_result present'
+);
+$productPresence = $resOnProduct['aiu_result']->getDatePipelineRawPresence();
+test_assert(is_array($productPresence), 'flag on product: raw date presence attached');
+test_assert(array_key_exists('raw_has_date_range', $productPresence), 'flag on product: raw_has_date_range key');
+test_assert(array_key_exists('raw_has_date_from', $productPresence), 'flag on product: raw_has_date_from key');
+test_assert(array_key_exists('raw_has_date_to', $productPresence), 'flag on product: raw_has_date_to key');
+test_assert(array_key_exists('raw_has_date_expression', $productPresence), 'flag on product: raw_has_date_expression key');
+test_assert(
+    is_bool($productPresence['raw_has_date_range'])
+        && is_bool($productPresence['raw_has_date_from'])
+        && is_bool($productPresence['raw_has_date_to'])
+        && is_bool($productPresence['raw_has_date_expression']),
+    'flag on product: raw presence values are booleans'
+);
+test_assert(
+    !array_key_exists('customer_message', $productPresence)
+        && !array_key_exists('semantic_raw', $productPresence),
+    'flag on product: presence bag has no utterance or raw payload'
+);
+test_assert(
+    is_bool($resOnProduct['aiu_result']->isClarificationRequired())
+        && is_string($resOnProduct['aiu_result']->getClarificationReason()),
+    'flag on product: clarification fields readable without behavior change'
+);
 
 $resOnKnowledge = AiIntentUnderstandingRuntimeSelector::resolve(
     $params('請問客服電話', $flagOn),

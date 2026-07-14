@@ -1184,6 +1184,13 @@ class SaaSRouter
                 $authoritativeProductIntent = (new AiuProductIntentTranslator())->translate(
                     $intentSelection['aiu_result']
                 );
+                if ($authoritativeProductIntent instanceof BatsSearchIntent) {
+                    self::emitAiuDatePipelineObservation(
+                        $traceId,
+                        $intentSelection['aiu_result'],
+                        $authoritativeProductIntent
+                    );
+                }
             }
 
             $productUnderstandingTrace = AiIntentUnderstandingRuntimeSelector::resolveProductUnderstandingTrace(
@@ -1866,6 +1873,45 @@ class SaaSRouter
         $stmt->execute();
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
         return is_array($rows) ? $rows : [];
+    }
+
+    /**
+     * Diagnostic-only: correlate Gemini raw date presence, normalized entities, and translated dates.
+     * Never feeds routing, clarification, search, API, Grounding, Composer, or LINE reply.
+     */
+    private static function emitAiuDatePipelineObservation(
+        string $traceId,
+        AiIntentUnderstandingResult $result,
+        BatsSearchIntent $translatedIntent
+    ): void {
+        $raw = $result->getDatePipelineRawPresence() ?? [
+            'raw_has_date_range' => false,
+            'raw_has_date_from' => false,
+            'raw_has_date_to' => false,
+            'raw_has_date_expression' => false,
+        ];
+        $entities = $result->getEntities();
+        $normalizedFrom = isset($entities['date_from']) ? trim((string) $entities['date_from']) : '';
+        $normalizedTo = isset($entities['date_to']) ? trim((string) $entities['date_to']) : '';
+        $normalizedExpression = isset($entities['date_expression'])
+            ? trim((string) $entities['date_expression'])
+            : '';
+
+        Logger::log('saas_router.log', 'aiu_date_pipeline_observation', [
+            'trace_id' => $traceId,
+            'intent_category' => $result->getIntent(),
+            'raw_has_date_range' => (bool) ($raw['raw_has_date_range'] ?? false),
+            'raw_has_date_from' => (bool) ($raw['raw_has_date_from'] ?? false),
+            'raw_has_date_to' => (bool) ($raw['raw_has_date_to'] ?? false),
+            'raw_has_date_expression' => (bool) ($raw['raw_has_date_expression'] ?? false),
+            'normalized_date_from' => $normalizedFrom !== '' ? $normalizedFrom : null,
+            'normalized_date_to' => $normalizedTo !== '' ? $normalizedTo : null,
+            'normalized_has_date_expression' => $normalizedExpression !== '',
+            'clarification_required' => $result->isClarificationRequired(),
+            'clarification_reason' => $result->getClarificationReason(),
+            'translated_date_from' => $translatedIntent->getDateFrom(),
+            'translated_date_to' => $translatedIntent->getDateTo(),
+        ]);
     }
 
     private static function appendWebhookLog(string $step, array $context): void

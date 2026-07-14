@@ -60,8 +60,76 @@ test_assert($r->getIntent() === AiIntentCategory::PRODUCT_SEARCH, 'human: intent
 $arr = $r->toArray();
 test_assert(isset($arr['entities']) && !isset($arr['entity']), 'stability: entities only in contract');
 test_assert(!array_key_exists('dispatch_plan', $arr), 'stability: no dispatch_plan in contract');
+test_assert(!array_key_exists('raw_has_date_range', $arr), 'stability: raw presence not in semantic toArray');
 $round = AiIntentUnderstandingResult::fromArray($arr);
 test_assert($round->toArray() === $arr, 'stability: round-trip equals');
+
+// --- B0-LINE-01C-1: date pipeline raw presence + normalized / expression isolation ---
+$fixedClient = new class implements AiuGeminiUnderstandingClientInterface {
+    /** @var array<string, mixed> */
+    public array $payload = [];
+
+    public function understand(AiuPromptRequest $request): array
+    {
+        unset($request);
+
+        return $this->payload;
+    }
+};
+
+$expressionOnlyPayload = [
+    'intent' => 'Product Search',
+    'entities' => [
+        'destination' => ['東京'],
+        'date_expression' => '8月',
+        'date_from' => null,
+        'date_to' => null,
+    ],
+    'confidence' => 0.9,
+    'clarification' => ['required' => false, 'reason' => ''],
+];
+$fixedClient->payload = $expressionOnlyPayload;
+$exprRuntime = new AiIntentUnderstandingRuntime(
+    $fixedClient,
+    null,
+    null,
+    AiIntentContextLoader::createForTesting(ConversationRuntimeFacade::createForTesting())
+);
+$exprResult = $exprRuntime->understand('irrelevant utterance for observation', ['conversation_id' => $cid]);
+$exprPresence = $exprResult->getDatePipelineRawPresence();
+test_assert(is_array($exprPresence), 'obs: raw presence attached');
+test_assert(($exprPresence['raw_has_date_expression'] ?? false) === true, 'obs: raw_has_date_expression true');
+test_assert(($exprPresence['raw_has_date_range'] ?? true) === false, 'obs: raw_has_date_range false');
+test_assert(($exprPresence['raw_has_date_from'] ?? true) === false, 'obs: raw_has_date_from false');
+test_assert(($exprPresence['raw_has_date_to'] ?? true) === false, 'obs: raw_has_date_to false');
+test_assert(($exprResult->getEntities()['date_from'] ?? null) === null, 'obs: expression does not create date_from');
+test_assert(($exprResult->getEntities()['date_to'] ?? null) === null, 'obs: expression does not create date_to');
+test_assert(
+    AiIntentUnderstandingRuntime::observeRawDateFieldPresence($expressionOnlyPayload)
+        === $exprPresence,
+    'obs: static presence helper matches attached bag'
+);
+
+$rangePayload = [
+    'intent' => 'Product Search',
+    'entities' => [
+        'destination' => ['日本'],
+        'date_range' => ['from' => '2026-08-01', 'to' => '2026-08-31'],
+        'date_expression' => '8月',
+    ],
+    'confidence' => 0.95,
+    'clarification' => ['required' => false, 'reason' => ''],
+];
+$fixedClient->payload = $rangePayload;
+$rangeResult = $exprRuntime->understand('another irrelevant utterance', ['conversation_id' => $cid]);
+$rangePresence = $rangeResult->getDatePipelineRawPresence();
+test_assert(($rangePresence['raw_has_date_range'] ?? false) === true, 'obs-range: raw_has_date_range');
+test_assert(($rangePresence['raw_has_date_from'] ?? false) === true, 'obs-range: raw_has_date_from');
+test_assert(($rangePresence['raw_has_date_to'] ?? false) === true, 'obs-range: raw_has_date_to');
+test_assert(($rangeResult->getEntities()['date_from'] ?? null) === '2026-08-01', 'obs-range: normalized date_from');
+test_assert(($rangeResult->getEntities()['date_to'] ?? null) === '2026-08-31', 'obs-range: normalized date_to');
+$rangeResult->attachDatePipelineRawPresence(['raw_has_date_range' => false]);
+test_assert(($rangeResult->getDatePipelineRawPresence()['raw_has_date_range'] ?? false) === true, 'obs: presence immutable after first attach');
 
 if ($failures === 0) {
     echo "ALL PASS test_ai_intent_understanding_runtime_logic\n";

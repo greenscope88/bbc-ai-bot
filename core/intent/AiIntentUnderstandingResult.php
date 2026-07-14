@@ -32,6 +32,19 @@ final class AiIntentUnderstandingResult
 
     private float $confidence = 0.0;
 
+    /**
+     * Observability-only: raw Gemini date-field presence booleans.
+     * Not part of the semantic contract; never consumed by routing / search / compose.
+     *
+     * @var array{
+     *   raw_has_date_range: bool,
+     *   raw_has_date_from: bool,
+     *   raw_has_date_to: bool,
+     *   raw_has_date_expression: bool
+     * }|null
+     */
+    private ?array $datePipelineRawPresence = null;
+
     public function __construct(string $intent)
     {
         $this->setIntent($intent);
@@ -164,6 +177,45 @@ final class AiIntentUnderstandingResult
         $this->confidence = max(0.0, min(1.0, $confidence));
 
         return $this;
+    }
+
+    /**
+     * Attach raw Gemini date-field presence flags once (immutable thereafter).
+     *
+     * @param array{
+     *   raw_has_date_range?: bool,
+     *   raw_has_date_from?: bool,
+     *   raw_has_date_to?: bool,
+     *   raw_has_date_expression?: bool
+     * } $presence
+     */
+    public function attachDatePipelineRawPresence(array $presence): self
+    {
+        if ($this->datePipelineRawPresence !== null) {
+            return $this;
+        }
+
+        $this->datePipelineRawPresence = [
+            'raw_has_date_range' => (bool) ($presence['raw_has_date_range'] ?? false),
+            'raw_has_date_from' => (bool) ($presence['raw_has_date_from'] ?? false),
+            'raw_has_date_to' => (bool) ($presence['raw_has_date_to'] ?? false),
+            'raw_has_date_expression' => (bool) ($presence['raw_has_date_expression'] ?? false),
+        ];
+
+        return $this;
+    }
+
+    /**
+     * @return array{
+     *   raw_has_date_range: bool,
+     *   raw_has_date_from: bool,
+     *   raw_has_date_to: bool,
+     *   raw_has_date_expression: bool
+     * }|null
+     */
+    public function getDatePipelineRawPresence(): ?array
+    {
+        return $this->datePipelineRawPresence;
     }
 
     /**

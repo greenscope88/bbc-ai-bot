@@ -82,6 +82,7 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
         );
 
         $semanticRaw = $this->geminiClient->understand($promptRequest);
+        $rawDatePresence = self::observeRawDateFieldPresence($semanticRaw);
         $normalized = $this->semanticNormalizer->normalize($semanticRaw, $message, $referenceDate);
 
         $detected = $normalized['intent'];
@@ -98,8 +99,68 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
             ->setConversationStage($snapshot['conversation_stage'])
             ->setResumeContext($snapshot['resume_context'])
             ->setClarification($clarificationRequired, $clarificationReason)
-            ->setConfidence($confidence);
+            ->setConfidence($confidence)
+            ->attachDatePipelineRawPresence($rawDatePresence);
 
         return $result;
+    }
+
+    /**
+     * Observability-only: boolean presence of Gemini raw date fields.
+     * Does not parse utterance, invent dates, or alter $semanticRaw.
+     *
+     * @param array<string, mixed> $semanticRaw
+     * @return array{
+     *   raw_has_date_range: bool,
+     *   raw_has_date_from: bool,
+     *   raw_has_date_to: bool,
+     *   raw_has_date_expression: bool
+     * }
+     */
+    public static function observeRawDateFieldPresence(array $semanticRaw): array
+    {
+        $entities = isset($semanticRaw['entities']) && is_array($semanticRaw['entities'])
+            ? $semanticRaw['entities']
+            : [];
+
+        $dateRange = $entities['date_range'] ?? null;
+        $hasDateRange = is_array($dateRange);
+
+        $rawFrom = $entities['date_from'] ?? null;
+        if (!self::rawScalarPresent($rawFrom) && $hasDateRange) {
+            $rawFrom = $dateRange['from'] ?? null;
+        }
+
+        $rawTo = $entities['date_to'] ?? null;
+        if (!self::rawScalarPresent($rawTo) && $hasDateRange) {
+            $rawTo = $dateRange['to'] ?? null;
+        }
+
+        return [
+            'raw_has_date_range' => $hasDateRange,
+            'raw_has_date_from' => self::rawScalarPresent($rawFrom),
+            'raw_has_date_to' => self::rawScalarPresent($rawTo),
+            'raw_has_date_expression' => self::rawScalarPresent($entities['date_expression'] ?? null),
+        ];
+    }
+
+    /**
+     * @param mixed $value
+     */
+    private static function rawScalarPresent($value): bool
+    {
+        if ($value === null) {
+            return false;
+        }
+
+        if (is_string($value)) {
+            return trim($value) !== '';
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return true;
+        }
+
+        return false;
     }
 }
