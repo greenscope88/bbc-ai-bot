@@ -63,6 +63,10 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
         $referenceDate = ($context['reference_date'] ?? null) instanceof \DateTimeImmutable
             ? $context['reference_date']
             : $now;
+        // Transport only: reuse Runtime-resolved reference for Prompt (no utterance parsing).
+        $promptReference = $referenceDate instanceof \DateTimeImmutable
+            ? $referenceDate
+            : new \DateTimeImmutable('now', new \DateTimeZone('Asia/Taipei'));
 
         $conversationId = isset($context['conversation_id']) ? (string) $context['conversation_id'] : '';
         $tenantSno = isset($context['tenant_sno']) ? trim((string) $context['tenant_sno']) : '';
@@ -78,6 +82,7 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
             $snapshot['owner_snapshot'],
             $snapshot['conversation_stage'],
             $snapshot['resume_context'],
+            $promptReference,
             isset($context['request_id']) ? (string) $context['request_id'] : null
         );
 

@@ -39,13 +39,42 @@ function b0_assert_contract_failure(callable $fn, string $label): void
     }
 }
 
-// --- B0-6 Prompt ---
+// --- B0-6 Prompt + date reference contract ---
+$tz = new DateTimeZone('Asia/Taipei');
+$refJul14 = new DateTimeImmutable('2026-07-14', $tz);
 $builder = new AiuPromptBuilder();
-$req = new AiuPromptRequest('sno', 'line', '京都自由行10月', [], ConversationOwner::AI, 'active', null, null);
+$req = new AiuPromptRequest(
+    'sno',
+    'line',
+    '京都自由行10月',
+    [],
+    ConversationOwner::AI,
+    'active',
+    null,
+    $refJul14,
+    null
+);
 $prompt = $builder->build($req);
 b0_assert(strpos($prompt, '"entities"') !== false, 'B0-6 prompt mentions entities');
 b0_assert(strpos($prompt, 'semantic_notes') === false || strpos($prompt, 'Do NOT output semantic_notes') !== false, 'B0-6 prompt forbids semantic_notes');
 b0_assert(strpos($prompt, 'dispatch_plan') !== false && strpos($prompt, 'Do NOT output dispatch_plan') !== false, 'B0-6 prompt forbids dispatch_plan');
+b0_assert(strpos($prompt, 'reference_calendar_date: 2026-07-14') !== false, 'Prompt injects reference_calendar_date');
+b0_assert(strpos($prompt, 'reference_timezone: Asia/Taipei') !== false, 'Prompt injects reference_timezone');
+b0_assert(strpos($prompt, 'B-03c Date Resolution Rules') !== false, 'Prompt includes date resolution rules');
+b0_assert(strpos($prompt, '2026-08-01') !== false && strpos($prompt, '2026-08-31') !== false, 'Prompt documents future-month example 8月');
+b0_assert(strpos($prompt, '2026-07-14') !== false && strpos($prompt, '2026-07-31') !== false, 'Prompt documents current-month example 7月');
+b0_assert(strpos($prompt, '2027-01-01') !== false && strpos($prompt, '2027-01-31') !== false, 'Prompt documents cross-year example 1月');
+b0_assert(strpos($prompt, '2027-03-01') !== false && strpos($prompt, '2027-03-31') !== false, 'Prompt documents explicit year/month example');
+b0_assert(strpos($prompt, '2026-09-12') !== false, 'Prompt documents 近期 +60 days example');
+b0_assert(strpos($prompt, 'Preserve date_expression') !== false || strpos($prompt, 'preserve the original phrasing in date_expression') !== false, 'Prompt requires preserving date_expression');
+b0_assert(strpos($prompt, 'Set date_range to null') !== false, 'Prompt allows unresolvable date_range null');
+
+// Cross-year reference injection (Dec 20)
+$refDec20 = new DateTimeImmutable('2026-12-20', $tz);
+$reqDec = new AiuPromptRequest('sno', 'line', '1月', [], ConversationOwner::AI, 'active', null, $refDec20, null);
+$promptDec = $builder->build($reqDec);
+b0_assert(strpos($promptDec, 'reference_calendar_date: 2026-12-20') !== false, 'Prompt injects Dec reference_calendar_date');
+b0_assert(strpos($promptDec, 'reference_timezone: Asia/Taipei') !== false, 'Prompt keeps Asia/Taipei on Dec reference');
 
 // --- B0-1 / B0-2 Client shape ---
 $client = new AiuGeminiUnderstandingClient(null, static function () {
@@ -186,6 +215,100 @@ b0_assert(($fuzzy['entities']['date_from'] ?? null) === null, 'B0-5 fuzzy date_f
 b0_assert(($fuzzy['entities']['date_to'] ?? null) === null, 'B0-5 fuzzy date_to null');
 b0_assert(($fuzzy['entities']['date_expression'] ?? null) === '有空再去', 'B0-5 keeps date_expression');
 
+// --- Date Prompt Contract: fixture Gemini JSON (no live Gemini; Normalize only flattens) ---
+$fixtureFutureMonth = $normalizer->normalize([
+    'intent' => 'product_search',
+    'entities' => [
+        'destination' => ['日本'],
+        'departure' => '台北',
+        'date_expression' => '8月',
+        'date_range' => ['from' => '2026-08-01', 'to' => '2026-08-31'],
+    ],
+    'confidence' => 0.9,
+    'clarification' => ['required' => false, 'reason' => ''],
+], '我想找8月從台北出發去日本的行程', $refJul14);
+b0_assert(($fixtureFutureMonth['entities']['date_from'] ?? null) === '2026-08-01', 'Fixture future month date_from');
+b0_assert(($fixtureFutureMonth['entities']['date_to'] ?? null) === '2026-08-31', 'Fixture future month date_to');
+b0_assert(($fixtureFutureMonth['entities']['date_expression'] ?? null) === '8月', 'Fixture future month preserves date_expression');
+
+$fixtureCurrentMonth = $normalizer->normalize([
+    'intent' => 'product_search',
+    'entities' => [
+        'date_expression' => '7月',
+        'date_range' => ['from' => '2026-07-14', 'to' => '2026-07-31'],
+    ],
+    'confidence' => 0.9,
+    'clarification' => ['required' => false, 'reason' => ''],
+], '7月行程', $refJul14);
+b0_assert(($fixtureCurrentMonth['entities']['date_from'] ?? null) === '2026-07-14', 'Fixture current month date_from = reference');
+b0_assert(($fixtureCurrentMonth['entities']['date_to'] ?? null) === '2026-07-31', 'Fixture current month date_to');
+b0_assert(($fixtureCurrentMonth['entities']['date_expression'] ?? null) === '7月', 'Fixture current month preserves date_expression');
+
+$fixtureCrossYear = $normalizer->normalize([
+    'intent' => 'product_search',
+    'entities' => [
+        'date_expression' => '1月',
+        'date_range' => ['from' => '2027-01-01', 'to' => '2027-01-31'],
+    ],
+    'confidence' => 0.9,
+    'clarification' => ['required' => false, 'reason' => ''],
+], '1月', $refDec20);
+b0_assert(($fixtureCrossYear['entities']['date_from'] ?? null) === '2027-01-01', 'Fixture cross-year date_from');
+b0_assert(($fixtureCrossYear['entities']['date_to'] ?? null) === '2027-01-31', 'Fixture cross-year date_to');
+b0_assert(($fixtureCrossYear['entities']['date_expression'] ?? null) === '1月', 'Fixture cross-year preserves date_expression');
+
+$fixtureExplicit = $normalizer->normalize([
+    'intent' => 'product_search',
+    'entities' => [
+        'date_expression' => '2027年3月',
+        'date_range' => ['from' => '2027-03-01', 'to' => '2027-03-31'],
+    ],
+    'confidence' => 0.9,
+    'clarification' => ['required' => false, 'reason' => ''],
+], '2027年3月', $refJul14);
+b0_assert(($fixtureExplicit['entities']['date_from'] ?? null) === '2027-03-01', 'Fixture explicit year/month date_from');
+b0_assert(($fixtureExplicit['entities']['date_to'] ?? null) === '2027-03-31', 'Fixture explicit year/month date_to');
+b0_assert(($fixtureExplicit['entities']['date_expression'] ?? null) === '2027年3月', 'Fixture explicit preserves date_expression');
+
+$fixtureRecent = $normalizer->normalize([
+    'intent' => 'product_search',
+    'entities' => [
+        'date_expression' => '近期',
+        'date_range' => ['from' => '2026-07-14', 'to' => '2026-09-12'],
+    ],
+    'confidence' => 0.9,
+    'clarification' => ['required' => false, 'reason' => ''],
+], '近期想出國', $refJul14);
+b0_assert(($fixtureRecent['entities']['date_from'] ?? null) === '2026-07-14', 'Fixture 近期 date_from');
+b0_assert(($fixtureRecent['entities']['date_to'] ?? null) === '2026-09-12', 'Fixture 近期 date_to = ref+60d');
+b0_assert(($fixtureRecent['entities']['date_expression'] ?? null) === '近期', 'Fixture 近期 preserves date_expression');
+
+$fixtureComplete = $normalizer->normalize([
+    'intent' => 'product_search',
+    'entities' => [
+        'date_expression' => '2026-08-10到2026-08-20',
+        'date_range' => ['from' => '2026-08-10', 'to' => '2026-08-20'],
+    ],
+    'confidence' => 0.95,
+    'clarification' => ['required' => false, 'reason' => ''],
+], '2026-08-10到2026-08-20', $refJul14);
+b0_assert(($fixtureComplete['entities']['date_from'] ?? null) === '2026-08-10', 'Fixture complete range date_from unchanged');
+b0_assert(($fixtureComplete['entities']['date_to'] ?? null) === '2026-08-20', 'Fixture complete range date_to unchanged');
+
+// Responsibility: Normalizer must not invent dates from utterance when Gemini omitted range
+$noInvent = $normalizer->normalize([
+    'intent' => 'product_search',
+    'entities' => [
+        'date_expression' => '8月',
+        'date_range' => null,
+    ],
+    'confidence' => 0.7,
+    'clarification' => ['required' => false, 'reason' => ''],
+], '我想找8月從台北出發去日本的行程', $refJul14);
+b0_assert(($noInvent['entities']['date_from'] ?? null) === null, 'No Runtime invent: date_from stays null');
+b0_assert(($noInvent['entities']['date_to'] ?? null) === null, 'No Runtime invent: date_to stays null');
+b0_assert(($noInvent['entities']['date_expression'] ?? null) === '8月', 'No Runtime invent: expression preserved');
+
 // --- B0-3 Runtime Result ---
 $runtime = AiIntentUnderstandingRuntime::createForTesting(
     new AiuGeminiUnderstandingClientStub(static function () use ($shaped): array {
@@ -195,6 +318,8 @@ $runtime = AiIntentUnderstandingRuntime::createForTesting(
 $result = $runtime->understand('京都自由行10月', [
     'conversation_id' => 'c1',
     'tenant_sno' => '5f99b8d665e8444d',
+    'now' => $refJul14,
+    'reference_date' => $refJul14,
 ]);
 $arr = $result->toArray();
 b0_assert(isset($arr['entities']), 'Result toArray has entities');

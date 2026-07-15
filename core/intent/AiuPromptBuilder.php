@@ -16,6 +16,8 @@ final class AiuPromptBuilder
             $this->blockMandate(),
             $this->blockIntentTaxonomy(),
             $this->blockEntitySchema(),
+            $this->blockReferenceDatetime($request),
+            $this->blockDateResolutionRules(),
             $this->blockClarificationDetection(),
             $this->blockContextSnapshot($request),
             $this->blockOwnerSnapshot($request),
@@ -61,8 +63,8 @@ Extract into entities object (fixed keys). Use null for missing scalars; [] for 
 Keys:
 destination (array of strings — country/city/subnational/landmark; do NOT pick a primary),
 travel_area (string|null — continent/large region e.g. 歐洲),
-date_range (object|null — {"from":"YYYY-MM-DD","to":"YYYY-MM-DD"} when parsed; null if unparsed),
-date_expression (string|null — original date phrasing),
+date_range (object|null — {"from":"YYYY-MM-DD","to":"YYYY-MM-DD"} when resolvable; null only when genuinely unresolvable),
+date_expression (string|null — original date phrasing; always preserve when the customer mentioned a date),
 duration_days (number|null),
 date_flexibility (string|null),
 product_type (string|null),
@@ -83,6 +85,58 @@ unclassified_terms (array).
 
 Do not put destination/theme/meal_preference values into preserved_keywords.
 "希望直飛" → transportation_preference; "不要轉機" → exclusion.
+TXT;
+    }
+
+    private function blockReferenceDatetime(AiuPromptRequest $request): string
+    {
+        $date = $request->getReferenceCalendarDate();
+        $tz = $request->getReferenceTimezone();
+
+        return <<<TXT
+[B-03b Reference Datetime — read-only]
+reference_calendar_date: {$date}
+reference_timezone: {$tz}
+Use this reference only for resolving relative or incomplete date expressions into date_range.
+Do not rewrite the customer utterance.
+TXT;
+    }
+
+    private function blockDateResolutionRules(): string
+    {
+        return <<<'TXT'
+[B-03c Date Resolution Rules — Gemini authority]
+Resolve date expressions into date_range using reference_calendar_date and reference_timezone.
+Both date_range endpoints are inclusive. Format every endpoint as YYYY-MM-DD.
+Always preserve the original phrasing in date_expression when a date was mentioned.
+
+Month-only rules (no explicit year):
+- Future month (month number > reference month in the same year):
+  date_range.from = first day of that month in the reference year;
+  date_range.to = last day of that month.
+  Example: reference_calendar_date 2026-07-14 + "8月" → from 2026-08-01 to 2026-08-31.
+- Current month (month number == reference month):
+  date_range.from = reference_calendar_date;
+  date_range.to = last day of that month in the reference year.
+  Example: reference_calendar_date 2026-07-14 + "7月" → from 2026-07-14 to 2026-07-31.
+- Earlier month (month number < reference month):
+  date_range.from = first day of that month in (reference year + 1);
+  date_range.to = last day of that month in (reference year + 1).
+  Example: reference_calendar_date 2026-12-20 + "1月" → from 2027-01-01 to 2027-01-31.
+
+Explicit year/month (e.g. "2027年3月"):
+- Use the explicit year and month; full calendar month first day through last day.
+  Example: "2027年3月" → from 2027-03-01 to 2027-03-31.
+
+「近期」 (exact token 近期 only; do not invent other synonyms):
+- date_range.from = reference_calendar_date;
+- date_range.to = reference_calendar_date + 60 calendar days.
+  Example: reference_calendar_date 2026-07-14 + "近期" → from 2026-07-14 to 2026-09-12.
+
+Unresolvable dates (e.g. purely vague with no usable calendar meaning):
+- Preserve date_expression when present;
+- Set date_range to null;
+- Do not invent dates.
 TXT;
     }
 

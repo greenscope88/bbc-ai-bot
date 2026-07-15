@@ -18,6 +18,8 @@ final class AiuPromptRequest
     /** @var array<string, mixed>|null */
     private ?array $resumeContext;
     private ?string $requestId;
+    /** Reference datetime for Gemini date resolution (timezone embedded). */
+    private \DateTimeImmutable $referenceDateTime;
 
     /**
      * @param array<string, mixed>      $contextSnapshot
@@ -31,6 +33,7 @@ final class AiuPromptRequest
         string $ownerSnapshot,
         string $conversationStage,
         ?array $resumeContext,
+        \DateTimeImmutable $referenceDateTime,
         ?string $requestId = null
     ) {
         $this->tenantId = trim($tenantId);
@@ -40,6 +43,7 @@ final class AiuPromptRequest
         $this->ownerSnapshot = trim($ownerSnapshot);
         $this->conversationStage = trim($conversationStage);
         $this->resumeContext = $resumeContext;
+        $this->referenceDateTime = $referenceDateTime;
         $this->requestId = $requestId !== null && trim($requestId) !== '' ? trim($requestId) : null;
     }
 
@@ -87,5 +91,26 @@ final class AiuPromptRequest
     public function getRequestId(): ?string
     {
         return $this->requestId;
+    }
+
+    public function getReferenceDateTime(): \DateTimeImmutable
+    {
+        return $this->referenceDateTime;
+    }
+
+    /**
+     * Calendar date (YYYY-MM-DD) in the reference timezone.
+     */
+    public function getReferenceCalendarDate(): string
+    {
+        return $this->referenceDateTime->format('Y-m-d');
+    }
+
+    /**
+     * Timezone name of the reference datetime (e.g. Asia/Taipei).
+     */
+    public function getReferenceTimezone(): string
+    {
+        return $this->referenceDateTime->getTimezone()->getName();
     }
 }
