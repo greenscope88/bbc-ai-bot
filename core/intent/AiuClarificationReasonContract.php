@@ -84,6 +84,24 @@ final class AiuClarificationReasonContract
     }
 
     /**
+     * Derive missing_entity for Resume State from a validated Closed AIU reason only.
+     *
+     * @throws \InvalidArgumentException
+     */
+    public static function missingEntityForAiuReason(string $aiuReason): string
+    {
+        $reason = trim($aiuReason);
+        if ($reason === self::AIU_MISSING_DESTINATION) {
+            return 'destination';
+        }
+        if ($reason === self::AIU_MISSING_TRAVEL_DATES) {
+            return 'date';
+        }
+
+        throw new \InvalidArgumentException(self::FAILURE_UNSUPPORTED);
+    }
+
+    /**
      * Validate Product Search clarification reason against structured entities.
      * When clarification is not required, reason is left unchecked (null/empty OK).
      *

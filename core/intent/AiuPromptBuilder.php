@@ -23,8 +23,9 @@ final class AiuPromptBuilder
             $this->blockOwnerSnapshot($request),
             $this->blockConversationStage($request),
             $this->blockResumeContext($request),
+            $this->blockStructuredSearchResumeState($request),
             $this->blockCustomerUtterance($request),
-            $this->blockOutputSchema(),
+            $this->blockOutputSchema($request),
             $this->blockGuardrails(),
         ];
 
@@ -94,10 +95,11 @@ TXT;
         $tz = $request->getReferenceTimezone();
 
         return <<<TXT
-[B-03b Reference Datetime — read-only]
+[B-03b Reference Datetime — read-only — CURRENT REQUEST ANCHOR]
 reference_calendar_date: {$date}
 reference_timezone: {$tz}
-Use this reference only for resolving relative or incomplete date expressions into date_range.
+Use THIS current-request reference only as the date-resolution anchor for relative or incomplete date expressions.
+Do not use prior provenance datetime (if present in structured search resume) as the date-resolution anchor.
 Do not rewrite the customer utterance.
 TXT;
     }
@@ -199,13 +201,64 @@ TXT;
         return '[B-08 Resume Context — read-only]' . "\n" . ($json !== false ? $json : 'null');
     }
 
+    private function blockStructuredSearchResumeState(AiuPromptRequest $request): string
+    {
+        $pending = $request->getStructuredSearchResumeState();
+        if ($pending === null) {
+            return <<<'TXT'
+[B-08b Structured Search Resume State — read-only]
+null
+No prior pending Product Search clarification state is injected.
+resume_disposition may be omitted or "new_request".
+Do NOT invent prior known_entities.
+TXT;
+        }
+
+        $json = json_encode($pending, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $body = $json !== false ? $json : '{}';
+
+        return <<<TXT
+[B-08b Structured Search Resume State — read-only pending facts]
+{$body}
+
+Prior provenance_reference_* fields are audit-only. They are NOT the date-resolution anchor.
+Current-request reference_calendar_date / reference_timezone remain the sole date-resolution anchor.
+Prior absolute date fields inside known_entities are known facts you may retain or revise.
+
+You are the sole merge authority. Output a FULL authoritative AIU result (not a delta).
+Runtime will NOT merge old and new entities.
+
+When this pending block is present, you MUST set resume_disposition to exactly one of:
+- "continue_pending" — customer continues filling the prior missing condition using prior facts
+- "modify_pending" — customer revises prior facts while staying on Product Search clarification/search
+- "new_request" — customer starts an unrelated request; do NOT inherit unrelated prior facts
+TXT;
+    }
+
     private function blockCustomerUtterance(AiuPromptRequest $request): string
     {
         return '[B-09 Customer Utterance — do not rewrite]' . "\n" . $request->getCustomerUtterance();
     }
 
-    private function blockOutputSchema(): string
+    private function blockOutputSchema(AiuPromptRequest $request): string
     {
+        if ($request->hasStructuredSearchResumeState()) {
+            return <<<'TXT'
+[B-10 Output Schema — AIU v2 Gemini Output Contract]
+Respond with JSON only (no markdown):
+{
+  "intent": "product_search | knowledge | human_service | ambiguous",
+  "entities": {},
+  "confidence": 0.0,
+  "clarification": { "required": false, "reason": "" },
+  "resume_disposition": "continue_pending | modify_pending | new_request"
+}
+resume_disposition is REQUIRED because Structured Search Resume State was injected.
+entities must include all fixed keys. Do NOT output semantic_notes.
+Do NOT output dispatch_plan, execution_hint, runtime_action, or search_action.
+TXT;
+        }
+
         return <<<'TXT'
 [B-10 Output Schema — AIU v2 Gemini Output Contract]
 Respond with JSON only (no markdown):
@@ -213,8 +266,10 @@ Respond with JSON only (no markdown):
   "intent": "product_search | knowledge | human_service | ambiguous",
   "entities": {},
   "confidence": 0.0,
-  "clarification": { "required": false, "reason": "" }
+  "clarification": { "required": false, "reason": "" },
+  "resume_disposition": "new_request"
 }
+resume_disposition may be omitted or "new_request" when no pending Structured Search Resume State was injected.
 entities must include all fixed keys. Do NOT output semantic_notes.
 Do NOT output dispatch_plan, execution_hint, runtime_action, or search_action.
 TXT;

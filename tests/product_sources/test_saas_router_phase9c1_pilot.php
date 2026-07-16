@@ -17,6 +17,8 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPA
     . DIRECTORY_SEPARATOR . 'AiIntentUnderstandingRuntime.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'intent'
     . DIRECTORY_SEPARATOR . 'AiuGeminiUnderstandingClientStub.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'intent'
+    . DIRECTORY_SEPARATOR . 'StructuredSearchResumeStateStore.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridDateRequiredGate.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'knowledge'
     . DIRECTORY_SEPARATOR . 'LocalTenantPrivateKnowledgeProvider.php';
@@ -189,11 +191,36 @@ function pilotGeminiSemantic(
 
 function pilotAiuRuntimeFromSemantic(array $semantic): AiIntentUnderstandingRuntime
 {
+    static $storeSeq = 0;
+    ++$storeSeq;
+    $dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'bbc_pilot_resume_' . getmypid() . '_' . $storeSeq;
+    if (!is_dir($dir)) {
+        mkdir($dir, 0775, true);
+    }
+
     return AiIntentUnderstandingRuntime::createForTesting(
         new AiuGeminiUnderstandingClientStub(static function () use ($semantic): array {
             return $semantic;
-        })
+        }),
+        null,
+        new StructuredSearchResumeStateStore($dir)
     );
+}
+
+/**
+ * @return array<string, mixed>
+ */
+function pilotRawLineEvent(string $userId, string $webhookEventId, string $destination = 'travel-b-channel'): array
+{
+    return [
+        'destination' => $destination,
+        'events' => [[
+            'type' => 'message',
+            'webhookEventId' => $webhookEventId,
+            'source' => ['type' => 'user', 'userId' => $userId],
+            'message' => ['type' => 'text', 'id' => '1', 'text' => 'x'],
+        ]],
+    ];
 }
 
 $pilotSemanticHokkaidoClarify = pilotGeminiSemantic(
@@ -339,7 +366,7 @@ $resultClarify = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     $pilotUserId,
     $clarifyPushSender,
     null,
-    null,
+    pilotRawLineEvent($pilotUserId, 'WEVT-CASE2'),
     $pilotRuntimeHokkaidoClarify,
     $clarifyStubComposer
 );
@@ -560,7 +587,7 @@ $resultMissingDest = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     $pilotUserId,
     null,
     null,
-    null,
+    pilotRawLineEvent($pilotUserId, 'WEVT-CASE2C'),
     $pilotRuntimeMissingDest,
     $missingDestComposer
 );

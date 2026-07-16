@@ -1073,6 +1073,20 @@ class SaaSRouter
                 ];
             }
 
+            $webhookEventId = '';
+            if (is_array($rawLineEvent)) {
+                $rawEvents = isset($rawLineEvent['events']) && is_array($rawLineEvent['events'])
+                    ? $rawLineEvent['events']
+                    : [];
+                $rawFirst = isset($rawEvents[0]) && is_array($rawEvents[0]) ? $rawEvents[0] : [];
+                $webhookEventId = isset($rawFirst['webhookEventId'])
+                    ? trim((string) $rawFirst['webhookEventId'])
+                    : '';
+                if ($channelId === '' && isset($rawLineEvent['destination'])) {
+                    $channelId = trim((string) $rawLineEvent['destination']);
+                }
+            }
+
             // Phase 2-D Step 2-D-3-3: Authoritative Runtime Selection — AIU v2 only (B0 fail-closed).
             $intentSelection = AiIntentUnderstandingRuntimeSelector::resolve([
                 'tenant_sno' => $tenantSno,
@@ -1080,6 +1094,11 @@ class SaaSRouter
                 'message' => $queryText,
                 'now' => $now,
                 'reference_date' => $now,
+                'channel' => 'line',
+                'channel_id' => $channelId,
+                'line_user_id' => $runtimeUserId,
+                'webhook_event_id' => $webhookEventId,
+                'trace_id' => $traceId,
             ], $aiuRuntime);
 
             if (($intentSelection['runtime_source'] ?? '') === AiIntentUnderstandingRuntimeSelector::SOURCE_FAIL_CLOSED) {

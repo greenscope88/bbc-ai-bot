@@ -32,6 +32,16 @@ final class AiIntentUnderstandingResult
 
     private float $confidence = 0.0;
 
+    /** Gemini resume disposition (empty when absent). */
+    private string $resumeDisposition = '';
+
+    /**
+     * Observability-only: Structured Search Resume lifecycle (not routing input).
+     *
+     * @var array<string, mixed>|null
+     */
+    private ?array $structuredSearchResumeObservability = null;
+
     /**
      * Observability-only: raw Gemini date-field presence booleans.
      * Not part of the semantic contract; never consumed by routing / search / compose.
@@ -175,6 +185,39 @@ final class AiIntentUnderstandingResult
     public function setConfidence(float $confidence): self
     {
         $this->confidence = max(0.0, min(1.0, $confidence));
+
+        return $this;
+    }
+
+    public function getResumeDisposition(): string
+    {
+        return $this->resumeDisposition;
+    }
+
+    public function setResumeDisposition(string $resumeDisposition): self
+    {
+        $this->resumeDisposition = trim($resumeDisposition);
+
+        return $this;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function getStructuredSearchResumeObservability(): ?array
+    {
+        return $this->structuredSearchResumeObservability;
+    }
+
+    /**
+     * @param array<string, mixed> $observability
+     */
+    public function attachStructuredSearchResumeObservability(array $observability): self
+    {
+        if ($this->structuredSearchResumeObservability !== null) {
+            return $this;
+        }
+        $this->structuredSearchResumeObservability = $observability;
 
         return $this;
     }

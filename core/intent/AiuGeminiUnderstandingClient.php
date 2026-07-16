@@ -108,7 +108,8 @@ final class AiuGeminiUnderstandingClient implements AiuGeminiUnderstandingClient
      *   intent: string,
      *   entities: array<string, mixed>,
      *   confidence: float,
-     *   clarification: array{required: bool, reason: string}
+     *   clarification: array{required: bool, reason: string},
+     *   resume_disposition: string|null
      * }
      */
     private function normalizeSemanticShape(array $decoded): array
@@ -123,6 +124,11 @@ final class AiuGeminiUnderstandingClient implements AiuGeminiUnderstandingClient
             ? $decoded['clarification']
             : [];
 
+        $resumeDisposition = null;
+        if (array_key_exists('resume_disposition', $decoded)) {
+            $resumeDisposition = trim((string) $decoded['resume_disposition']);
+        }
+
         // B0-2: never emit semantic_notes.
         return [
             'intent' => $intent,
@@ -132,6 +138,7 @@ final class AiuGeminiUnderstandingClient implements AiuGeminiUnderstandingClient
                 'required' => (bool) ($clarification['required'] ?? false),
                 'reason' => trim((string) ($clarification['reason'] ?? '')),
             ],
+            'resume_disposition' => $resumeDisposition,
         ];
     }
 

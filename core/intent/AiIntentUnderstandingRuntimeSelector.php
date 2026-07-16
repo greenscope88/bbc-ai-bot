@@ -172,6 +172,23 @@ final class AiIntentUnderstandingRuntimeSelector
 
             }
 
+            foreach ([
+                'channel',
+                'channel_id',
+                'line_user_id',
+                'webhook_event_id',
+                'trace_id',
+                'request_id',
+            ] as $contextKey) {
+                if (!array_key_exists($contextKey, $params)) {
+                    continue;
+                }
+                $value = trim((string) $params[$contextKey]);
+                if ($value !== '') {
+                    $understandContext[$contextKey] = $value;
+                }
+            }
+
 
 
             $result = $runtime->understand($message, $understandContext);

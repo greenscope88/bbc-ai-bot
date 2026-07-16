@@ -20,10 +20,17 @@ final class AiuPromptRequest
     private ?string $requestId;
     /** Reference datetime for Gemini date resolution (timezone embedded). */
     private \DateTimeImmutable $referenceDateTime;
+    /**
+     * Typed Structured Search pending state for Prompt injection (null when absent).
+     *
+     * @var array<string, mixed>|null
+     */
+    private ?array $structuredSearchResumeState;
 
     /**
      * @param array<string, mixed>      $contextSnapshot
      * @param array<string, mixed>|null $resumeContext
+     * @param array<string, mixed>|null $structuredSearchResumeState
      */
     public function __construct(
         string $tenantId,
@@ -34,7 +41,8 @@ final class AiuPromptRequest
         string $conversationStage,
         ?array $resumeContext,
         \DateTimeImmutable $referenceDateTime,
-        ?string $requestId = null
+        ?string $requestId = null,
+        ?array $structuredSearchResumeState = null
     ) {
         $this->tenantId = trim($tenantId);
         $this->channel = trim($channel) !== '' ? trim($channel) : 'line';
@@ -45,6 +53,7 @@ final class AiuPromptRequest
         $this->resumeContext = $resumeContext;
         $this->referenceDateTime = $referenceDateTime;
         $this->requestId = $requestId !== null && trim($requestId) !== '' ? trim($requestId) : null;
+        $this->structuredSearchResumeState = $structuredSearchResumeState;
     }
 
     public function getTenantId(): string
@@ -86,6 +95,19 @@ final class AiuPromptRequest
     public function getResumeContext(): ?array
     {
         return $this->resumeContext;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function getStructuredSearchResumeState(): ?array
+    {
+        return $this->structuredSearchResumeState;
+    }
+
+    public function hasStructuredSearchResumeState(): bool
+    {
+        return $this->structuredSearchResumeState !== null;
     }
 
     public function getRequestId(): ?string

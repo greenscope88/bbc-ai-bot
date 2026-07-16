@@ -69,7 +69,8 @@ final class AiuSemanticJsonNormalizer
      *   entities: array<string, mixed>,
      *   clarification_required: bool,
      *   clarification_reason: string,
-     *   confidence: float
+     *   confidence: float,
+     *   resume_disposition: string
      * }
      */
     public function normalize(
@@ -89,6 +90,9 @@ final class AiuSemanticJsonNormalizer
         $clarificationRequired = (bool) ($clarification['required'] ?? false);
         $clarificationReason = trim((string) ($clarification['reason'] ?? ''));
         $confidence = isset($semantic['confidence']) ? (float) $semantic['confidence'] : 0.0;
+        $resumeDisposition = array_key_exists('resume_disposition', $semantic)
+            ? trim((string) $semantic['resume_disposition'])
+            : '';
 
         if ($intent === AiIntentCategory::PRODUCT_SEARCH) {
             $dateResolved = $this->dateEntityResolver->resolve(
@@ -123,6 +127,7 @@ final class AiuSemanticJsonNormalizer
             'clarification_required' => $clarificationRequired,
             'clarification_reason' => $clarificationReason,
             'confidence' => max(0.0, min(1.0, $confidence)),
+            'resume_disposition' => $resumeDisposition,
         ];
     }
 
