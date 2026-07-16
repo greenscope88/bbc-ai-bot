@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'RuntimeType.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'clarification' . DIRECTORY_SEPARATOR . 'ClarificationContract.php';
 
 /**
  * Phase 2-E Step 2-E-1 — Grounded Response Composer input contract (presentation layer).
@@ -28,6 +29,7 @@ final class GroundedInput
 
     public const PURPOSE_KNOWLEDGE_REPLY = 'knowledge_reply';
     public const PURPOSE_PRODUCT_REPLY = 'product_reply';
+    public const PURPOSE_CLARIFICATION_REPLY = 'clarification_reply';
 
     public const CONVERSATION_OWNER_AI = 'AI';
     public const CONVERSATION_OWNER_HUMAN = 'HUMAN';
@@ -192,6 +194,54 @@ final class GroundedInput
             $result,
             $tenant,
             $replyPurpose
+        );
+    }
+
+    /**
+     * Build a GroundedInput from an approved ClarificationContract.
+     *
+     * Does not parse utterances. Preserves contract grounded facts and
+     * clarification reply policy for ClarificationLayoutStrategy.
+     */
+    public static function fromClarificationContract(ClarificationContract $contract): self
+    {
+        $trace = $contract->getTraceMetadata();
+        $contractArray = $contract->toArray();
+
+        return new self(
+            self::SOURCE_TENANT_PRIVATE,
+            null,
+            $contract->getGroundedFacts(),
+            [
+                'clarification_contract' => $contractArray,
+                'grounded' => $contract->getGroundedFacts() !== [],
+                'reply_text' => '',
+                'clarification_required' => true,
+                'clarification_reason' => $contract->getClarificationReason(),
+                'missing_entity' => $contract->getMissingEntity(),
+            ],
+            $contract->getTenant(),
+            self::PURPOSE_CLARIFICATION_REPLY,
+            [],
+            [],
+            [
+                'mode' => 'clarification',
+                'grounded_only' => true,
+            ],
+            RuntimeType::CLARIFICATION,
+            $contract->getTone(),
+            [],
+            [
+                'trace_id' => $trace['trace_id'],
+                'conversation_id' => $trace['conversation_id'],
+                'tenant_sno' => $trace['tenant_sno'],
+                'clarification_reason' => $contract->getClarificationReason(),
+                'missing_entity' => $contract->getMissingEntity(),
+            ],
+            [],
+            self::CONVERSATION_OWNER_AI,
+            self::CONVERSATION_STATUS_ACTIVE,
+            null
         );
     }
 

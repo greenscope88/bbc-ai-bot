@@ -146,9 +146,30 @@ TXT;
 [B-04 Clarification Detection Policy]
 Set clarification.required = true when:
 - intent is ambiguous, OR
-- product_search but critical slots missing (e.g. destination without usable dates), OR
+- product_search and a required slot is missing under the rules below, OR
 - confidence < 0.55
-Set clarification.reason to a short machine reason (e.g. missing_travel_dates, intent_ambiguous).
+
+When clarification.required = false: set clarification.reason to empty string ("").
+
+When intent is ambiguous: clarification.reason = intent_ambiguous (Ambiguous only; outside Product Search closed enum).
+
+When intent is product_search and clarification.required = true, clarification.reason MUST be exactly one of:
+- missing_destination
+- missing_travel_dates
+
+Product Search Destination First + entity conditions (structured entities only):
+- Destination missing (entities.destination empty), regardless of dates:
+  clarification.reason = missing_destination
+- Destination present AND usable travel dates missing or incomplete (date_range / date_from+date_to not both usable):
+  clarification.reason = missing_travel_dates
+
+Forbidden Product Search clarification.reason values (do NOT use):
+- critical_slots_missing
+- date_required
+- destination_unknown
+- null/empty when clarification.required = true
+- any freeform or invented machine reason
+
 Detection only — do NOT write clarification questions for the customer.
 TXT;
     }

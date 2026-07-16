@@ -996,7 +996,8 @@ class SaaSRouter
         $linePushSender = null,
         ?KnowledgeFallbackResolver $knowledgeFallbackResolver = null,
         ?array $rawLineEvent = null,
-        ?AiIntentUnderstandingRuntime $aiuRuntime = null
+        ?AiIntentUnderstandingRuntime $aiuRuntime = null,
+        ?GroundedResponseComposer $groundedResponseComposer = null
     ): ?array {
         $tenantSno = trim((string) ($tenant['sno'] ?? ''));
         if (!Phase9C1FeatureGate::isEnabled([
@@ -1523,14 +1524,75 @@ class SaaSRouter
             $groundedReplyType = null;
             $groundedLayoutProfile = null;
             $groundedUsedFactsCount = null;
+            $clarificationFinalRoute = null;
+            $clarificationFailureReason = null;
+            $clarificationAskedEntity = null;
+            $clarificationFinalOwner = null;
+            $clarificationHostBExecuted = null;
+            $clarificationValidationPassed = null;
 
             if ($structuredResult->isClarificationRequired()) {
-                $replyText = DateClarificationLineFormatter::formatFromTourContext(
-                    $structuredResult->getLegacyContext()
-                );
-                if ($replyText === '') {
-                    $replyText = '您好 😊 請問您預計什麼時候出發呢？我會依照您的出發時間幫您查詢適合的行程。';
+                $tenantArray = is_array($tenant) ? $tenant : [];
+                if (!isset($tenantArray['tenant_sno']) && $tenantSno !== '') {
+                    $tenantArray['tenant_sno'] = $tenantSno;
                 }
+                if (!isset($tenantArray['sno']) && $tenantSno !== '') {
+                    $tenantArray['sno'] = $tenantSno;
+                }
+
+                $clarifCompose = GroundingPipelineRuntime::composeClarificationReply([
+                    'config' => self::loadBatsFeatureConfig(),
+                    'trace_id' => $traceId,
+                    'tenant_sno' => $tenantSno,
+                    'conversation_id' => $runtimeConversationId,
+                    'clarification_reason' => (string) ($structuredResult->getClarificationReason() ?? ''),
+                    'bats_search_intent' => $structuredResult->getIntent(),
+                    'tenant' => $tenantArray,
+                    'legacy_tenant' => $tenantArray,
+                    'tone' => [
+                        'persona' => 'travel_consultant',
+                        'allow_emoji' => true,
+                    ],
+                    'composer' => $groundedResponseComposer,
+                ]);
+
+                $groundedOutput = $clarifCompose['output'];
+                $replyText = $groundedOutput->getReplyText();
+                $groundedReplyType = $groundedOutput->getReplyType();
+                $groundedLayoutProfile = $groundedOutput->getLayoutProfile();
+                $groundedUsedFactsCount = $groundedOutput->getUsedFactsCount();
+                $clarificationFinalRoute = (string) ($clarifCompose['route'] ?? GroundingPipelineRuntime::ROUTE_GENERATIVE_CLARIFICATION);
+                $clarificationFailureReason = isset($clarifCompose['failure_reason'])
+                    ? $clarifCompose['failure_reason']
+                    : null;
+                $clarificationAskedEntity = (string) ($clarifCompose['asked_entity'] ?? '');
+                $clarificationFinalOwner = (string) ($clarifCompose['final_owner'] ?? 'grounded_response_composer');
+                $clarificationHostBExecuted = (bool) ($clarifCompose['host_b_executed'] ?? false);
+                $clarificationValidationPassed = (bool) ($clarifCompose['validation_passed'] ?? false);
+
+                Logger::log('saas_router.log', $clarificationFinalRoute, [
+                    'trace_id' => $traceId,
+                    'clarification_reason' => $structuredResult->getClarificationReason(),
+                    'missing_entity' => $clarificationAskedEntity,
+                    'asked_entity' => $clarificationAskedEntity,
+                    'reply_type' => $groundedReplyType,
+                    'used_facts_count' => $groundedUsedFactsCount,
+                    'validation_passed' => $clarificationValidationPassed,
+                    'failure_reason' => $clarificationFailureReason,
+                    'final_owner' => $clarificationFinalOwner,
+                    'host_b_executed' => $clarificationHostBExecuted,
+                ]);
+                self::appendWebhookLog($clarificationFinalRoute, [
+                    'trace_id' => $traceId,
+                    'clarification_reason' => $structuredResult->getClarificationReason(),
+                    'asked_entity' => $clarificationAskedEntity,
+                    'reply_type' => $groundedReplyType,
+                    'used_facts_count' => $groundedUsedFactsCount,
+                    'validation_passed' => $clarificationValidationPassed,
+                    'failure_reason' => $clarificationFailureReason,
+                    'final_owner' => $clarificationFinalOwner,
+                    'host_b_executed' => $clarificationHostBExecuted,
+                ]);
             } else {
                 $renderer = $geminiRenderer ?? new GeminiRenderer();
                 $client = $geminiClient ?? new GeminiClient();
@@ -1724,14 +1786,33 @@ class SaaSRouter
                 'line_reply' => $replyRes,
                 'line_push' => $pushRes,
                 'final_transport' => ($waitingReplySent && !$structuredResult->isClarificationRequired()) ? 'push' : 'reply',
-                'final_route' => 'phase_9c1_structured_pilot',
+                'final_route' => $structuredResult->isClarificationRequired()
+                    && is_string($clarificationFinalRoute)
+                    && $clarificationFinalRoute !== ''
+                    ? $clarificationFinalRoute
+                    : 'phase_9c1_structured_pilot',
+                'final_owner' => $structuredResult->isClarificationRequired()
+                    ? (string) ($clarificationFinalOwner ?? 'grounded_response_composer')
+                    : null,
+                'asked_entity' => $structuredResult->isClarificationRequired() ? $clarificationAskedEntity : null,
+                'failure_reason' => $structuredResult->isClarificationRequired() ? $clarificationFailureReason : null,
+                'host_b_executed' => $structuredResult->isClarificationRequired()
+                    ? (bool) $clarificationHostBExecuted
+                    : null,
+                'validation_passed' => $structuredResult->isClarificationRequired()
+                    ? $clarificationValidationPassed
+                    : null,
             ];
             Logger::log('saas_router.log', 'phase_9c1_structured_pilot_reply', $payload);
             self::appendWebhookLog('phase_9c1_structured_pilot_reply', $payload);
 
             return [
                 'ok' => true,
-                'message' => 'phase_9c1_structured_pilot',
+                'message' => $structuredResult->isClarificationRequired()
+                    && is_string($clarificationFinalRoute)
+                    && $clarificationFinalRoute !== ''
+                    ? $clarificationFinalRoute
+                    : 'phase_9c1_structured_pilot',
                 'phase_9c1' => $payload,
             ];
         } catch (\Throwable $e) {

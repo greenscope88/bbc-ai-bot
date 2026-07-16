@@ -20,6 +20,24 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPA
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridDateRequiredGate.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'knowledge'
     . DIRECTORY_SEPARATOR . 'LocalTenantPrivateKnowledgeProvider.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'response'
+    . DIRECTORY_SEPARATOR . 'GroundedResponseComposer.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'response'
+    . DIRECTORY_SEPARATOR . 'clarification' . DIRECTORY_SEPARATOR . 'ClarificationContract.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'response'
+    . DIRECTORY_SEPARATOR . 'clarification' . DIRECTORY_SEPARATOR . 'ClarificationGeminiGenerator.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'response'
+    . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'ClarificationLayoutStrategy.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'response'
+    . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'LayoutStrategySelector.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'response'
+    . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'KnowledgeLayoutStrategy.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'response'
+    . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'ProductLayoutStrategy.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'grounding'
+    . DIRECTORY_SEPARATOR . 'GroundingPipelineRuntime.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'response'
+    . DIRECTORY_SEPARATOR . 'ReplyType.php';
 
 $failures = 0;
 
@@ -249,7 +267,7 @@ $decisionOff = Phase9C1FeatureGate::evaluate([
 ]);
 test_assert(($decisionOff['enabled'] ?? false) === false, 'case1: gate evaluate false');
 
-// Case 2: clarification → reply only
+// Case 2: clarification → reply only (generative Composer owner; no Date formatter)
 $clarifyClient = new TourSearchApiClient('https://example.test/tour/search', 5, static function (): array {
     ++$GLOBALS['pilot_clarify_api_calls'];
     return ['ok' => true, 'http_status' => 200, 'body' => '{}', 'transport_error' => null];
@@ -257,9 +275,12 @@ $clarifyClient = new TourSearchApiClient('https://example.test/tour/search', 5, 
 $GLOBALS['pilot_clarify_api_calls'] = 0;
 $clarifyReplyCalls = 0;
 $clarifyPushCalls = 0;
-$clarifyReplySender = static function (string $url, string $token, string $replyToken, string $text) use (&$clarifyReplyCalls): array {
-    unset($url, $token, $replyToken, $text);
+$clarifyReplyText = '';
+$clarifyGeminiCalls = 0;
+$clarifyReplySender = static function (string $url, string $token, string $replyToken, string $text) use (&$clarifyReplyCalls, &$clarifyReplyText): array {
+    unset($url, $token, $replyToken);
     ++$clarifyReplyCalls;
+    $clarifyReplyText = $text;
     return ['mock' => true, 'kind' => 'reply'];
 };
 $clarifyPushSender = static function (string $url, string $token, string $userId, string $text) use (&$clarifyPushCalls): array {
@@ -267,6 +288,35 @@ $clarifyPushSender = static function (string $url, string $token, string $userId
     ++$clarifyPushCalls;
     return ['mock' => true, 'kind' => 'push'];
 };
+
+$clarifyStubComposer = new GroundedResponseComposer(
+    null,
+    null,
+    new LayoutStrategySelector([
+        new ClarificationLayoutStrategy(new ClarificationGeminiGenerator(null, static function () use (&$clarifyGeminiCalls): array {
+            ++$clarifyGeminiCalls;
+
+            return [
+                'ok' => true,
+                'text' => json_encode([
+                    'schema_version' => 1,
+                    'reply_type' => 'clarification',
+                    'clarification_reason' => 'date_required',
+                    'asked_entity' => 'date',
+                    'reply_text' => '想先確認大概哪一段時間出發比較方便呢？',
+                    'acknowledged_entities' => [
+                        'destination' => ['北海道'],
+                    ],
+                    'search_claimed' => false,
+                    'product_facts_used' => false,
+                ], JSON_UNESCAPED_UNICODE),
+                'error' => null,
+            ];
+        })),
+        new KnowledgeLayoutStrategy(),
+        new ProductLayoutStrategy(),
+    ])
+);
 
 $resultClarify = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     $tenantTravelB,
@@ -290,13 +340,245 @@ $resultClarify = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     $clarifyPushSender,
     null,
     null,
-    $pilotRuntimeHokkaidoClarify
+    $pilotRuntimeHokkaidoClarify,
+    $clarifyStubComposer
 );
 test_assert(is_array($resultClarify), 'case2: clarification result array');
 test_assert(($resultClarify['phase_9c1']['clarification_required'] ?? false) === true, 'case2: clarification_required');
 test_assert($clarifyReplyCalls === 1, 'case2: clarification reply once');
 test_assert($clarifyPushCalls === 0, 'case2: no push on clarification');
 test_assert(($resultClarify['phase_9c1']['waiting_reply_sent'] ?? true) === false, 'case2: no waiting reply');
+test_assert(($GLOBALS['pilot_clarify_api_calls'] ?? -1) === 0, 'case2: Host B calls = 0');
+test_assert($clarifyGeminiCalls === 1, 'case2: one application generation call');
+test_assert(
+    ($resultClarify['phase_9c1']['final_route'] ?? '') === GroundingPipelineRuntime::ROUTE_GENERATIVE_CLARIFICATION,
+    'case2: generative clarification route'
+);
+test_assert(
+    ($resultClarify['phase_9c1']['final_owner'] ?? '') === 'grounded_response_composer',
+    'case2: composer sole owner'
+);
+test_assert(($resultClarify['phase_9c1']['asked_entity'] ?? '') === 'date', 'case2: asked_entity date');
+test_assert(($resultClarify['phase_9c1']['grounded_reply_type'] ?? '') === ReplyType::CLARIFICATION, 'case2: reply_type');
+test_assert(
+    strpos($clarifyReplyText, '請問您預計什麼時候出發呢？我會依照您的出發時間') === false,
+    'case2: no fixed date fallback wording'
+);
+test_assert($clarifyReplyText !== '', 'case2: composer wording sent');
+test_assert(
+    $clarifyReplyText !== ClarificationContract::TECHNICAL_FAIL_CLOSED_TEXT,
+    'case2: not technical fail-closed'
+);
+
+// Case 2b: invalid AIU reason → fail-closed before Search (Host B = 0; no generative clarif)
+$pilotSemanticInvalidReason = pilotGeminiSemantic(
+    'Product Search',
+    [
+        'destination' => [],
+        'date_range' => ['from' => '2026-08-01', 'to' => '2026-08-31'],
+        'date_from' => '2026-08-01',
+        'date_to' => '2026-08-31',
+    ],
+    0.8,
+    true,
+    'critical_slots_missing'
+);
+$pilotRuntimeInvalidReason = pilotAiuRuntimeFromSemantic($pilotSemanticInvalidReason);
+$GLOBALS['pilot_invalid_reason_api_calls'] = 0;
+$invalidReasonClient = new TourSearchApiClient(
+    'https://example.test/tour/search',
+    5,
+    static function (): array {
+        ++$GLOBALS['pilot_invalid_reason_api_calls'];
+
+        return ['ok' => true, 'http_status' => 200, 'body' => '{}', 'transport_error' => null];
+    }
+);
+$invalidReasonReplyCalls = 0;
+$invalidReasonGeminiCalls = 0;
+$invalidReasonReplySender = static function (
+    string $url,
+    string $token,
+    string $replyToken,
+    string $text
+) use (&$invalidReasonReplyCalls): array {
+    unset($url, $token, $replyToken, $text);
+    ++$invalidReasonReplyCalls;
+
+    return ['mock' => true, 'kind' => 'reply'];
+};
+$invalidReasonComposer = new GroundedResponseComposer(
+    null,
+    null,
+    new LayoutStrategySelector([
+        new ClarificationLayoutStrategy(new ClarificationGeminiGenerator(null, static function () use (&$invalidReasonGeminiCalls): array {
+            ++$invalidReasonGeminiCalls;
+
+            return [
+                'ok' => true,
+                'text' => json_encode([
+                    'schema_version' => 1,
+                    'reply_type' => 'clarification',
+                    'clarification_reason' => 'destination_unknown',
+                    'asked_entity' => 'destination',
+                    'reply_text' => 'should-not-run',
+                    'acknowledged_entities' => [],
+                    'search_claimed' => false,
+                    'product_facts_used' => false,
+                ], JSON_UNESCAPED_UNICODE),
+                'error' => null,
+            ];
+        })),
+        new KnowledgeLayoutStrategy(),
+        new ProductLayoutStrategy(),
+    ])
+);
+$resultInvalidReason = SaaSRouter::attemptPhase9C1StructuredPilotPath(
+    $tenantTravelB,
+    'BATS測試我想找8月從台北出發的行程',
+    'trace-pilot-2b',
+    'reply-token-2b',
+    'https://api.line.me/v2/bot/message/reply',
+    'channel-token-2b',
+    'travel-b-channel',
+    null,
+    $invalidReasonClient,
+    $referenceDate,
+    $invalidReasonReplySender,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    $pilotUserId,
+    null,
+    null,
+    null,
+    $pilotRuntimeInvalidReason,
+    $invalidReasonComposer
+);
+test_assert(is_array($resultInvalidReason), 'case2b: invalid reason result array');
+test_assert(
+    ($resultInvalidReason['message'] ?? '') === 'phase_9c1_aiu_fail_closed',
+    'case2b: aiu fail-closed message'
+);
+test_assert(
+    ($resultInvalidReason['phase_9c1']['final_route'] ?? '') === 'phase_9c1_aiu_fail_closed',
+    'case2b: fail-closed route'
+);
+test_assert(($GLOBALS['pilot_invalid_reason_api_calls'] ?? -1) === 0, 'case2b: Host B calls = 0');
+test_assert($invalidReasonReplyCalls === 0, 'case2b: no generative clarif LINE reply');
+test_assert($invalidReasonGeminiCalls === 0, 'case2b: no Clarification Composer generation');
+
+// Case 2c: valid missing_destination → generative clarification (destination ask)
+$pilotSemanticMissingDest = pilotGeminiSemantic(
+    'Product Search',
+    [
+        'destination' => [],
+        'date_range' => ['from' => '2026-08-01', 'to' => '2026-08-31'],
+        'date_from' => '2026-08-01',
+        'date_to' => '2026-08-31',
+    ],
+    0.8,
+    true,
+    'missing_destination'
+);
+$pilotRuntimeMissingDest = pilotAiuRuntimeFromSemantic($pilotSemanticMissingDest);
+$GLOBALS['pilot_missing_dest_api_calls'] = 0;
+$missingDestClient = new TourSearchApiClient(
+    'https://example.test/tour/search',
+    5,
+    static function (): array {
+        ++$GLOBALS['pilot_missing_dest_api_calls'];
+
+        return ['ok' => true, 'http_status' => 200, 'body' => '{}', 'transport_error' => null];
+    }
+);
+$missingDestReplyCalls = 0;
+$missingDestGeminiCalls = 0;
+$missingDestReplyText = '';
+$missingDestReplySender = static function (
+    string $url,
+    string $token,
+    string $replyToken,
+    string $text
+) use (&$missingDestReplyCalls, &$missingDestReplyText): array {
+    unset($url, $token, $replyToken);
+    ++$missingDestReplyCalls;
+    $missingDestReplyText = $text;
+
+    return ['mock' => true, 'kind' => 'reply'];
+};
+$missingDestComposer = new GroundedResponseComposer(
+    null,
+    null,
+    new LayoutStrategySelector([
+        new ClarificationLayoutStrategy(new ClarificationGeminiGenerator(null, static function () use (&$missingDestGeminiCalls): array {
+            ++$missingDestGeminiCalls;
+
+            return [
+                'ok' => true,
+                'text' => json_encode([
+                    'schema_version' => 1,
+                    'reply_type' => 'clarification',
+                    'clarification_reason' => 'destination_unknown',
+                    'asked_entity' => 'destination',
+                    'reply_text' => '想先確認這次主要想去哪個目的地呢？',
+                    'acknowledged_entities' => [
+                        'date_from' => '2026-08-01',
+                        'date_to' => '2026-08-31',
+                    ],
+                    'search_claimed' => false,
+                    'product_facts_used' => false,
+                ], JSON_UNESCAPED_UNICODE),
+                'error' => null,
+            ];
+        })),
+        new KnowledgeLayoutStrategy(),
+        new ProductLayoutStrategy(),
+    ])
+);
+$resultMissingDest = SaaSRouter::attemptPhase9C1StructuredPilotPath(
+    $tenantTravelB,
+    'BATS測試我想找8月從台北出發的行程',
+    'trace-pilot-2c',
+    'reply-token-2c',
+    'https://api.line.me/v2/bot/message/reply',
+    'channel-token-2c',
+    'travel-b-channel',
+    null,
+    $missingDestClient,
+    $referenceDate,
+    $missingDestReplySender,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    $pilotUserId,
+    null,
+    null,
+    null,
+    $pilotRuntimeMissingDest,
+    $missingDestComposer
+);
+test_assert(is_array($resultMissingDest), 'case2c: missing_destination result array');
+test_assert(($resultMissingDest['phase_9c1']['clarification_required'] ?? false) === true, 'case2c: clarification_required');
+test_assert(($GLOBALS['pilot_missing_dest_api_calls'] ?? -1) === 0, 'case2c: Host B calls = 0');
+test_assert($missingDestReplyCalls === 1, 'case2c: generative clarif reply once');
+test_assert($missingDestGeminiCalls === 1, 'case2c: Clarification Composer once');
+test_assert(
+    ($resultMissingDest['phase_9c1']['final_route'] ?? '') === GroundingPipelineRuntime::ROUTE_GENERATIVE_CLARIFICATION,
+    'case2c: generative clarification route'
+);
+test_assert(($resultMissingDest['phase_9c1']['asked_entity'] ?? '') === 'destination', 'case2c: asked_entity destination');
+test_assert($missingDestReplyText !== '', 'case2c: composer wording sent');
+test_assert(
+    $missingDestReplyText !== ClarificationContract::TECHNICAL_FAIL_CLOSED_TEXT,
+    'case2c: not technical fail-closed'
+);
 
 // Case 3: product_search → waiting Reply + final Push
 $waitingCalls = [];

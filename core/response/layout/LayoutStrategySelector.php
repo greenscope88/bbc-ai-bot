@@ -23,10 +23,12 @@ final class LayoutStrategySelector
 
     public static function createDefault(): self
     {
+        require_once __DIR__ . DIRECTORY_SEPARATOR . 'ClarificationLayoutStrategy.php';
         require_once __DIR__ . DIRECTORY_SEPARATOR . 'KnowledgeLayoutStrategy.php';
         require_once __DIR__ . DIRECTORY_SEPARATOR . 'ProductLayoutStrategy.php';
 
         return new self([
+            new ClarificationLayoutStrategy(),
             new KnowledgeLayoutStrategy(),
             new ProductLayoutStrategy(),
         ]);

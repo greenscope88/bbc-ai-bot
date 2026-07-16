@@ -68,6 +68,11 @@ b0_assert(strpos($prompt, '2027-03-01') !== false && strpos($prompt, '2027-03-31
 b0_assert(strpos($prompt, '2026-09-12') !== false, 'Prompt documents 近期 +60 days example');
 b0_assert(strpos($prompt, 'Preserve date_expression') !== false || strpos($prompt, 'preserve the original phrasing in date_expression') !== false, 'Prompt requires preserving date_expression');
 b0_assert(strpos($prompt, 'Set date_range to null') !== false, 'Prompt allows unresolvable date_range null');
+b0_assert(strpos($prompt, 'missing_destination') !== false, 'Prompt closed enum includes missing_destination');
+b0_assert(strpos($prompt, 'missing_travel_dates') !== false, 'Prompt closed enum includes missing_travel_dates');
+b0_assert(strpos($prompt, 'Destination First') !== false, 'Prompt enforces Destination First');
+b0_assert(strpos($prompt, 'e.g. missing_travel_dates, intent_ambiguous') === false, 'Prompt no freeform e.g. reason examples');
+b0_assert(strpos($prompt, 'critical slots missing') === false, 'Prompt no freeform critical slots prose');
 
 // Cross-year reference injection (Dec 20)
 $refDec20 = new DateTimeImmutable('2026-12-20', $tz);
@@ -214,6 +219,34 @@ $fuzzy = $normalizer->normalize([
 b0_assert(($fuzzy['entities']['date_from'] ?? null) === null, 'B0-5 fuzzy date_from null');
 b0_assert(($fuzzy['entities']['date_to'] ?? null) === null, 'B0-5 fuzzy date_to null');
 b0_assert(($fuzzy['entities']['date_expression'] ?? null) === '有空再去', 'B0-5 keeps date_expression');
+b0_assert(($fuzzy['clarification_reason'] ?? '') === 'missing_travel_dates', 'B0-5 preserves closed missing_travel_dates');
+
+// Closed reason: invalid freeform rejected (no repair)
+try {
+    $normalizer->normalize([
+        'intent' => 'product_search',
+        'entities' => ['destination' => []],
+        'confidence' => 0.5,
+        'clarification' => ['required' => true, 'reason' => 'critical_slots_missing'],
+    ], '想找行程');
+    b0_assert(false, 'closed reason: critical_slots_missing must throw');
+} catch (\InvalidArgumentException $e) {
+    b0_assert(
+        $e->getMessage() === 'unsupported_aiu_clarification_reason',
+        'closed reason: critical_slots_missing → unsupported_aiu_clarification_reason'
+    );
+}
+
+$normMissingDest = $normalizer->normalize([
+    'intent' => 'product_search',
+    'entities' => [
+        'destination' => [],
+        'date_range' => ['from' => '2026-08-01', 'to' => '2026-08-31'],
+    ],
+    'confidence' => 0.8,
+    'clarification' => ['required' => true, 'reason' => 'missing_destination'],
+], '我想找8月從台北出發的行程');
+b0_assert(($normMissingDest['clarification_reason'] ?? '') === 'missing_destination', 'closed reason: missing_destination preserved');
 
 // --- Date Prompt Contract: fixture Gemini JSON (no live Gemini; Normalize only flattens) ---
 $fixtureFutureMonth = $normalizer->normalize([

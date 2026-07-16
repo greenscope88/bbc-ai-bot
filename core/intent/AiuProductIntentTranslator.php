@@ -2,33 +2,35 @@
 declare(strict_types=1);
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiIntentUnderstandingResult.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiIntentCategory.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuClarificationReasonContract.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'BatsSearchIntent.php';
-require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'ClarificationPolicy.php';
 
 /**
  * B0: destination[] execution projection + direct v2 entity field copy only (B2 deferred).
+ *
+ * Clarification reasons: map closed AIU vocabulary only; never infer from entities/utterance.
  */
 final class AiuProductIntentTranslator
 {
-    /** @var array<string, string> */
-    private const REASON_VOCAB_MAP = [
-        'missing_travel_dates' => ClarificationPolicy::REASON_DATE_REQUIRED,
-        'date_required' => ClarificationPolicy::REASON_DATE_REQUIRED,
-        'missing_destination' => ClarificationPolicy::REASON_DESTINATION_UNKNOWN,
-        'destination_unknown' => ClarificationPolicy::REASON_DESTINATION_UNKNOWN,
-    ];
-
     public function translate(AiIntentUnderstandingResult $result): BatsSearchIntent
     {
         $entities = $result->getEntities();
 
         $destination = $this->destinationList($entities['destination'] ?? null);
         $clarificationRequired = $result->isClarificationRequired();
-        $clarificationReason = $this->translateReason(
-            $result->getClarificationReason(),
-            $destination !== [] ? $destination[0] : null,
-            $clarificationRequired
-        );
+        // Closed AIU→Runtime reason map is Product Search only.
+        // Non-product AIU results must not fail-closed here; clear Product clarification
+        // fields so Ambiguous/Knowledge keep prior Router/service branching.
+        if ($result->getIntent() === AiIntentCategory::PRODUCT_SEARCH) {
+            $clarificationReason = $this->translateReason(
+                $result->getClarificationReason(),
+                $clarificationRequired
+            );
+        } else {
+            $clarificationRequired = false;
+            $clarificationReason = null;
+        }
 
         $duration = null;
         if (isset($entities['duration_days']) && is_numeric($entities['duration_days'])) {
@@ -78,22 +80,18 @@ final class AiuProductIntentTranslator
         return $this->stringList($value);
     }
 
-    private function translateReason(string $semanticReason, ?string $destination, bool $clarificationRequired): ?string
+    /**
+     * Map closed AIU reason → Runtime reason. No entity fallback; no Runtime aliases as input.
+     *
+     * @throws \InvalidArgumentException
+     */
+    private function translateReason(string $semanticReason, bool $clarificationRequired): ?string
     {
         if (!$clarificationRequired) {
             return null;
         }
 
-        $reason = trim($semanticReason);
-        if ($reason !== '' && isset(self::REASON_VOCAB_MAP[$reason])) {
-            return self::REASON_VOCAB_MAP[$reason];
-        }
-
-        if ($destination === null) {
-            return ClarificationPolicy::REASON_DESTINATION_UNKNOWN;
-        }
-
-        return ClarificationPolicy::REASON_DATE_REQUIRED;
+        return AiuClarificationReasonContract::mapToRuntimeReason($semanticReason);
     }
 
     /**

@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiIntentCategory.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuDateEntityResolver.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuClarificationReasonContract.php';
 
 /**
  * AIU v2 Normalize — Translation Layer.
@@ -100,6 +101,13 @@ final class AiuSemanticJsonNormalizer
             $entities = $dateResolved['entities'];
             $clarificationRequired = $dateResolved['clarification_required'];
             $clarificationReason = $dateResolved['clarification_reason'];
+
+            // Closed Product Search reason vocabulary: validate only; never repair/coerce.
+            AiuClarificationReasonContract::assertValidProductSearchClarification(
+                $clarificationRequired,
+                $clarificationReason,
+                $entities
+            );
         }
 
         if ($intent === AiIntentCategory::AMBIGUOUS) {

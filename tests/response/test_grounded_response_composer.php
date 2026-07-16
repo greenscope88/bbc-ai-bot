@@ -235,6 +235,72 @@ test_assert(
     'product external_link: composer does not append extra products'
 );
 
+// C-2. Clarification ownership through Composer (stub Gemini; generative flag OFF)
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
+    . 'response' . DIRECTORY_SEPARATOR . 'clarification' . DIRECTORY_SEPARATOR . 'ClarificationContract.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
+    . 'response' . DIRECTORY_SEPARATOR . 'clarification' . DIRECTORY_SEPARATOR . 'ClarificationContractFactory.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
+    . 'response' . DIRECTORY_SEPARATOR . 'clarification' . DIRECTORY_SEPARATOR . 'ClarificationGeminiGenerator.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
+    . 'response' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'ClarificationLayoutStrategy.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
+    . 'response' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'LayoutStrategySelector.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
+    . 'response' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'KnowledgeLayoutStrategy.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
+    . 'response' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'ProductLayoutStrategy.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
+    . 'response' . DIRECTORY_SEPARATOR . 'ReplyType.php';
+
+$clarifFactory = new ClarificationContractFactory();
+$clarifContract = $clarifFactory->create([
+    'clarification_reason' => ClarificationContract::REASON_DESTINATION_UNKNOWN,
+    'known_entities' => [
+        'date_from' => '2026-08-01',
+        'date_to' => '2026-08-31',
+        'departure' => '台北',
+    ],
+    'tenant' => ['tenant_sno' => '1001', 'company_name' => '旅行蜜'],
+    'tone' => ['persona' => 'travel_consultant', 'allow_emoji' => true],
+]);
+$clarifComposer = new GroundedResponseComposer(
+    [GroundedResponseComposer::FEATURE_GROUNDED_COMPOSER_GENERATIVE_ENABLED => false],
+    null,
+    new LayoutStrategySelector([
+        new ClarificationLayoutStrategy(new ClarificationGeminiGenerator(null, static function () use ($clarifContract): array {
+            return [
+                'ok' => true,
+                'text' => json_encode([
+                    'schema_version' => 1,
+                    'reply_type' => 'clarification',
+                    'clarification_reason' => $clarifContract->getClarificationReason(),
+                    'asked_entity' => 'destination',
+                    'reply_text' => '想確認這趟希望前往哪個目的地呢？',
+                    'acknowledged_entities' => [
+                        'departure' => '台北',
+                        'date_from' => '2026-08-01',
+                        'date_to' => '2026-08-31',
+                    ],
+                    'search_claimed' => false,
+                    'product_facts_used' => false,
+                ], JSON_UNESCAPED_UNICODE),
+                'error' => null,
+            ];
+        })),
+        new KnowledgeLayoutStrategy(),
+        new ProductLayoutStrategy(),
+    ])
+);
+$clarifOut = $clarifComposer->composeClarificationReply($clarifContract);
+test_assert($clarifOut->getReplyType() === ReplyType::CLARIFICATION, 'clarification: reply_type');
+test_assert($clarifOut->getUsedFactsCount() === 3, 'clarification: used_facts_count');
+test_assert($clarifOut->getReplyText() !== '', 'clarification: non-empty generative wording');
+test_assert(
+    strpos($clarifOut->getReplyText(), '請問您預計什麼時候出發') === false,
+    'clarification: no fixed date template'
+);
+
 if ($failures === 0) {
     fwrite(STDOUT, "OK: test_grounded_response_composer (all passed)\n");
     exit(0);

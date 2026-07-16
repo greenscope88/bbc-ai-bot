@@ -20,6 +20,8 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPA
     . 'response' . DIRECTORY_SEPARATOR . 'ReplyType.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
     . 'response' . DIRECTORY_SEPARATOR . 'LayoutProfile.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
+    . 'response' . DIRECTORY_SEPARATOR . 'clarification' . DIRECTORY_SEPARATOR . 'ClarificationContractFactory.php';
 
 $failures = 0;
 
@@ -192,6 +194,57 @@ $legacyProduct = GroundedInput::fromProductRuntimeResult([
 contract_assert(
     $legacyProduct->getRuntimeType() === RuntimeType::PRODUCT_SEARCH,
     'Legacy product factory: product_search runtime_type'
+);
+
+// Clarification factory — preserves Contract / grounded facts; does not alter Product/Knowledge
+$clarificationFactory = new ClarificationContractFactory();
+$clarificationContract = $clarificationFactory->create([
+    'clarification_reason' => ClarificationContract::REASON_DESTINATION_UNKNOWN,
+    'known_entities' => [
+        'date_from' => '2026-08-01',
+        'date_to' => '2026-08-31',
+        'departure' => '台北',
+    ],
+    'tenant' => ['tenant_key' => 'travel_b', 'tenant_sno' => '1001', 'company_name' => '旅行蜜'],
+    'tone' => ['persona' => 'travel_consultant', 'allow_emoji' => true],
+    'trace_id' => 'trace-clarif-foundation',
+    'conversation_id' => 'conv-clarif-foundation',
+]);
+$clarificationInput = GroundedInput::fromClarificationContract($clarificationContract);
+contract_assert(
+    $clarificationInput->getRuntimeType() === RuntimeType::CLARIFICATION,
+    'Clarification factory: runtime_type'
+);
+contract_assert(
+    $clarificationInput->getReplyPurpose() === GroundedInput::PURPOSE_CLARIFICATION_REPLY,
+    'Clarification factory: reply_purpose'
+);
+contract_assert(
+    $clarificationInput->getReplyPolicyMode() === 'clarification',
+    'Clarification factory: reply_policy.mode'
+);
+contract_assert(
+    ($clarificationInput->getReplyPolicy()['grounded_only'] ?? null) === true,
+    'Clarification factory: grounded_only'
+);
+contract_assert(
+    $clarificationInput->getFactCount() === count($clarificationContract->getGroundedFacts()),
+    'Clarification factory: grounded facts preserved'
+);
+contract_assert(
+    ($clarificationInput->getRawRuntimeResult()['clarification_contract']['missing_entity'] ?? null)
+    === ClarificationContract::ENTITY_DESTINATION,
+    'Clarification factory: contract preserved in rawRuntimeResult'
+);
+
+// Product/Knowledge regressions remain intact after clarification factory addition
+contract_assert(
+    $legacyProduct->getRuntimeType() === RuntimeType::PRODUCT_SEARCH,
+    'Regression: product factory still product_search'
+);
+contract_assert(
+    $legacyKnowledge->getRuntimeType() === RuntimeType::KNOWLEDGE_PRIVATE,
+    'Regression: knowledge factory still knowledge_private'
 );
 
 // --- GroundedOutput round-trip (MVP fields) ---
