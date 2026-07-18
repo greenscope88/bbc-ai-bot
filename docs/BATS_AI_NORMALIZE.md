@@ -2,7 +2,7 @@
 
 **專案：** BBC AI SaaS / BATS / AI Intent Understanding v2  
 **定位：** L3 架構 SSOT — **AIU v2 Normalize** 唯一正式依據（Translation Layer）  
-**版本：** AIU Normalize v1.0 Rev.1 — Frozen  
+**版本：** AIU Normalize v1.0 Rev.2 — Frozen（Product Type Closed-set Coordinated Contract v1.0）  
 **狀態：** Frozen  
 
 **主機參考：** 103.1.222.14（主機 A · `C:\bbc-ai-bot`）
@@ -32,9 +32,11 @@ Normalize **僅**負責 Translation。
 | §4 | Normalize Principles |
 | §5 | Normalize Flow |
 | §6 | Runtime Contract |
+| §6.5 | Product Type Closed Set v1（唯一清單） |
 | §7 | Normalize Rules |
 | §8 | Runtime Examples |
 | §9 | Freeze Readiness Review |
+| §10 | Minimal Coding Gate（與 `BATS_AI_RUNTIME.md` 聯鎖） |
 
 ---
 
@@ -49,6 +51,8 @@ Normalize **僅**負責 Translation。
 ```text
 Gemini Output Contract（Frozen）
         ↓
+AIU Entity Validation（執行／owner：`BATS_AI_RUNTIME.md`；值域契約：本文件 §6.5）
+        ↓
    AIU Normalize（本文件）
         ↓
 BBC AI Runtime Contract
@@ -61,25 +65,31 @@ Normalize 完成後，BBC AI Runtime 可直接依契約執行（Execute / Govern
 | 項目 | 規格 |
 |------|------|
 | **層級** | AIU Runtime 內之 Translation Layer（對齊 `BATS_AI_INTENT_UNDERSTANDING_V2.md` §14.5 L4） |
-| **輸入** | Gemini Output Contract v1.0 Rev.1 + 唯讀 Runtime Snapshots（由 AIU 注入，非 Gemini 改寫） |
-| **輸出** | BBC AI Runtime Contract（本文件 §6） |
+| **輸入** | 已通過 Entity Validation 之 Gemini Output Contract 形狀結果 + 唯讀 Runtime Snapshots（由 AIU 注入，非 Gemini 改寫） |
+| **輸出** | BBC AI Runtime Contract（本文件 §6；含 §6.5 `product_type` Closed Set 結果） |
 | **性質** | Mapping / Transformation / Default / Runtime-ready Structure |
-| **非性質** | Semantic Understanding、Intent Re-judgment、Entity Re-extraction、Date Re-inference、Product Search Strategy、Keyword Composition |
+| **非性質** | Semantic Understanding、Intent Re-judgment、Entity Re-extraction、Date Re-inference、Product Search Strategy、Keyword Composition、Entity Validation **執行** |
 
 ### 1.3 與 Entity Validation 的順序
 
 ```text
 Gemini Output Contract
         ↓
-AIU v2 Entity Validation（前置閘道；本文件不定義 Validation 規則）
+AIU v2 Entity Validation（前置閘道；Production owner = `AiuOutputContractValidator`；見 `BATS_AI_RUNTIME.md`）
         ↓
 AIU v2 Normalize（本文件）
         ↓
 BBC AI Runtime Contract
 ```
 
-> **Invariant：** Normalize **假設**輸入已通過 Entity Validation（結構合法、鍵完整、型別符合 Output Contract）。Validation 規則不在本文件定義。
+| 項目 | 權威文件 |
+|------|----------|
+| **順序** | **必須** `Entity Validation → Normalize`（不得反轉） |
+| **`product_type` Closed Set 值清單與 null 輸出契約** | **本文件 §6.5（唯一）** |
+| **Validation 執行位置／owner／authoritative・shadow・resume／consumer boundary** | `BATS_AI_RUNTIME.md` |
 
+> **Invariant：** Normalize **假設**輸入已通過 Entity Validation（結構合法、鍵完整、型別符合 Output Contract；且 `product_type` 已符合 §6.5 或為 `null`）。  
+> Normalize **不**擁有 Closed Set allowed-values 的執行驗證；**不**恢復 Validation 已置為 `null` 的非法 `product_type`。
 ---
 
 ## 2. Responsibilities
@@ -88,11 +98,12 @@ BBC AI Runtime Contract
 
 | ID | 職責 | 說明 |
 |----|------|------|
-| **N-R1** | Entity Mapping | 將 Gemini `entities` 固定鍵投影至 Runtime Entity 欄位 |
+| **N-R1** | Entity Mapping | 將已 Validation 之 Gemini `entities` 固定鍵投影至 Runtime Entity 欄位 |
 | **N-R2** | Runtime Field Mapping | 僅在 Runtime 無法直接承接時做必要欄位轉換（不改語意；優先保留原始結構） |
-| **N-R3** | Runtime Default Value | 對缺失／空值套用契約預設（如 `[]`、`null`、boolean default） |
+| **N-R3** | Runtime Default Value | 對缺失／空值套用契約預設（如 `[]`、`null`、boolean default）；含 trim、empty／whitespace → `null` |
 | **N-R4** | Runtime Contract Transformation | 組裝完整 BBC AI Runtime Contract |
 | **N-R5** | Runtime-ready Structure | 保證輸出可被 BBC AI Runtime 直接消費 |
+| **N-R6** | `product_type` schema／Closed Set v1 契約 | **本文件 §6.5 為唯一允許值清單與 null 輸出契約**（Semantic Contract 結果定義） |
 
 ### 2.2 AIU Normalize 不負責
 
@@ -102,11 +113,14 @@ BBC AI Runtime Contract
 | 重新判斷 Intent | 不得覆寫 Gemini `intent` 語意結論 |
 | 重新抽取 Entity | 不得從原文再抽新 Entity |
 | 重新推論日期 | 不得依口語重算 `date_range`；僅映射 Gemini 已輸出之值 |
-| 修改 Gemini Semantic | 不得改寫已抽取語意內容以「修正理解」 |
+| 修改 Gemini Semantic（理解修正） | 不得為「修正理解」改寫語意；**不得**把 Validation 已置 `null` 的 `product_type` 恢復為非法值 |
+| Closed Set **執行**驗證 | **不**擁有／**不**執行 `product_type` allowed-values 檢查（歸 `AiuOutputContractValidator`／`BATS_AI_RUNTIME.md`） |
+| 搬移 Entity 欄位 | 不得把非法 `product_type` 搬到 `keyword`／其他 entity |
 | Clarification Execution | 不得決定是否向客戶追問 |
 | Product Search Strategy | 不得替商品源決定 Keyword 組合或搜尋策略 |
 | Product Search Execution | 不得組 URL、呼叫商品源、排序商品 |
 | Prompt / Composer | 不屬於 Normalize |
+| Entity Validation 執行順序／owner | 歸 `BATS_AI_RUNTIME.md` |
 
 ### 2.3 Responsibility Boundary
 
@@ -121,16 +135,16 @@ Normalize **輸出** BBC AI Runtime Contract。
 | Source Mapping | Product Adapter（如 BBCTravel、GRP、TourCenter） |
 | URL Mapping | Product Adapter / Search URL Builder |
 | Keyword Composition（商品源搜尋策略） | Runtime / Product Adapter |
+| Entity Validation 執行 | `AiuOutputContractValidator`（見 `BATS_AI_RUNTIME.md`） |
 
 ### 2.4 責任分離
 
 | 層級 | 元件 | 職責 |
 |------|------|------|
 | Understanding | Gemini | Semantic Understanding + Entity Extraction + Clarification Detection |
-| Validation | AIU Entity Validation | 驗證 Output Contract 結構／型別（本文件外） |
-| Translation | **AIU Normalize** | Gemini Output → Runtime Contract |
+| Validation | `AiuOutputContractValidator` | 值域／契約 Validation（含 §6.5 `product_type`）；執行順序見 `BATS_AI_RUNTIME.md` |
+| Translation | **AIU Normalize** | Validated Gemini Output → Runtime Contract；**定義** §6.5 Closed Set 契約 |
 | Execution | BBC AI Runtime | Routing / Dispatch / Coordination（含是否追問、Search Strategy） |
-
 ---
 
 ## 3. Out of Scope
@@ -142,14 +156,17 @@ Normalize **輸出** BBC AI Runtime Contract。
 | Entity Core / Entity 清單 / Entity 邊界 | Entity Core Final（Frozen） |
 | Entity Definition | Entity Definition v1.0 Rev.1（Frozen） |
 | Gemini Output JSON 結構／型別 | Gemini Output Contract v1.0 Rev.1（Frozen） |
-| Entity Validation 規則 | AIU v2 Entity Validation（下一／相鄰階段） |
+| Entity Validation **執行順序／Production owner／authoritative・shadow・resume／consumer boundary** | `BATS_AI_RUNTIME.md` |
 | 日期解析政策（口語 → `YYYY-MM-DD`） | Gemini / Date Policy；Normalize **不**重算 |
 | Product Search Mapping / Source Adapter | Adapter Layer（如 `SourceQueryMapper`） |
 | Search Query / Keyword Composition | Runtime / Product Adapter |
+| Policy filtering（含 `product_type_strict`） | `ProductSearchPolicyRuntime`（執行層；非 AIU Closed Set authority） |
 | Execution Mapping / URL Builder | BBC AI Runtime / Hybrid Search |
-| Prompt Scheme 文案 | AIU Prompt Scheme |
+| Prompt Scheme 文案（含 Gemini 抽取 guidance） | AIU Prompt Scheme；**不得**取代 Runtime Validation |
+| Flex Carousel／Short URL／Published Product Set | LINE／Publication 路徑 |
 | Coding / Legacy / Migration | 實作與遷移專案 |
 
+> **本文件唯一擁有：** `product_type` 欄位 schema、Product Type Closed Set v1 值清單、null 輸出契約（§6.2／§6.5）。
 ---
 
 ## 4. Normalize Principles
@@ -256,7 +273,7 @@ BBC AI Runtime Contract {
 | `date_expression` | string | 是 | 直接映射 |
 | `duration_days` | number | 是 | 直接映射 |
 | `date_flexibility` | string | 是 | 直接映射 |
-| `product_type` | string | 是 | 直接映射 |
+| `product_type` | string \| null | 是 | **§6.5 Product Type Closed Set v1**；已 Validation 結果為 Closed Set 成員或 `null`；Normalize 僅 trim／empty→`null`，**不**恢復非法值 |
 | `theme` | array\<string\> | 否 | 直接映射；預設 `[]` |
 | `occasion` | string | 是 | 直接映射 |
 | `travel_style` | string | 是 | 直接映射 |
@@ -310,6 +327,67 @@ BBC AI Runtime Contract {
 | 不升級為 Execution | Normalize **不**因此自動發送追問 |
 | 追問決策 | BBC AI Runtime |
 
+### 6.5 Product Type Closed Set v1（唯一清單）
+
+> **Authority：** 本節為 Production／SSOT **唯一** `product_type` allowed-values 清單。  
+> **禁止**於 `BATS_AI_RUNTIME.md`、Prompt、Adapter、Policy 或其他 SSOT **複製**本清單為第二份 AIU authority。  
+> **執行驗證**由 `AiuOutputContractValidator` 執行（順序與 owner 見 `BATS_AI_RUNTIME.md`）；本節定義契約結果。
+
+#### 6.5.1 合法值（Closed Set v1）
+
+精確允許值（大小寫／空白敏感；必須完全相等）：
+
+| # | 合法 `product_type` |
+|---|---------------------|
+| 1 | `自由行` |
+| 2 | `半自助` |
+| 3 | `跟團` |
+| 4 | `團體` |
+| 5 | `迷你團` |
+| 6 | `包車` |
+| 7 | `郵輪` |
+
+#### 6.5.2 型別與 null 契約
+
+| 輸入條件 | Semantic Contract 結果 |
+|----------|------------------------|
+| 欄位未提供 | `product_type = null` |
+| 空字串 `""` | `product_type = null` |
+| 僅 whitespace | `product_type = null` |
+| 值 ∈ Closed Set v1 | 原值保留（合法 `string`） |
+| 值 ∉ Closed Set v1（含未知／泛用商品詞） | `product_type = null` |
+
+#### 6.5.3 非法／非成員明示（非 exhaustive 黑名單）
+
+下列 **不是** Closed Set v1 成員；Validation 結果必須為 `null`（**範例**，契約以「不在 §6.5.1」為準）：
+
+| 值 | 說明 |
+|----|------|
+| `行程` | 泛用商品詞；不得成為 `product_type` |
+| `推薦` | 泛用商品詞；不得成為 `product_type` |
+| `親子團` | **不是** product_type；屬 theme／keyword 語意範圍；**不得**映射為 `跟團`／`團體` |
+
+> Validator／Normalize **不得**將非法 `product_type` 搬移至 `keyword` 或其他 entity。  
+> Gemini 應在既有語意能力中將親子需求保留於 `keyword`／`theme` 等適當欄位；**本次不新增** theme entity、**不修改** P2 Entity Intelligence。  
+> Prompt 改善屬後續 Coding 評估，**不得**取代 Runtime Validation。
+
+#### 6.5.4 不變欄位與語意
+
+| 規則 | 說明 |
+|------|------|
+| 其他 entity 不變 | `destination`、`date_from`／`date_to`、`keyword`（及除 `product_type` 外之合法 entity）**不得**因 `product_type` Validation 而改變 |
+| `product_type = null` | **不**代表查無商品；**不**觸發 Clarification；**不**切 Legacy／Compatibility |
+| 契約變更治理 | 未來新增合法 `product_type` **必須先**更新本節唯一 Contract，**再**修改 Production consumer；consumer **不得**自行擴充第二份 AIU allowed-values |
+
+#### 6.5.5 Normalize 對 `product_type` 的輸入假設
+
+Normalize 收到的 `product_type` **必須**已為：
+
+- Closed Set v1 成員，或
+- `null`
+
+Normalize **只**得再做 shape／scalar／trim／empty→`null`；**不得**把 `null` 改回非法字串，**不得**重新驗證 Closed Set。
+
 ---
 
 ## 7. Normalize Rules
@@ -322,6 +400,7 @@ BBC AI Runtime Contract {
 | **Runtime Flatten** | `date_range.from/to` | → `date_from` / `date_to`（結構轉換；不改日期語意） |
 | **語意等價投影** | `constraint` / `exclusion` | → `must_have[]` / `avoid[]`（內容等價；來源欄位仍保留） |
 | **Default** | 缺鍵／非法空值（Validation 後理論上不應發生） | 依型別補 `null` 或 `[]` |
+| **Closed Set（契約定義於 §6.5；執行於 Validation）** | `product_type` | 輸入應為 §6.5 成員或 `null`；Normalize **不**重做 closed-set 判定 |
 | **Passthrough** | `clarification` / `confidence` | 投影至 Runtime Contract |
 | **Injected（非 Gemini）** | — | `context_snapshot` / `owner_snapshot` / `conversation_stage` / `resume_context` |
 | **禁止** | Destination Split | **不得** `destination[]` → Primary + `multi_destination` |
@@ -330,10 +409,11 @@ BBC AI Runtime Contract {
 
 ### 7.2 直接 Mapping 清單
 
-以下欄位 **直接 Mapping**（值不改寫）：
+以下欄位 **直接 Mapping**（值不改寫；`product_type` **除外**，見 §6.5）：
 
-`destination`, `travel_area`, `date_expression`, `duration_days`, `date_flexibility`, `product_type`, `theme`, `occasion`, `travel_style`, `departure`, `route`, `people_count`, `adult_count`, `child_count`, `senior_count`, `group_type`, `budget_amount`, `budget_unit`, `currency`, `price_sensitivity`, `hotel_preference`, `transportation_preference`, `airline_preference`, `meal_preference`, `room_preference`, `constraint`, `exclusion`, `special_need`, `preserved_keywords`, `unclassified_terms`
+`destination`, `travel_area`, `date_expression`, `duration_days`, `date_flexibility`, `theme`, `occasion`, `travel_style`, `departure`, `route`, `people_count`, `adult_count`, `child_count`, `senior_count`, `group_type`, `budget_amount`, `budget_unit`, `currency`, `price_sensitivity`, `hotel_preference`, `transportation_preference`, `airline_preference`, `meal_preference`, `room_preference`, `constraint`, `exclusion`, `special_need`, `preserved_keywords`, `unclassified_terms`
 
+> **`product_type`：** 承接已 Validation 之 §6.5 結果（合法值或 `null`）；Normalize 僅 trim／empty→`null`，不恢復非法值、不搬移欄位。
 ### 7.3 Date Flatten（非重算）
 
 | Gemini | Runtime | 規則 |
@@ -720,7 +800,7 @@ Normalize Runtime Contract **保留原始 Entity**，不產出搜尋策略用 `k
 |------|------|-----------------|
 | Gemini `entities{}` → Runtime `entity{}` 形狀轉換 | 已定義 Mapping；`destination[]` 原樣保留 | 否 |
 | Keyword Composition 移出 Normalize | 已明確歸 Runtime / Product Adapter | 否 |
-| Entity Validation 規則未在本文件 | 刻意 Out of Scope；為前置閘道 | 否 |
+| Entity Validation **執行**未在本文件 | 刻意：執行／owner／順序歸 `BATS_AI_RUNTIME.md`；**Closed Set 契約**歸本文件 §6.5 | 否 |
 | 日期解析政策 | 明確不在 Normalize | 否 |
 | Primary Destination / Search Strategy | 明確不在 Normalize | 否 |
 
@@ -728,15 +808,32 @@ Normalize Runtime Contract **保留原始 Entity**，不產出搜尋策略用 `k
 
 ### 9.4 Ready for Freeze？
 
-### **Frozen — AIU Normalize v1.0 Rev.1**
+### **Frozen — AIU Normalize v1.0 Rev.2（Product Type Closed-set Coordinated Contract v1.0）**
 
 **理由：**
 
-1. Rev.1 Required Corrections 已全部落地。  
-2. 官方 NP-1～NP-6 已取代舊原則表。  
-3. `destination[]` 原樣保留；Keyword Composition / Search Strategy 已劃出 Normalize。  
-4. Execution Decision（含 Routing／Dispatch）不由 Normalize 產出。  
-5. 與 Frozen Entity Core / Definition / Output Contract 一致，且未修改之。
+1. Rev.1 架構不變；Rev.2 僅凍結 `product_type` Closed Set v1 與 null 契約。
+2. 官方 NP-1～NP-6 仍成立；Normalize 仍不重新理解／不執行 Closed Set 驗證。
+3. `destination[]` 原樣保留；Keyword Composition / Search Strategy 仍劃出 Normalize。
+4. Execution Decision 不由 Normalize 產出。
+5. 與 `BATS_AI_RUNTIME.md` Rev.2 協調：`Validation → Normalize`；Closed Set 清單僅本文件一份。
+
+---
+
+## 10. Minimal Coding Gate（與 `BATS_AI_RUNTIME.md` 聯鎖）
+
+下一階段 Minimal Coding **必須**同時滿足本文件 §6.5 與 `BATS_AI_RUNTIME.md` Coding Gate：
+
+| 要求 | 說明 |
+|------|------|
+| Validator | 新增或完成 `AiuOutputContractValidator`；PHP 7.4 |
+| 順序 | Gemini Semantic Result → **Validator** → **Normalizer** → Result／Translator（**不得**反轉） |
+| Closed Set | Production 定義 **只有**本文件 §6.5 一份 |
+| 非法 `product_type` | 輸出 `null`；不修改其他 entity；不搬移至 keyword |
+| 禁止改動 | Flex／Short URL／Published Set；Host B API；在 `SourceQueryMapper`／`ProductSearchPolicyRuntime` 新增 AIU 黑名單 |
+| Commit | 不 Amend 已 Push commit；修正後建立新的 Validation Fix Commit |
+
+**必測（與 Runtime SSOT 相同清單）：** `行程`／`推薦`／unknown／empty／whitespace → `null`；七個合法值不變；`親子團` as `product_type` → `null` 且不搬移；destination／date／keyword 不變；Host B 不再因非法 `product_type` 產生 `keyword=行程`；非法值不觸發 `product_type_strict`；合法值維持既有 strict；Resume／Shadow／Knowledge／Human／Clarification regression；Flex 檔案零修改；不發真實外部請求。
 
 ---
 
@@ -747,7 +844,8 @@ Normalize Runtime Contract **保留原始 Entity**，不產出搜尋策略用 `k
 | v1.0 | 2026-07-10 | AIU v2 Normalize Architecture Definition（Freeze Candidate） |
 | v1.0 Rev.1 | 2026-07-10 | Correction：官方 NP-1～NP-6；取消 destination split；Keyword Composition 移出；Examples 同步 |
 | v1.0 Rev.1 Frozen | 2026-07-10 | Phase A Freeze：移除 Execution Decision 殘留；狀態標示 Frozen |
+| v1.0 Rev.2 Frozen | 2026-07-18 | **Product Type Closed-set Coordinated Contract v1.0**：§6.5 Closed Set v1 唯一清單；null 契約；與 `BATS_AI_RUNTIME.md` Rev.2 聯鎖 Validation→Normalize |
 
 ---
 
-**本階段：Phase A Freeze Correction only。未 Coding。未 Commit。未修改任何 Frozen 上游文件。**
+**本階段：Coordinated Multi-SSOT Contract Freeze only。未 Coding。未 Commit。未修改 Production code／tests。**
