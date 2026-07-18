@@ -9,6 +9,7 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuGeminiUnderstandingClientInterf
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuPromptBuilder.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuGeminiUnderstandingClient.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuGeminiUnderstandingClientStub.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuOutputContractValidator.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuSemanticJsonNormalizer.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiIntentUnderstandingResult.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'StructuredSearchResumeIdentity.php';
@@ -33,6 +34,7 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
 
     private AiuGeminiUnderstandingClientInterface $geminiClient;
     private AiuPromptBuilder $promptBuilder;
+    private AiuOutputContractValidator $outputContractValidator;
     private AiuSemanticJsonNormalizer $semanticNormalizer;
     private AiIntentContextLoader $contextLoader;
     private StructuredSearchResumeStateStore $resumeStore;
@@ -42,10 +44,12 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
         ?AiuPromptBuilder $promptBuilder = null,
         ?AiuSemanticJsonNormalizer $semanticNormalizer = null,
         ?AiIntentContextLoader $contextLoader = null,
-        ?StructuredSearchResumeStateStore $resumeStore = null
+        ?StructuredSearchResumeStateStore $resumeStore = null,
+        ?AiuOutputContractValidator $outputContractValidator = null
     ) {
         $this->geminiClient = $geminiClient ?? new AiuGeminiUnderstandingClient();
         $this->promptBuilder = $promptBuilder ?? new AiuPromptBuilder();
+        $this->outputContractValidator = $outputContractValidator ?? new AiuOutputContractValidator();
         $this->semanticNormalizer = $semanticNormalizer ?? new AiuSemanticJsonNormalizer();
         $this->contextLoader = $contextLoader ?? new AiIntentContextLoader();
         $this->resumeStore = $resumeStore ?? new StructuredSearchResumeStateStore();
@@ -174,7 +178,8 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
 
         $semanticRaw = $this->geminiClient->understand($promptRequest);
         $rawDatePresence = self::observeRawDateFieldPresence($semanticRaw);
-        $normalized = $this->semanticNormalizer->normalize($semanticRaw, $message, $referenceDate);
+        $validatedSemantic = $this->outputContractValidator->validate($semanticRaw);
+        $normalized = $this->semanticNormalizer->normalize($validatedSemantic, $message, $referenceDate);
 
         $resumeDisposition = (string) ($normalized['resume_disposition'] ?? '');
         StructuredSearchResumeDispositionContract::assertValidForPriorState(

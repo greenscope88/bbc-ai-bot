@@ -131,6 +131,50 @@ test_assert(($rangeResult->getEntities()['date_to'] ?? null) === '2026-08-31', '
 $rangeResult->attachDatePipelineRawPresence(['raw_has_date_range' => false]);
 test_assert(($rangeResult->getDatePipelineRawPresence()['raw_has_date_range'] ?? false) === true, 'obs: presence immutable after first attach');
 
+// --- B0-LINE-06B-4: product_type Closed Set soft-null before Normalize ---
+$ptClient = new class implements AiuGeminiUnderstandingClientInterface {
+    /** @var array<string, mixed> */
+    public array $payload = [];
+
+    public function understand(AiuPromptRequest $request): array
+    {
+        unset($request);
+
+        return $this->payload;
+    }
+};
+$ptClient->payload = [
+    'intent' => 'product_search',
+    'entities' => [
+        'destination' => ['日本'],
+        'product_type' => '行程',
+        'date_from' => '2027-03-01',
+        'date_to' => '2027-03-31',
+        'keyword' => null,
+    ],
+    'confidence' => 0.9,
+    'clarification' => ['required' => false, 'reason' => ''],
+];
+$ptRuntime = new AiIntentUnderstandingRuntime(
+    $ptClient,
+    null,
+    null,
+    AiIntentContextLoader::createForTesting(ConversationRuntimeFacade::createForTesting())
+);
+$ptResult = $ptRuntime->understand('日本有什麼推薦行程', ['conversation_id' => $cid]);
+test_assert(
+    array_key_exists('product_type', $ptResult->getEntities())
+    && $ptResult->getEntities()['product_type'] === null,
+    'pt: 行程 soft-null via runtime Validator'
+);
+test_assert(($ptResult->getEntities()['destination'] ?? null) === ['日本'], 'pt: destination preserved');
+test_assert(($ptResult->getEntities()['date_from'] ?? null) === '2027-03-01', 'pt: date_from preserved');
+test_assert(($ptResult->getEntities()['date_to'] ?? null) === '2027-03-31', 'pt: date_to preserved');
+
+$ptClient->payload['entities']['product_type'] = '自由行';
+$ptLegal = $ptRuntime->understand('日本自由行', ['conversation_id' => $cid]);
+test_assert(($ptLegal->getEntities()['product_type'] ?? '') === '自由行', 'pt: legal product_type kept');
+
 if ($failures === 0) {
     echo "ALL PASS test_ai_intent_understanding_runtime_logic\n";
     exit(0);
