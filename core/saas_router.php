@@ -1613,88 +1613,24 @@ class SaaSRouter
                     'host_b_executed' => $clarificationHostBExecuted,
                 ]);
             } else {
-                $renderer = $geminiRenderer ?? new GeminiRenderer();
-                $client = $geminiClient ?? new GeminiClient();
-                $tenantName = trim((string) ($tenant['company_name'] ?? ''));
-                if ($tenantName === '') {
-                    $tenantName = 'BBC Travel';
-                }
-
-                $plan = self::buildGeminiPublishPlanFromSearchResults($structuredResult->getSearchResults());
                 $intentArray = $structuredResult->getIntent()->toArray();
-                $recommendationBuilder = new ProductRecommendationBuilder();
-                $recommendationSummary = $recommendationBuilder->build(
-                    $plan->getItems(),
-                    $intentArray,
-                    $queryText,
-                    $structuredResult->getSearchPolicyMeta()
-                );
-                $geminiContext = $renderer->renderDocument($plan, [
-                    'schema_version' => GeminiContextDocument::SCHEMA_VERSION_V2,
-                    'customer_query' => $queryText,
-                    'tenant_name' => $tenantName,
-                    'bats_search_intent' => $intentArray,
-                    'recommendation_summary' => $recommendationSummary,
-                ]);
-                $geminiContextSchemaVersion = $geminiContext->getSchemaVersion();
-                $geminiReplyText = $client->generateResponse($geminiContext)->getReplyText();
-
-                // P1 Product Layout Fix: restore the original fixed BBC product
-                // layout via TourFallbackFormatter, sourced from the already-built
-                // legacy context. The fixed layout is only applied when the search
-                // returned results; with zero results the existing reply (the
-                // no-results message) is preserved unchanged.
-                                $replyText = $geminiReplyText;
-                if (
-                    count($structuredResult->getSearchResults()) === 0
-                    && (
-                        ($recommendationSummary['hard_constraints_complete'] ?? false) === true
-                        || ($recommendationSummary['no_result_composer'] ?? false) === true
-                    )
-                ) {
-                    $noResultPersona = new TravelConsultantPersonaRuntime();
-                    $replyText = $noResultPersona->composeProductRecommendation($recommendationSummary);
-                }
-                if (count($structuredResult->getSearchResults()) > 0) {
-                    $fixedProductLayout = TourFallbackFormatter::formatFromTourContext(
-                        $structuredResult->getLegacyContext()
-                    );
-                    if (trim($fixedProductLayout) !== '') {
-                        $replyText = $fixedProductLayout;
-                    }
-                }
-
-                // Phase 9-C-2C-2: present the Product Runtime reply through the
-                // unified GroundedResponseComposer. The recommendation copy is
-                // NOT regenerated here — the composer only normalizes grounded
-                // presentation metadata and passes the reply text through.
-                $productResultCount = isset($recommendationSummary['result_count'])
-                    ? (int) $recommendationSummary['result_count']
-                    : count($structuredResult->getSearchResults());
-                $productProductList = isset($recommendationSummary['top_products']) && is_array($recommendationSummary['top_products'])
-                    ? $recommendationSummary['top_products']
-                    : [];
-                $productRuntimeResult = [
-                    'reply_text' => $replyText,
-                    'grounded' => $productResultCount > 0,
-                    'recommendation_summary' => $recommendationSummary,
-                    'product_list' => $productProductList,
-                ];
+                $geminiContextSchemaVersion = 0;
+                $replyText = '';
                 $tenantArray = is_array($tenant) ? $tenant : [];
-                $productCompose = GroundingPipelineRuntime::composeProductReply([
+                $productCompose = GroundingPipelineRuntime::composeBbcshopsFlexMultiSourceReply([
                     'config' => self::loadBatsFeatureConfig(),
                     'trace_id' => $traceId,
                     'tenant_sno' => $tenantSno,
                     'conversation_id' => $runtimeConversationId,
                     'customer_query' => $queryText,
-                    'runtime_type' => RuntimeType::PRODUCT_SEARCH,
-                    'runtime_result' => $productRuntimeResult,
-                    'dispatch_result' => [
-                        'reply_purpose' => GroundedInput::PURPOSE_PRODUCT_REPLY,
-                        'intent_type' => (string) ($intentDetection['intent_type'] ?? ''),
-                    ],
+                    'search_results' => $structuredResult->getSearchResults(),
+                    'search_url' => $structuredResult->getSearchUrl(),
+                    'search_url_role' => $structuredResult->getSearchUrlRole(),
+                    'multi_source_links' => $structuredResult->getMultiSourceLinks(),
+                    'storeNo' => $structuredResult->getStoreNo(),
                     'tenant' => $tenantArray,
                     'legacy_tenant' => $tenantArray,
+                    'tone' => ['persona' => 'travel_consultant', 'allow_emoji' => true],
                     'bats_search_intent' => $intentArray,
                 ]);
                 $groundedOutput = $productCompose['output'];
@@ -1715,9 +1651,9 @@ class SaaSRouter
                     'runtime_type' => RuntimeType::PRODUCT_SEARCH,
                     'runtime_result' => [
                         'reply_text' => $replyText,
-                        'grounded' => $productResultCount > 0,
-                        'recommendation_summary' => $recommendationSummary,
-                        'product_list' => $productProductList,
+                        'grounded' => $groundedUsedFactsCount > 0,
+                        'recommendation_summary' => ['result_count' => count($structuredResult->getSearchResults())],
+                        'product_list' => $structuredResult->getSearchResults(),
                     ],
                     'dispatch_result' => [
                         'reply_purpose' => GroundedInput::PURPOSE_PRODUCT_REPLY,
@@ -1768,14 +1704,21 @@ class SaaSRouter
 
             $replyRes = null;
             $pushRes = null;
+            $channelMessages = isset($groundedOutput) && $groundedOutput instanceof GroundedOutput
+                ? $groundedOutput->getChannelMessages()
+                : null;
             if ($waitingReplySent && !$structuredResult->isClarificationRequired()) {
-                if (is_callable($linePushSender)) {
+                if ($channelMessages !== null) {
+                    $pushRes = LineService::pushMessages($linePushApiUrl, $lineToken, $trimmedUserId, $channelMessages);
+                } elseif (is_callable($linePushSender)) {
                     $pushRes = $linePushSender($linePushApiUrl, $lineToken, $trimmedUserId, $replyText);
                 } else {
                     $pushRes = LineService::pushToLine($linePushApiUrl, $lineToken, $trimmedUserId, $replyText);
                 }
             } else {
-                if (is_callable($lineReplySender)) {
+                if ($channelMessages !== null) {
+                    $replyRes = LineService::replyMessages($lineReplyUrl, $lineToken, $replyToken, $channelMessages);
+                } elseif (is_callable($lineReplySender)) {
                     $replyRes = $lineReplySender($lineReplyUrl, $lineToken, $replyToken, $replyText);
                 } else {
                     $replyRes = LineService::replyToLine($lineReplyUrl, $lineToken, $replyToken, $replyText);

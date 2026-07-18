@@ -37,6 +37,21 @@ final class LineMessagePayload
     }
 
     /**
+     * @param list<array<string, mixed>> $messages
+     */
+    public static function fromMessages(array $messages): self
+    {
+        $normalized = [];
+        foreach ($messages as $message) {
+            if (is_array($message)) {
+                $normalized[] = $message;
+            }
+        }
+
+        return new self($normalized);
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(): array

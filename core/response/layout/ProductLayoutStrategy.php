@@ -39,7 +39,8 @@ final class ProductLayoutStrategy implements LayoutStrategyInterface
     {
         $raw = $input->getRawRuntimeResult();
         $tourContext = trim((string) ($raw['tour_context'] ?? ''));
-        $replyText = $tourContext !== ''
+        $isBbcshopsFlex = ($input->getReplyPolicy()['safety_degrader_profile'] ?? '') === 'bbcshops_flex_multi_source';
+        $replyText = $tourContext !== '' && !$isBbcshopsFlex
             ? $this->composeFromTourContext($tourContext)
             : $this->composeFromPersonaRuntime($input);
 

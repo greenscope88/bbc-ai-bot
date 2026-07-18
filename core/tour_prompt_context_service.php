@@ -153,7 +153,14 @@ final class TourPromptContextService
                 $searchCondition,
                 $pipeline['search_results'],
                 $pipeline['legacy_context'],
-                $searchPolicyMeta
+                $searchPolicyMeta,
+                (string) ($pipeline['source_id'] ?? ''),
+                isset($pipeline['search_url']) ? (string) $pipeline['search_url'] : null,
+                (string) ($pipeline['search_url_role'] ?? ''),
+                isset($pipeline['multi_source_links']) && is_array($pipeline['multi_source_links'])
+                    ? $pipeline['multi_source_links']
+                    : [],
+                $pipeline['storeNo'] ?? null
             );
         } catch (\Throwable $e) {
             return TourPromptContextResult::empty($userText);
@@ -203,7 +210,7 @@ final class TourPromptContextService
     /**
      * @param array<string, mixed> $params
      * @param array<string, mixed> $tourIntent
-     * @return array{legacy_context: string, search_results: list<array<string, mixed>>}
+     * @return array{legacy_context: string, search_results: list<array<string, mixed>>, search_policy: array<string, mixed>, source_id: string, search_url: string, search_url_role: string, multi_source_links: list<array<string, mixed>>, storeNo: int|null}
      */
     private function runStructuredSearchPipeline(
         SearchCondition $condition,
@@ -270,6 +277,7 @@ final class TourPromptContextService
         $multiSourceConfig = isset($params['travelBMultiSourceLinksConfig']) && is_array($params['travelBMultiSourceLinksConfig'])
             ? $params['travelBMultiSourceLinksConfig']
             : null;
+        $multiSourceLinks = [];
         if (TravelBMultiSourceLinkBuilder::isEnabledForSno($sno, $multiSourceConfig)) {
             $linkBuilder = isset($params['travelBMultiSourceLinkBuilder'])
                 && $params['travelBMultiSourceLinkBuilder'] instanceof TravelBMultiSourceLinkBuilder
@@ -313,7 +321,24 @@ final class TourPromptContextService
             'legacy_context' => $contextBuilder->build($apiResultForContext, $buildOptions),
             'search_results' => array_values($primaryItems),
             'search_policy' => $searchPolicy,
+            'source_id' => 'bbcshops',
+            'search_url' => $listingSearchUrl,
+            'search_url_role' => $this->resolveSearchUrlRole($apiResult),
+            'multi_source_links' => $multiSourceLinks,
+            'storeNo' => $storeNo,
         ];
+    }
+
+    private function resolveSearchUrlRole(array $apiResult): string
+    {
+        $items = $apiResult['items'] ?? [];
+        $total = 0;
+        $pagination = $apiResult['pagination'] ?? null;
+        if (is_array($pagination) && isset($pagination['total'])) {
+            $total = (int) $pagination['total'];
+        }
+
+        return $total <= 0 && (!is_array($items) || $items === []) ? 'listing' : 'search';
     }
 
 

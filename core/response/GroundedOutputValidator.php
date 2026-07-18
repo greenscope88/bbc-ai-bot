@@ -90,6 +90,19 @@ final class GroundedOutputValidator
 
         if ($strictTraceability) {
             $traceabilityFailures = $this->validateTraceability($output->getReplyText(), $allowlist);
+            $channelMessages = $output->getChannelMessages();
+            if ($channelMessages !== null) {
+                foreach ($channelMessages->getMessages() as $message) {
+                    if (!is_array($message) || ($message['type'] ?? '') !== 'text') {
+                        continue;
+                    }
+                    $text = isset($message['text']) ? (string) $message['text'] : '';
+                    $traceabilityFailures = array_merge(
+                        $traceabilityFailures,
+                        $this->validateTraceability($text, $allowlist)
+                    );
+                }
+            }
             foreach ($traceabilityFailures as $failure) {
                 if (!in_array($failure['rule'], $failedRuleIds, true)) {
                     $failedRuleIds[] = $failure['rule'];

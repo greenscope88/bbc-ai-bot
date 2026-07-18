@@ -12,6 +12,8 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'experience' . DIRECTORY_SEPARATOR 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'RuntimeType.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'ReplyType.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'clarification' . DIRECTORY_SEPARATOR . 'ClarificationContract.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR
+    . 'renderer' . DIRECTORY_SEPARATOR . 'line' . DIRECTORY_SEPARATOR . 'LineMessagePayload.php';
 
 /**
  * Phase 9-C-2C-1 — Grounded Response Composer (presentation layer, thin wrapper).
@@ -197,7 +199,8 @@ final class GroundedResponseComposer
                         $finalized->getVoiceProfileUsed(),
                         $notes,
                         $finalized->getReferencedFactIds(),
-                        $finalized->getNextBestActionPresented()
+                        $finalized->getNextBestActionPresented(),
+                        $finalized->getChannelMessages()
                     );
                 }
             }
@@ -208,6 +211,46 @@ final class GroundedResponseComposer
         $candidate = $this->composeLegacyPassThrough($input);
 
         return $this->groundedOutputValidator->validateAndFinalize($input, $candidate, false);
+    }
+
+    /**
+     * @param list<string> $referencedFactIds
+     */
+    public function composeBbcshopsFlexMultiSourceReply(
+        GroundedInput $input,
+        LineMessagePayload $channelMessages,
+        array $referencedFactIds
+    ): GroundedOutput {
+        $uniqueRefs = array_values(array_unique(array_map('strval', $referencedFactIds)));
+        $usedFactsCount = count($uniqueRefs);
+        $replyType = $this->resolveReplyType($input, false, $usedFactsCount);
+        $firstText = '';
+        foreach ($channelMessages->getMessages() as $message) {
+            if (is_array($message) && ($message['type'] ?? '') === 'text') {
+                $firstText = trim((string) ($message['text'] ?? ''));
+                break;
+            }
+        }
+
+        $candidate = new GroundedOutput(
+            $firstText,
+            $usedFactsCount > 0,
+            $usedFactsCount,
+            $input->getSourceType(),
+            false,
+            [],
+            $replyType,
+            LayoutProfile::PRODUCT_RICH,
+            false,
+            true,
+            $this->resolveVoiceProfileUsed($input),
+            [],
+            $uniqueRefs,
+            null,
+            $channelMessages
+        );
+
+        return $this->groundedOutputValidator->validateAndFinalize($input, $candidate, true);
     }
 
     /**
@@ -293,7 +336,8 @@ final class GroundedResponseComposer
             $output->getVoiceProfileUsed(),
             array_values(array_unique($notes)),
             $output->getReferencedFactIds(),
-            $output->getNextBestActionPresented()
+            $output->getNextBestActionPresented(),
+            $output->getChannelMessages()
         );
     }
 

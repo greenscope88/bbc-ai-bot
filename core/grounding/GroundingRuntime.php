@@ -39,6 +39,7 @@ final class GroundingRuntime
         $replyPolicy = $this->mapReplyPolicy($context, $base, $conversationContext);
 
         $payload = $base->toArray();
+        $payload['raw_runtime_result'] = $base->getRawRuntimeResult();
         $payload['tenant'] = $tenant;
         $payload['tone'] = $tone;
         $payload['metadata'] = $metadata;

@@ -10,10 +10,32 @@ require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'response' . DIRECTORY_SEP
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'response' . DIRECTORY_SEPARATOR . 'RuntimeType.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'response' . DIRECTORY_SEPARATOR . 'ReplyType.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'response' . DIRECTORY_SEPARATOR . 'LayoutProfile.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'response' . DIRECTORY_SEPARATOR . 'facts'
+    . DIRECTORY_SEPARATOR . 'GroundedListingLinkFactBuilder.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'response' . DIRECTORY_SEPARATOR . 'facts'
+    . DIRECTORY_SEPARATOR . 'GroundedListingLinkFactsValidator.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'response' . DIRECTORY_SEPARATOR . 'clarification'
     . DIRECTORY_SEPARATOR . 'ClarificationContract.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'response' . DIRECTORY_SEPARATOR . 'clarification'
     . DIRECTORY_SEPARATOR . 'ClarificationContractFactory.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'published'
+    . DIRECTORY_SEPARATOR . 'PublishedProductSetSelector.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'published'
+    . DIRECTORY_SEPARATOR . 'PublicationIntegrityValidator.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'renderer'
+    . DIRECTORY_SEPARATOR . 'line' . DIRECTORY_SEPARATOR . 'BbcshopsFlexCarouselRenderer.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'renderer'
+    . DIRECTORY_SEPARATOR . 'line' . DIRECTORY_SEPARATOR . 'LineFlexCarouselPayloadValidator.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'renderer'
+    . DIRECTORY_SEPARATOR . 'line' . DIRECTORY_SEPARATOR . 'LineMessagePayload.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'renderer'
+    . DIRECTORY_SEPARATOR . 'line' . DIRECTORY_SEPARATOR . 'LineMessagePayloadValidator.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'renderer'
+    . DIRECTORY_SEPARATOR . 'line' . DIRECTORY_SEPARATOR . 'OtherSourceListingLinksMessageBuilder.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'renderer'
+    . DIRECTORY_SEPARATOR . 'line' . DIRECTORY_SEPARATOR . 'OtherSourceListingLinksIntegrityValidator.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'response' . DIRECTORY_SEPARATOR . 'validation'
+    . DIRECTORY_SEPARATOR . 'GroundedOutputDegrader.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'BatsSearchIntent.php';
 
 /**
@@ -155,6 +177,134 @@ final class GroundingPipelineRuntime
     }
 
     /**
+     * @param array<string, mixed> $params
+     * @return array{output: GroundedOutput, pipeline: string, deliverable: bool, validation_passed: bool, used_facts_count: int, failure_reason: ?string}
+     */
+    public static function composeBbcshopsFlexMultiSourceReply(array $params): array
+    {
+        $tone = is_array($params['tone'] ?? null) ? $params['tone'] : ['persona' => 'travel_consultant', 'allow_emoji' => true];
+        try {
+            $searchResults = is_array($params['search_results'] ?? null)
+                ? array_values(array_filter($params['search_results'], 'is_array'))
+                : [];
+            $storeNo = $params['storeNo'] ?? null;
+            $selector = $params['published_product_set_selector'] ?? new PublishedProductSetSelector();
+            if (!$selector instanceof PublishedProductSetSelector) {
+                throw new \RuntimeException('published_product_set_selector_invalid');
+            }
+            $publishedSet = $selector->select($searchResults, $storeNo);
+            if ($searchResults !== [] && $publishedSet->getCount() === 0) {
+                throw new \RuntimeException('bbcshops_published_set_empty_despite_eligible');
+            }
+
+            $productFacts = self::buildBbcshopsProductFacts($publishedSet->getProducts());
+            $productFactIds = array_values(array_map(static function (array $fact): string {
+                return (string) $fact['fact_id'];
+            }, $productFacts));
+
+            $messages = [];
+            $referencedFactIds = [];
+            $bbcshopsLink = self::resolveBbcshopsLinkInput($params);
+            $otherLinks = self::resolveOtherSourceLinks($params);
+            $linkBuilder = new GroundedListingLinkFactBuilder();
+            $linkFacts = $linkBuilder->build($bbcshopsLink, $otherLinks);
+            (new GroundedListingLinkFactsValidator())->validate($linkFacts);
+
+            $message1Text = self::buildOpeningText($publishedSet->getCount(), $bbcshopsLink);
+            if ($message1Text !== '') {
+                $messages[] = ['type' => 'text', 'text' => $message1Text];
+                if ($bbcshopsLink !== null) {
+                    $referencedFactIds[] = $bbcshopsLink['role'] === 'listing'
+                        ? 'link:bbcshops:listing'
+                        : 'link:bbcshops:search';
+                }
+            }
+
+            if ($publishedSet->getCount() > 0) {
+                $renderResult = (new BbcshopsFlexCarouselRenderer())->render($publishedSet);
+                (new LineFlexCarouselPayloadValidator())->validate($renderResult->getWireFlexMessage());
+                (new PublicationIntegrityValidator())->validate($publishedSet, $productFacts, $renderResult, $productFactIds);
+                $messages[] = $renderResult->getWireFlexMessage();
+                foreach ($productFactIds as $id) {
+                    $referencedFactIds[] = $id;
+                }
+            }
+
+            $otherFacts = self::filterOtherSourceLinkFacts($linkFacts);
+            if ($otherFacts !== []) {
+                $otherResult = (new OtherSourceListingLinksMessageBuilder())->build($otherFacts);
+                (new OtherSourceListingLinksIntegrityValidator())->validate($otherResult, $otherFacts);
+                $messages[] = $otherResult->getWireMessage();
+                foreach ($otherResult->getLinkFactIds() as $id) {
+                    $referencedFactIds[] = $id;
+                }
+            }
+
+            if ($messages === []) {
+                $messages[] = ['type' => 'text', 'text' => self::noResultsText()];
+            }
+
+            $channelPayload = LineMessagePayload::fromMessages($messages);
+            $facts = array_merge($productFacts, $linkFacts);
+            $presentable = $publishedSet->getCount() + count($otherFacts);
+            $replyPolicy = [
+                'mode' => $presentable > 0 ? 'recommend' : 'no_results',
+                'grounded_only' => true,
+                'safety_degrader_profile' => GroundedOutputDegrader::PROFILE_BBCSHOPS_FLEX_MULTI_SOURCE,
+                'global_presentable_result_count' => $presentable,
+            ];
+            $input = new GroundedInput(
+                GroundedInput::SOURCE_PRODUCT_SEARCH,
+                null,
+                $facts,
+                [
+                    'reply_text' => self::firstTextMessage($messages),
+                    'grounded' => $referencedFactIds !== [],
+                    'recommendation_summary' => ['result_count' => $publishedSet->getCount()],
+                    'product_list' => $publishedSet->getProducts(),
+                ],
+                is_array($params['tenant'] ?? null) ? $params['tenant'] : [],
+                GroundedInput::PURPOSE_PRODUCT_REPLY,
+                $publishedSet->getProducts(),
+                ['result_count' => $publishedSet->getCount()],
+                $replyPolicy,
+                RuntimeType::PRODUCT_SEARCH,
+                $tone
+            );
+            $composerConfig = isset($params['config']) && is_array($params['config']) ? $params['config'] : null;
+            $output = (new GroundedResponseComposer($composerConfig))->composeBbcshopsFlexMultiSourceReply(
+                $input,
+                $channelPayload,
+                $referencedFactIds
+            );
+            (new LineMessagePayloadValidator())->validateForReplyType(
+                ($output->getChannelMessages() ?? $channelPayload)->toArray(),
+                $output->getReplyType()
+            );
+
+            return [
+                'output' => $output,
+                'pipeline' => self::PIPELINE_AUTHORITATIVE,
+                'deliverable' => $output->getChannelMessages() !== null,
+                'validation_passed' => $output->isValidationPassed(),
+                'used_facts_count' => $output->getUsedFactsCount(),
+                'failure_reason' => null,
+            ];
+        } catch (\Throwable $e) {
+            $output = self::buildTechnicalFailClosedOutput($tone, $e->getMessage());
+
+            return [
+                'output' => $output,
+                'pipeline' => self::PIPELINE_AUTHORITATIVE,
+                'deliverable' => $output->getChannelMessages() !== null,
+                'validation_passed' => false,
+                'used_facts_count' => 0,
+                'failure_reason' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
      * Clarification entry — never parses utterance, never calls Search/Host B.
      *
      * @param array<string, mixed> $params
@@ -248,6 +398,122 @@ final class GroundingPipelineRuntime
             $contract->getMissingEntity(),
             $failureReason
         );
+    }
+
+    /**
+     * @param list<array<string, mixed>> $products
+     * @return list<array<string, mixed>>
+     */
+    private static function buildBbcshopsProductFacts(array $products): array
+    {
+        $facts = [];
+        foreach ($products as $product) {
+            $factId = trim((string) ($product['fact_id'] ?? ''));
+            $title = trim((string) ($product['title'] ?? ''));
+            if ($factId === '' || $title === '') {
+                throw new \RuntimeException('bbcshops_product_fact_invalid');
+            }
+            $facts[] = [
+                'fact_id' => $factId,
+                'fact_type' => 'product_row',
+                'value' => $title,
+                'source_ref' => 'bbcshops:product',
+            ];
+        }
+
+        return $facts;
+    }
+
+    /**
+     * @return array{url: string, role: string}|null
+     */
+    private static function resolveBbcshopsLinkInput(array $params): ?array
+    {
+        $url = isset($params['search_url']) ? trim((string) $params['search_url']) : '';
+        $role = isset($params['search_url_role']) ? trim((string) $params['search_url_role']) : '';
+        if ($url === '' || !in_array($role, ['search', 'listing'], true)) {
+            return null;
+        }
+
+        return ['url' => $url, 'role' => $role];
+    }
+
+    /**
+     * @return list<array{platform: string, url: string}>
+     */
+    private static function resolveOtherSourceLinks(array $params): array
+    {
+        $links = is_array($params['multi_source_links'] ?? null) ? $params['multi_source_links'] : [];
+        $out = [];
+        foreach ($links as $link) {
+            if (!is_array($link)) {
+                continue;
+            }
+            $platform = trim((string) ($link['platform'] ?? ''));
+            $url = trim((string) ($link['search_url'] ?? ($link['url'] ?? '')));
+            if ($platform !== '' && $url !== '') {
+                $out[] = ['platform' => $platform, 'url' => $url];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $facts
+     * @return list<array<string, mixed>>
+     */
+    private static function filterOtherSourceLinkFacts(array $facts): array
+    {
+        $out = [];
+        foreach ($facts as $fact) {
+            $sourceRef = trim((string) ($fact['source_ref'] ?? ''));
+            if (in_array($sourceRef, ['grp:listing', 'bbctravel:listing', 'tourcenter:listing'], true)) {
+                $out[] = $fact;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param array{url: string, role: string}|null $bbcshopsLink
+     */
+    private static function buildOpeningText(int $publishedCount, ?array $bbcshopsLink): string
+    {
+        if ($publishedCount > 0) {
+            $text = '以下為您整理 BBCShops 精選行程。';
+            if ($bbcshopsLink !== null && trim($bbcshopsLink['url']) !== '') {
+                $text .= "\n更多 BBCShops 行程：" . trim($bbcshopsLink['url']);
+            }
+
+            return $text;
+        }
+
+        if ($bbcshopsLink !== null && trim($bbcshopsLink['url']) !== '') {
+            return "目前 BBCShops 沒有符合條件的商品。\n可先參考 BBCShops 更多行程：" . trim($bbcshopsLink['url']);
+        }
+
+        return self::noResultsText();
+    }
+
+    private static function noResultsText(): string
+    {
+        return '目前沒有找到符合條件的商品。';
+    }
+
+    /**
+     * @param list<array<string, mixed>> $messages
+     */
+    private static function firstTextMessage(array $messages): string
+    {
+        foreach ($messages as $message) {
+            if (is_array($message) && ($message['type'] ?? '') === 'text') {
+                return trim((string) ($message['text'] ?? ''));
+            }
+        }
+
+        return '';
     }
 
     /**
@@ -405,12 +671,17 @@ final class GroundingPipelineRuntime
             GroundedInput::SOURCE_TENANT_PRIVATE,
             false,
             [],
-            ReplyType::CLARIFICATION,
+            ReplyType::NO_RESULTS,
             LayoutProfile::MINIMAL,
             false,
             false,
             $persona !== '' ? $persona : 'travel_consultant',
-            ['failure_reason:' . $failureReason]
+            ['failure_reason:' . $failureReason],
+            [],
+            null,
+            LineMessagePayload::fromMessages([
+                ['type' => 'text', 'text' => ClarificationContract::TECHNICAL_FAIL_CLOSED_TEXT],
+            ])
         );
     }
 

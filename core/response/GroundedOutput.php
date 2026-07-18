@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'ReplyType.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'LayoutProfile.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR
+    . 'renderer' . DIRECTORY_SEPARATOR . 'line' . DIRECTORY_SEPARATOR . 'LineMessagePayload.php';
 
 /**
  * Phase 2-E Step 2-E-1 — Grounded Response Composer output contract (presentation layer).
@@ -65,6 +67,8 @@ final class GroundedOutput
 
     private ?string $nextBestActionPresented;
 
+    private ?LineMessagePayload $channelMessages;
+
     /**
      * @param list<string> $safetyNotes
      * @param list<string> $validationNotes
@@ -84,7 +88,8 @@ final class GroundedOutput
         string $voiceProfileUsed = '',
         array $validationNotes = [],
         array $referencedFactIds = [],
-        ?string $nextBestActionPresented = null
+        ?string $nextBestActionPresented = null,
+        ?LineMessagePayload $channelMessages = null
     ) {
         ReplyType::assertValid($replyType);
         LayoutProfile::assertValid($layoutProfile);
@@ -103,6 +108,7 @@ final class GroundedOutput
         $this->validationNotes = $validationNotes;
         $this->referencedFactIds = $referencedFactIds;
         $this->nextBestActionPresented = $nextBestActionPresented;
+        $this->channelMessages = $channelMessages;
     }
 
     public function getText(): string
@@ -189,6 +195,11 @@ final class GroundedOutput
         return $this->nextBestActionPresented;
     }
 
+    public function getChannelMessages(): ?LineMessagePayload
+    {
+        return $this->channelMessages;
+    }
+
     public function getSchemaVersion(): int
     {
         return self::SCHEMA_VERSION;
@@ -253,7 +264,8 @@ final class GroundedOutput
             (string) ($data['voice_profile_used'] ?? ''),
             is_array($data['validation_notes'] ?? null) ? array_values(array_map('strval', $data['validation_notes'])) : [],
             is_array($data['referenced_fact_ids'] ?? null) ? array_values(array_map('strval', $data['referenced_fact_ids'])) : [],
-            isset($data['next_best_action_presented']) ? (string) $data['next_best_action_presented'] : null
+            isset($data['next_best_action_presented']) ? (string) $data['next_best_action_presented'] : null,
+            null
         );
     }
 }

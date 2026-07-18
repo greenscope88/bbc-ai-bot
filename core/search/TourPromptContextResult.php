@@ -25,6 +25,18 @@ final class TourPromptContextResult
     /** @var array<string, mixed> */
     private array $searchPolicyMeta;
 
+    private string $sourceId;
+
+    private ?string $searchUrl;
+
+    private string $searchUrlRole;
+
+    /** @var list<array<string, mixed>> */
+    private array $multiSourceLinks;
+
+    /** @var int|null */
+    private $storeNo;
+
     /**
      * @param list<array<string, mixed>> $searchResults
      * @param array<string, mixed> $searchPolicyMeta
@@ -36,7 +48,12 @@ final class TourPromptContextResult
         string $legacyContext,
         bool $clarificationRequired,
         ?string $clarificationReason,
-        array $searchPolicyMeta = []
+        array $searchPolicyMeta = [],
+        string $sourceId = '',
+        ?string $searchUrl = null,
+        string $searchUrlRole = '',
+        array $multiSourceLinks = [],
+        $storeNo = null
     ) {
         $this->intent = $intent;
         $this->searchCondition = $searchCondition;
@@ -45,6 +62,11 @@ final class TourPromptContextResult
         $this->clarificationRequired = $clarificationRequired;
         $this->clarificationReason = $clarificationReason;
         $this->searchPolicyMeta = $searchPolicyMeta;
+        $this->sourceId = trim($sourceId);
+        $this->searchUrl = $searchUrl !== null && trim($searchUrl) !== '' ? trim($searchUrl) : null;
+        $this->searchUrlRole = trim($searchUrlRole);
+        $this->multiSourceLinks = self::normalizeSearchResults($multiSourceLinks);
+        $this->storeNo = $this->normalizeStoreNo($storeNo);
     }
 
     public static function empty(string $freeText = ''): self
@@ -79,9 +101,27 @@ final class TourPromptContextResult
         SearchCondition $searchCondition,
         array $searchResults,
         string $legacyContext,
-        array $searchPolicyMeta = []
+        array $searchPolicyMeta = [],
+        string $sourceId = '',
+        ?string $searchUrl = null,
+        string $searchUrlRole = '',
+        array $multiSourceLinks = [],
+        $storeNo = null
     ): self {
-        return new self($intent, $searchCondition, $searchResults, $legacyContext, false, null, $searchPolicyMeta);
+        return new self(
+            $intent,
+            $searchCondition,
+            $searchResults,
+            $legacyContext,
+            false,
+            null,
+            $searchPolicyMeta,
+            $sourceId,
+            $searchUrl,
+            $searchUrlRole,
+            $multiSourceLinks,
+            $storeNo
+        );
     }
 
     public function getIntent(): BatsSearchIntent
@@ -125,6 +165,34 @@ final class TourPromptContextResult
         return $this->searchPolicyMeta;
     }
 
+    public function getSourceId(): string
+    {
+        return $this->sourceId;
+    }
+
+    public function getSearchUrl(): ?string
+    {
+        return $this->searchUrl;
+    }
+
+    public function getSearchUrlRole(): string
+    {
+        return $this->searchUrlRole;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function getMultiSourceLinks(): array
+    {
+        return $this->multiSourceLinks;
+    }
+
+    public function getStoreNo(): ?int
+    {
+        return $this->storeNo;
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -138,6 +206,11 @@ final class TourPromptContextResult
             'clarification_required' => $this->clarificationRequired,
             'clarification_reason' => $this->clarificationReason,
             'search_policy' => $this->searchPolicyMeta,
+            'source_id' => $this->sourceId,
+            'search_url' => $this->searchUrl,
+            'search_url_role' => $this->searchUrlRole,
+            'multi_source_links' => $this->multiSourceLinks,
+            'storeNo' => $this->storeNo,
         ];
     }
 
@@ -159,5 +232,22 @@ final class TourPromptContextResult
         }
 
         return $out;
+    }
+
+    /**
+     * @param mixed $value
+     */
+    private function normalizeStoreNo($value): ?int
+    {
+        if (is_int($value) && $value > 0) {
+            return $value;
+        }
+        if (is_string($value) && preg_match('/^\d+$/', trim($value)) === 1) {
+            $n = (int) trim($value);
+
+            return $n > 0 ? $n : null;
+        }
+
+        return null;
     }
 }

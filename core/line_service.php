@@ -1,6 +1,10 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'LineJsonEncoder.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'renderer' . DIRECTORY_SEPARATOR
+    . 'line' . DIRECTORY_SEPARATOR . 'LineMessagePayload.php';
+
 class LineService
 {
     public static function verifySignature(string $body, string $signature, string $secret): bool
@@ -33,6 +37,22 @@ class LineService
         return self::reply($replyApiUrl, $token, $replyToken, $text);
     }
 
+    public static function replyMessages(
+        string $replyApiUrl,
+        string $token,
+        string $replyToken,
+        LineMessagePayload $payload
+    ): array {
+        $document = $payload->toArray();
+        $document['replyToken'] = $replyToken;
+
+        return self::postJson(
+            $replyApiUrl,
+            $document,
+            ['Authorization: Bearer ' . $token]
+        );
+    }
+
     public static function push(string $pushApiUrl, string $token, string $userId, string $message): array
     {
         $payload = [
@@ -54,6 +74,22 @@ class LineService
         return self::push($pushApiUrl, $token, $userId, $text);
     }
 
+    public static function pushMessages(
+        string $pushApiUrl,
+        string $token,
+        string $userId,
+        LineMessagePayload $payload
+    ): array {
+        $document = $payload->toArray();
+        $document['to'] = $userId;
+
+        return self::postJson(
+            $pushApiUrl,
+            $document,
+            ['Authorization: Bearer ' . $token]
+        );
+    }
+
     public static function postJson(string $url, array $payload, array $headers): array
     {
         $ch = curl_init($url);
@@ -68,7 +104,7 @@ class LineService
             CURLOPT_CONNECTTIMEOUT => 5,
             CURLOPT_TIMEOUT => 10,
             CURLOPT_HTTPHEADER => $finalHeaders,
-            CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
+            CURLOPT_POSTFIELDS => LineJsonEncoder::encode($payload),
         ]);
 
         $raw = curl_exec($ch);
