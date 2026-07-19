@@ -1628,6 +1628,7 @@ class SaaSRouter
                     'search_url_role' => $structuredResult->getSearchUrlRole(),
                     'multi_source_links' => $structuredResult->getMultiSourceLinks(),
                     'storeNo' => $structuredResult->getStoreNo(),
+                    'primary_search_display_label' => $structuredResult->getPrimarySearchDisplayLabel(),
                     'tenant' => $tenantArray,
                     'legacy_tenant' => $tenantArray,
                     'tone' => ['persona' => 'travel_consultant', 'allow_emoji' => true],

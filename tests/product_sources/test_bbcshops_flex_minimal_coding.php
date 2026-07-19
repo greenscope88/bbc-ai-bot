@@ -46,6 +46,12 @@ function host_b_normalized_item(int $i): array
         'areaNames' => '東京',
         'departureStr' => '台北',
         'storeName' => 'BBC Travel',
+        'dmFile' => 'photo' . $i . '.jpg',
+        'depID' => 10,
+        'storeNo' => 168,
+        'couponAttr' => 0,
+        'schLinks' => ['https://agt.tw/item' . $i],
+        'tourDays' => 0,
     ];
 }
 
@@ -219,8 +225,13 @@ $selDup = new PublishedProductSetSelector($detailBuilder, $cDup);
 $dupA = host_b_normalized_item(1);
 $dupB = host_b_normalized_item(1);
 $dupB['tourDate'] = '2026-09-01';
-bbcflex_assert($selDup->select([$dupA, $dupB], 168)->getCount() === 1, 'duplicate coupon identity publishes once');
+$dupSet = $selDup->select([$dupA, $dupB], 168);
+bbcflex_assert($dupSet->getCount() === 1, 'duplicate coupon identity publishes once');
 bbcflex_assert($cDup->detailCalls === 1, 'duplicate product does not repeat Short URL call');
+bbcflex_assert(
+    $dupSet->getProducts()[0]['departure_dates'] === ['2026-08-01', '2026-09-01'],
+    'duplicate identity aggregates and sorts departure dates'
+);
 
 // 12: Products = Facts = Bubbles = Product refs via Production pipeline
 $pipeCounter = new CountingShortUrlProvider(new MockShortUrlProvider());
@@ -341,7 +352,7 @@ try {
 }
 
 /**
- * Legal Flex bubble with bbcshops URI (slash path for encoding coverage) and ASCII pad text.
+ * Legal Flex bubble for byte-boundary tests — must satisfy schema-slot URI contract.
  *
  * @return array<string, mixed>
  */
@@ -350,6 +361,13 @@ function bbcflex_boundary_bubble(string $padText): array
     return [
         'type' => 'bubble',
         'size' => 'mega',
+        'hero' => [
+            'type' => 'image',
+            'url' => 'https://kowanbo.com/pubimg/coupon/1/1/boundary.jpg',
+            'size' => 'full',
+            'aspectRatio' => '20:13',
+            'aspectMode' => 'cover',
+        ],
         'body' => [
             'type' => 'box',
             'layout' => 'vertical',
@@ -370,15 +388,26 @@ function bbcflex_boundary_bubble(string $padText): array
         ],
         'footer' => [
             'type' => 'box',
-            'layout' => 'vertical',
+            'layout' => 'horizontal',
             'contents' => [
                 [
                     'type' => 'button',
                     'style' => 'primary',
+                    'color' => '#06C755',
                     'action' => [
                         'type' => 'uri',
-                        'label' => '查看行程',
-                        'uri' => 'https://bbcshops.com/Ab1/Cd2',
+                        'label' => '詳細內容',
+                        'uri' => 'https://bbcshops.com/Ab1Cd',
+                    ],
+                ],
+                [
+                    'type' => 'button',
+                    'style' => 'primary',
+                    'color' => '#1E88E5',
+                    'action' => [
+                        'type' => 'uri',
+                        'label' => '行程表',
+                        'uri' => 'https://agt.tw/bound1',
                     ],
                 ],
             ],
@@ -456,7 +485,7 @@ foreach ([49999, 50000, 50001] as $targetBytes) {
     bbcflex_assert(count($carousel['contents']) === 1, "bubble count 1 for {$targetBytes}");
     bbcflex_assert(
         strpos((string) ($carousel['contents'][0]['footer']['contents'][0]['action']['uri'] ?? ''), 'https://bbcshops.com/') === 0,
-        "bbcshops URI retained for {$targetBytes}"
+        "detail slot URI retained for {$targetBytes}"
     );
 
     $wire = bbcflex_wire_flex($carousel);
@@ -512,6 +541,502 @@ $assembleContext = GroundingAssemblyContext::fromArray([
 $assembled = (new GroundingRuntime())->assemble($assembleContext);
 bbcflex_assert($assembled->getRawRuntimeResult() !== [], 'Option B assemble preserves raw');
 bbcflex_assert(!array_key_exists('raw_runtime_result', $assembled->toArray()), 'toArray hides raw');
+
+// ---- 06B-5G Flex UX / aggregation / label ----
+
+// Identity 1/2/19 rows → one product; dates deduped ascending; renderer shows nearest 6 MM/DD
+$aggRows = [];
+for ($i = 1; $i <= 19; $i++) {
+    $row = host_b_normalized_item(1);
+    $day = (($i - 1) % 10) + 1;
+    $row['tourDate'] = sprintf('2027/03/%02d', $day);
+    $row['schLinks'] = ['https://agt.tw/first', 'https://agt.tw/second'];
+    $row['price'] = 88800;
+    $row['tourDays'] = 5;
+    $row['dmFile'] = 'hero.jpg';
+    $row['depID'] = 12;
+    $row['couponAttr'] = 99;
+    $aggRows[] = $row;
+}
+$aggRows[] = host_b_normalized_item(2);
+$cAgg = new CountingShortUrlProvider(new MockShortUrlProvider());
+$selAgg = new PublishedProductSetSelector($detailBuilder, $cAgg);
+$setAgg = $selAgg->select($aggRows, 168);
+bbcflex_assert($setAgg->getCount() === 2, '19 same-identity rows + 1 other → 2 published');
+$aggProduct = $setAgg->getProducts()[0];
+bbcflex_assert($aggProduct['couponNo'] === '1001', 'first identity preserved');
+bbcflex_assert(count($aggProduct['departure_dates']) === 10, 'date dedupe across 19 rows');
+bbcflex_assert($aggProduct['departure_dates'][0] === '2027-03-01', 'dates ascending first');
+bbcflex_assert($aggProduct['departure_dates'][9] === '2027-03-10', 'dates ascending last');
+bbcflex_assert($aggProduct['duration_days'] === 5, 'tourDays=5 saved as duration_days');
+bbcflex_assert(
+    $aggProduct['representative_image_url'] === 'https://kowanbo.com/pubimg/coupon/12/168/tour/hero.jpg',
+    'hero kowanbo URL with tour/ segment'
+);
+bbcflex_assert($aggProduct['itinerary_url'] === 'https://agt.tw/first', 'schLinks ordered first HTTPS wins');
+bbcflex_assert($cAgg->detailCalls === 2, 'one Short URL call per published identity');
+
+$renderAgg = (new BbcshopsFlexCarouselRenderer())->render($setAgg);
+$wireAgg = $renderAgg->getWireFlexMessage();
+(new LineFlexCarouselPayloadValidator())->validate($wireAgg);
+$bubble0 = $wireAgg['contents']['contents'][0];
+bbcflex_assert(($bubble0['hero']['url'] ?? '') === $aggProduct['representative_image_url'], 'bubble hero matches published image');
+bbcflex_assert(($bubble0['hero']['aspectMode'] ?? '') === 'cover', 'hero aspectMode=cover');
+bbcflex_assert(($bubble0['hero']['aspectRatio'] ?? '') === '20:13', 'hero fixed aspectRatio');
+$body0 = $bubble0['body']['contents'];
+bbcflex_assert(($body0[0]['layout'] ?? '') === 'horizontal', 'badge row is horizontal');
+$badgeText = (string) ($body0[0]['contents'][1]['contents'][0]['text'] ?? '');
+bbcflex_assert($badgeText === '1/2', 'badge 1/N uses Published count');
+bbcflex_assert(($body0[1]['maxLines'] ?? null) === 3, 'title maxLines=3');
+bbcflex_assert(strpos((string) ($body0[1]['text'] ?? ''), '東京行程') === 0, 'title original text');
+$datesText = (string) ($body0[2]['text'] ?? '');
+bbcflex_assert($datesText === '出發日期：03/01、03/02、03/03、03/04、03/05、03/06', 'renderer shows nearest 6 MM/DD');
+bbcflex_assert(count($aggProduct['departure_dates']) === 10, 'presentation slice does not alter Published count/dates');
+bbcflex_assert((string) ($body0[3]['text'] ?? '') === '旅遊天數：5 日', 'tourDays=5 displays duration');
+bbcflex_assert((string) ($body0[4]['text'] ?? '') === '出發地：台北', 'departure line');
+$priceBox = $body0[5];
+bbcflex_assert(($priceBox['layout'] ?? '') === 'baseline', 'price uses baseline box');
+$priceVisual = ((string) ($priceBox['contents'][0]['text'] ?? ''))
+    . ((string) ($priceBox['contents'][1]['text'] ?? ''))
+    . ((string) ($priceBox['contents'][2]['text'] ?? ''));
+bbcflex_assert($priceVisual === 'NT$88,800 起', 'price visual NT$88,800 起');
+bbcflex_assert(($priceBox['contents'][1]['weight'] ?? '') === 'bold', 'amount bold');
+bbcflex_assert(($priceBox['contents'][1]['size'] ?? '') === 'xl', 'amount larger');
+bbcflex_assert(($priceBox['contents'][1]['color'] ?? '') === '#E53935', 'amount red');
+$footer0 = $bubble0['footer'];
+bbcflex_assert(($footer0['layout'] ?? '') === 'horizontal', 'footer buttons horizontal');
+bbcflex_assert(($footer0['contents'][0]['color'] ?? '') === '#06C755', '詳細內容 green');
+bbcflex_assert(($footer0['contents'][0]['action']['label'] ?? '') === '詳細內容', 'left button label');
+bbcflex_assert(($footer0['contents'][0]['action']['uri'] ?? '') === $aggProduct['primary_url'], 'detail URI=primary_url');
+bbcflex_assert(($footer0['contents'][1]['color'] ?? '') === '#1E88E5', '行程表 blue');
+bbcflex_assert(($footer0['contents'][1]['action']['label'] ?? '') === '行程表', 'right button label');
+bbcflex_assert(($footer0['contents'][1]['action']['uri'] ?? '') === $aggProduct['itinerary_url'], 'itinerary URI');
+
+// tourDays=0 / missing → omit duration but still publish
+$zeroDays = host_b_normalized_item(3);
+$zeroDays['tourDays'] = 0;
+$missingDays = host_b_normalized_item(4);
+unset($missingDays['tourDays']);
+$setDur = (new PublishedProductSetSelector($detailBuilder, new MockShortUrlProvider()))->select([$zeroDays, $missingDays], 168);
+bbcflex_assert($setDur->getCount() === 2, 'tourDays 0/missing still publish');
+bbcflex_assert($setDur->getProducts()[0]['duration_days'] === null, 'tourDays=0 → duration_days null');
+bbcflex_assert($setDur->getProducts()[1]['duration_days'] === null, 'missing tourDays → duration_days null');
+$wireDur = (new BbcshopsFlexCarouselRenderer())->render($setDur)->getWireFlexMessage();
+foreach ($wireDur['contents']['contents'] as $b) {
+    $joined = json_encode($b['body']['contents'], JSON_UNESCAPED_UNICODE);
+    bbcflex_assert(strpos((string) $joined, '旅遊天數') === false, 'duration omitted when null');
+}
+
+// departure missing → exclude
+$noDep = host_b_normalized_item(5);
+$noDep['departureStr'] = '';
+bbcflex_assert(
+    (new PublishedProductSetSelector($detailBuilder, new MockShortUrlProvider()))->select([$noDep], 168)->getCount() === 0,
+    'missing departure excluded'
+);
+
+// schLinks empty → exclude
+$noSch = host_b_normalized_item(6);
+$noSch['schLinks'] = [];
+unset($noSch['schLink']);
+bbcflex_assert(
+    (new PublishedProductSetSelector($detailBuilder, new MockShortUrlProvider()))->select([$noSch], 168)->getCount() === 0,
+    'schLinks 0 excluded'
+);
+
+// schLinks multi → first ordered HTTPS
+$multiSch = host_b_normalized_item(7);
+$multiSch['schLinks'] = ['https://reurl.cc/second', 'https://agt.tw/third'];
+$multiSch['schLink'] = 'https://agt.tw/scalar-last';
+$setSch = (new PublishedProductSetSelector($detailBuilder, new MockShortUrlProvider()))->select([$multiSch], 168);
+bbcflex_assert($setSch->getProducts()[0]['itinerary_url'] === 'https://reurl.cc/second', 'first ordered schLinks wins');
+
+// Opening label / other-source wording
+$labelPipe = GroundingPipelineRuntime::composeBbcshopsFlexMultiSourceReply([
+    'search_results' => [host_b_normalized_item(8)],
+    'storeNo' => 168,
+    'search_url' => 'https://bbcshops.com/s/GVPHP',
+    'search_url_role' => 'search',
+    'primary_search_display_label' => '日本',
+    'multi_source_links' => [
+        ['platform' => 'grp', 'search_url' => 'https://example.com/grp'],
+        ['platform' => 'bbctravel', 'search_url' => 'https://example.com/bbc'],
+        ['platform' => 'tourcenter', 'search_url' => 'https://example.com/tc'],
+    ],
+    'published_product_set_selector' => new PublishedProductSetSelector($detailBuilder, new MockShortUrlProvider()),
+    'tenant' => ['tenant_sno' => '5f99b8d665e8444d'],
+]);
+bbcflex_assert($labelPipe['validation_passed'] === true, 'label pipeline validation passes');
+$labelMsgs = $labelPipe['output']->getChannelMessages()->getMessages();
+bbcflex_assert(count($labelMsgs) === 3, 'opening + flex + other-source');
+$openText = (string) ($labelMsgs[0]['text'] ?? '');
+bbcflex_assert(
+    $openText === "以下為您整理日本精選行程。\n更多日本行程：\nhttps://bbcshops.com/s/GVPHP",
+    'opening with label exact copy'
+);
+bbcflex_assert(strpos($openText, 'BBCShops') === false, 'opening does not show platform name');
+$otherText = (string) ($labelMsgs[2]['text'] ?? '');
+bbcflex_assert(strpos($otherText, '其他【日本】相關行程可參考：') === 0, 'other-source header with label');
+bbcflex_assert(strpos($otherText, "一館：https://example.com/grp\n") !== false, 'ordinal 一館 not platform-bound');
+bbcflex_assert(strpos($otherText, '二館：https://example.com/bbc') !== false, 'ordinal 二館');
+bbcflex_assert(strpos($otherText, '三館：https://example.com/tc') !== false, 'ordinal 三館');
+bbcflex_assert(strpos($otherText, 'GRP') === false, 'customer text hides GRP');
+bbcflex_assert(strpos($otherText, 'BBC Travel') === false, 'customer text hides BBC Travel');
+bbcflex_assert(strpos($otherText, 'TourCenter') === false, 'customer text hides TourCenter');
+
+$noLabelPipe = GroundingPipelineRuntime::composeBbcshopsFlexMultiSourceReply([
+    'search_results' => [host_b_normalized_item(9)],
+    'storeNo' => 168,
+    'search_url' => 'https://bbcshops.com/s/GVPHP',
+    'search_url_role' => 'search',
+    'primary_search_display_label' => null,
+    'multi_source_links' => [
+        ['platform' => 'grp', 'search_url' => 'https://example.com/only'],
+    ],
+    'published_product_set_selector' => new PublishedProductSetSelector($detailBuilder, new MockShortUrlProvider()),
+    'tenant' => ['tenant_sno' => '5f99b8d665e8444d'],
+]);
+$noLabelMsgs = $noLabelPipe['output']->getChannelMessages()->getMessages();
+bbcflex_assert(
+    (string) ($noLabelMsgs[0]['text'] ?? '') === "以下為您整理精選行程。\n更多行程：\nhttps://bbcshops.com/s/GVPHP",
+    'opening without label exact copy'
+);
+bbcflex_assert(strpos((string) ($noLabelMsgs[2]['text'] ?? ''), '其他相關行程可參考：') === 0, 'other-source without label');
+
+$zeroOther = GroundingPipelineRuntime::composeBbcshopsFlexMultiSourceReply([
+    'search_results' => [host_b_normalized_item(10)],
+    'storeNo' => 168,
+    'search_url' => 'https://bbcshops.com/s/GVPHP',
+    'search_url_role' => 'search',
+    'primary_search_display_label' => '日本',
+    'multi_source_links' => [],
+    'published_product_set_selector' => new PublishedProductSetSelector($detailBuilder, new MockShortUrlProvider()),
+    'tenant' => ['tenant_sno' => '5f99b8d665e8444d'],
+]);
+bbcflex_assert(count($zeroOther['output']->getChannelMessages()->getMessages()) === 2, 'other-source 0 links → no third message');
+
+// ---- 06B-5H: schema-slot URI negatives + Published→Bubble field integrity ----
+
+/**
+ * @return array<string, mixed>
+ */
+function bbcflex_slot_valid_bubble(): array
+{
+    return [
+        'type' => 'bubble',
+        'size' => 'mega',
+        'hero' => [
+            'type' => 'image',
+            'url' => 'https://kowanbo.com/pubimg/coupon/12/168/hero.jpg',
+            'size' => 'full',
+            'aspectRatio' => '20:13',
+            'aspectMode' => 'cover',
+        ],
+        'body' => [
+            'type' => 'box',
+            'layout' => 'vertical',
+            'contents' => [
+                ['type' => 'text', 'text' => 'slot-valid', 'wrap' => true],
+            ],
+        ],
+        'footer' => [
+            'type' => 'box',
+            'layout' => 'horizontal',
+            'contents' => [
+                [
+                    'type' => 'button',
+                    'style' => 'primary',
+                    'color' => '#06C755',
+                    'action' => [
+                        'type' => 'uri',
+                        'label' => '詳細內容',
+                        'uri' => 'https://bbcshops.com/DET01',
+                    ],
+                ],
+                [
+                    'type' => 'button',
+                    'style' => 'primary',
+                    'color' => '#1E88E5',
+                    'action' => [
+                        'type' => 'uri',
+                        'label' => '行程表',
+                        'uri' => 'https://agt.tw/ITIN01',
+                    ],
+                ],
+            ],
+        ],
+    ];
+}
+
+/**
+ * @return array<string, mixed>
+ */
+function bbcflex_slot_wire(array $bubble): array
+{
+    return [
+        'type' => 'flex',
+        'altText' => 'BBCShops 行程推薦',
+        'contents' => [
+            'type' => 'carousel',
+            'contents' => [$bubble],
+        ],
+    ];
+}
+
+function bbcflex_expect_reject(array $wire, string $expectedReason, string $message): void
+{
+    try {
+        (new LineFlexCarouselPayloadValidator())->validate($wire);
+        bbcflex_assert(false, $message . ' — expected throw ' . $expectedReason);
+    } catch (RuntimeException $e) {
+        bbcflex_assert(
+            $e->getMessage() === $expectedReason,
+            $message . ' — got [' . $e->getMessage() . '] want [' . $expectedReason . ']'
+        );
+    }
+}
+
+$slotValidator = new LineFlexCarouselPayloadValidator();
+$okWire = bbcflex_slot_wire(bbcflex_slot_valid_bubble());
+try {
+    $slotValidator->validate($okWire);
+    bbcflex_assert(true, '1: normal hero+detail+itinerary passes');
+} catch (RuntimeException $e) {
+    bbcflex_assert(false, '1: normal hero+detail+itinerary passes; got ' . $e->getMessage());
+}
+
+$b = bbcflex_slot_valid_bubble();
+$b['footer']['contents'] = [$b['footer']['contents'][0]];
+bbcflex_expect_reject(bbcflex_slot_wire($b), 'line_flex_footer_schema_invalid', '2: footer <2 buttons');
+
+$b = bbcflex_slot_valid_bubble();
+$b['footer']['contents'][] = $b['footer']['contents'][1];
+bbcflex_expect_reject(bbcflex_slot_wire($b), 'line_flex_footer_schema_invalid', '3: footer >2 buttons');
+
+$b = bbcflex_slot_valid_bubble();
+$b['footer']['layout'] = 'vertical';
+bbcflex_expect_reject(bbcflex_slot_wire($b), 'line_flex_footer_schema_invalid', '4: footer not horizontal');
+
+$b = bbcflex_slot_valid_bubble();
+unset($b['footer']['contents'][0]['action']);
+bbcflex_expect_reject(bbcflex_slot_wire($b), 'line_flex_footer_slot0_invalid', '5: slot0 missing action');
+
+$b = bbcflex_slot_valid_bubble();
+unset($b['footer']['contents'][1]['action']);
+bbcflex_expect_reject(bbcflex_slot_wire($b), 'line_flex_footer_slot1_invalid', '6: slot1 missing action');
+
+$b = bbcflex_slot_valid_bubble();
+$b['footer']['contents'][0]['action']['type'] = 'message';
+bbcflex_expect_reject(bbcflex_slot_wire($b), 'line_flex_footer_slot0_invalid', '7: action.type not uri');
+
+$b = bbcflex_slot_valid_bubble();
+$b['footer']['contents'][0]['action']['uri'] = 'https://agt.tw/not-detail';
+bbcflex_expect_reject(bbcflex_slot_wire($b), 'line_flex_invalid_detail_url', '8: slot0 agt.tw rejected as detail');
+
+$b = bbcflex_slot_valid_bubble();
+$b['footer']['contents'][0]['action']['uri'] = 'https://bonusmee.com/view/cloud/tourdate_dm.php?x=1';
+bbcflex_expect_reject(bbcflex_slot_wire($b), 'line_flex_invalid_detail_url', '9: slot0 bonusmee rejected');
+
+$b = bbcflex_slot_valid_bubble();
+$b['footer']['contents'][1]['action']['uri'] = 'http://agt.tw/http-only';
+bbcflex_expect_reject(bbcflex_slot_wire($b), 'line_flex_invalid_itinerary_url', '10: slot1 HTTP rejected');
+
+$b = bbcflex_slot_valid_bubble();
+$b['footer']['contents'][1]['action']['uri'] = 'https:///no-host';
+bbcflex_expect_reject(bbcflex_slot_wire($b), 'line_flex_invalid_itinerary_url', '11: slot1 missing host');
+
+$b = bbcflex_slot_valid_bubble();
+$b['footer']['contents'][1]['action']['uri'] = 'https://user:pass@agt.tw/secret';
+bbcflex_expect_reject(bbcflex_slot_wire($b), 'line_flex_invalid_itinerary_url', '12: slot1 userinfo rejected');
+
+$b = bbcflex_slot_valid_bubble();
+$b['footer']['contents'][1]['action']['uri'] = $b['footer']['contents'][0]['action']['uri'];
+bbcflex_expect_reject(bbcflex_slot_wire($b), 'line_flex_invalid_itinerary_url', '13: slot1 equals detail rejected');
+
+$b = bbcflex_slot_valid_bubble();
+$tmp = $b['footer']['contents'][0]['action']['uri'];
+$b['footer']['contents'][0]['action']['uri'] = $b['footer']['contents'][1]['action']['uri'];
+$b['footer']['contents'][1]['action']['uri'] = $tmp;
+bbcflex_expect_reject(bbcflex_slot_wire($b), 'line_flex_invalid_detail_url', '14: swapped URIs — slot0 still detail-ruled');
+
+$b = bbcflex_slot_valid_bubble();
+$b['footer']['contents'][0]['action']['label'] = '行程表';
+bbcflex_expect_reject(bbcflex_slot_wire($b), 'line_flex_footer_slot0_invalid', '15a: slot0 wrong label rejected');
+$b = bbcflex_slot_valid_bubble();
+$b['footer']['contents'][0]['action']['label'] = '行程表';
+$b['footer']['contents'][0]['action']['uri'] = 'https://agt.tw/still-detail-slot';
+bbcflex_expect_reject(bbcflex_slot_wire($b), 'line_flex_invalid_detail_url', '15b: slot0 still detail-ruled despite label 行程表');
+
+$b = bbcflex_slot_valid_bubble();
+$b['footer']['contents'][1]['action']['label'] = '詳細內容';
+bbcflex_expect_reject(bbcflex_slot_wire($b), 'line_flex_footer_slot1_invalid', '16: slot1 wrong label rejected');
+
+$b = bbcflex_slot_valid_bubble();
+$b['hero']['url'] = 'https://bbcshops.com/not-image';
+bbcflex_expect_reject(bbcflex_slot_wire($b), 'line_flex_invalid_hero_url', '17: hero non-kowanbo rejected');
+
+$b = bbcflex_slot_valid_bubble();
+$b['hero']['url'] = 'https://kowanbo.com/other/path/hero.jpg';
+bbcflex_expect_reject(bbcflex_slot_wire($b), 'line_flex_invalid_hero_url', '18: hero path not /pubimg/coupon/ rejected');
+
+$b = bbcflex_slot_valid_bubble();
+$b['hero']['url'] = 'https://user:secret@kowanbo.com/pubimg/coupon/1/1/x.jpg';
+bbcflex_expect_reject(bbcflex_slot_wire($b), 'line_flex_invalid_hero_url', '19: hero userinfo rejected');
+
+// Published Product → Bubble field-by-field + Fact Scheme C
+$integrityRows = [];
+// Product 0: duration=5, >6 dates, price 88800
+$p0 = host_b_normalized_item(20);
+$p0['title'] = '北海道雪祭七日';
+$p0['price'] = 88800;
+$p0['departureStr'] = '台北';
+$p0['dmFile'] = 'hokkaido.jpg';
+$p0['depID'] = 21;
+$p0['couponAttr'] = 0;
+$p0['tourDays'] = 5;
+$p0['schLinks'] = ['https://agt.tw/hokkaido-a', 'https://agt.tw/hokkaido-b'];
+$p0['couponNo'] = 5001;
+$p0['tourSeqNo'] = 6001;
+for ($d = 1; $d <= 8; $d++) {
+    $row = $p0;
+    $row['tourDate'] = sprintf('2027-02-%02d', $d);
+    $integrityRows[] = $row;
+}
+// Product 1: duration null (tourDays=0), different fields
+$p1 = host_b_normalized_item(21);
+$p1['title'] = '沖繩潛水三日';
+$p1['price'] = 25800;
+$p1['departureStr'] = '高雄';
+$p1['dmFile'] = 'okinawa.png';
+$p1['depID'] = 33;
+$p1['couponAttr'] = 99;
+$p1['tourDays'] = 0;
+$p1['tourDate'] = '2027-04-15';
+$p1['schLinks'] = ['https://reurl.cc/oki-1'];
+$p1['couponNo'] = 5002;
+$p1['tourSeqNo'] = 6002;
+$integrityRows[] = $p1;
+// Product 2: another distinct product
+$p2 = host_b_normalized_item(22);
+$p2['title'] = '京都賞楓五日';
+$p2['price'] = 39900;
+$p2['departureStr'] = '台中';
+$p2['dmFile'] = 'kyoto.webp';
+$p2['depID'] = 44;
+$p2['couponAttr'] = 1;
+$p2['tourDays'] = 7;
+$p2['tourDate'] = '2027-11-03';
+$p2['schLinks'] = ['https://agt.tw/kyoto'];
+$p2['couponNo'] = 5003;
+$p2['tourSeqNo'] = 6003;
+$integrityRows[] = $p2;
+
+$integritySelector = new PublishedProductSetSelector($detailBuilder, new MockShortUrlProvider());
+$publishedSet = $integritySelector->select($integrityRows, 168);
+bbcflex_assert($publishedSet->getCount() === 3, 'integrity fixture publishes 3 products');
+$products = $publishedSet->getProducts();
+bbcflex_assert($products[0]['duration_days'] === 5, 'product0 has duration');
+bbcflex_assert($products[1]['duration_days'] === null, 'product1 duration null');
+bbcflex_assert(count($products[0]['departure_dates']) === 8, 'product0 has >6 dates');
+
+$integrityRender = (new BbcshopsFlexCarouselRenderer())->render($publishedSet);
+$wireIntegrity = $integrityRender->getWireFlexMessage();
+(new LineFlexCarouselPayloadValidator())->validate($wireIntegrity);
+$bubbles = $wireIntegrity['contents']['contents'];
+bbcflex_assert(count($bubbles) === $publishedSet->getCount(), 'bubble count = published count');
+
+$productFacts = [];
+foreach ($products as $product) {
+    $productFacts[] = [
+        'fact_id' => (string) $product['fact_id'],
+        'fact_type' => 'product_row',
+        'value' => (string) $product['title'],
+        'source_ref' => 'bbcshops:product',
+    ];
+}
+$factIds = array_values(array_map(static function (array $f): string {
+    return (string) $f['fact_id'];
+}, $productFacts));
+(new PublicationIntegrityValidator())->validate($publishedSet, $productFacts, $integrityRender, $factIds);
+bbcflex_assert($integrityRender->getBubbleFactIds() === $factIds, 'bubble fact id order = published order');
+
+foreach ($products as $i => $product) {
+    $bubble = $bubbles[$i];
+    $body = $bubble['body']['contents'];
+    $badge = (string) ($body[0]['contents'][1]['contents'][0]['text'] ?? '');
+    bbcflex_assert($badge === ($i + 1) . '/' . $publishedSet->getCount(), 'badge ' . ($i + 1) . '/N');
+    bbcflex_assert(($bubble['hero']['url'] ?? '') === $product['representative_image_url'], 'hero URL parity idx=' . $i);
+    bbcflex_assert(($body[1]['text'] ?? '') === $product['title'], 'title parity idx=' . $i);
+    bbcflex_assert(($body[1]['wrap'] ?? null) === true, 'title wrap idx=' . $i);
+    bbcflex_assert(($body[1]['maxLines'] ?? null) === 3, 'title maxLines idx=' . $i);
+
+    $expectedDates = [];
+    foreach (array_slice($product['departure_dates'], 0, 6) as $date) {
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', (string) $date, $m) === 1) {
+            $expectedDates[] = $m[2] . '/' . $m[3];
+        }
+    }
+    bbcflex_assert(
+        (string) ($body[2]['text'] ?? '') === '出發日期：' . implode('、', $expectedDates),
+        'dates parity idx=' . $i
+    );
+
+    $cursor = 3;
+    if ($product['duration_days'] !== null && (int) $product['duration_days'] > 0) {
+        bbcflex_assert(
+            (string) ($body[$cursor]['text'] ?? '') === '旅遊天數：' . (int) $product['duration_days'] . ' 日',
+            'duration shown idx=' . $i
+        );
+        ++$cursor;
+    } else {
+        bbcflex_assert(
+            strpos(json_encode($body, JSON_UNESCAPED_UNICODE), '旅遊天數') === false,
+            'duration omitted idx=' . $i
+        );
+    }
+
+    bbcflex_assert(
+        (string) ($body[$cursor]['text'] ?? '') === '出發地：' . $product['departure'],
+        'departure parity idx=' . $i
+    );
+    ++$cursor;
+
+    $priceBox = $body[$cursor];
+    bbcflex_assert(($priceBox['layout'] ?? '') === 'baseline', 'price baseline idx=' . $i);
+    $nt = (string) ($priceBox['contents'][0]['text'] ?? '');
+    $amt = (string) ($priceBox['contents'][1]['text'] ?? '');
+    $suffix = (string) ($priceBox['contents'][2]['text'] ?? '');
+    bbcflex_assert($nt === 'NT$', 'NT$ span idx=' . $i);
+    bbcflex_assert($suffix === ' 起', '起 span idx=' . $i);
+    bbcflex_assert(($priceBox['contents'][1]['weight'] ?? '') === 'bold', 'amount bold idx=' . $i);
+    bbcflex_assert(($priceBox['contents'][1]['size'] ?? '') === 'xl', 'amount xl idx=' . $i);
+    bbcflex_assert(($priceBox['contents'][1]['color'] ?? '') === '#E53935', 'amount red idx=' . $i);
+    $visual = $nt . $amt . $suffix;
+    if ((int) $product['price'] === 88800) {
+        bbcflex_assert($visual === 'NT$88,800 起', 'price visual 88800 idx=' . $i);
+    } else {
+        $wantAmt = number_format((int) $product['price'], 0, '.', ',');
+        bbcflex_assert($visual === 'NT$' . $wantAmt . ' 起', 'price visual idx=' . $i);
+    }
+
+    $footer = $bubble['footer'];
+    bbcflex_assert(($footer['layout'] ?? '') === 'horizontal', 'footer horizontal idx=' . $i);
+    bbcflex_assert(($footer['contents'][0]['action']['label'] ?? '') === '詳細內容', 'detail label idx=' . $i);
+    bbcflex_assert(($footer['contents'][0]['color'] ?? '') === '#06C755', 'detail color idx=' . $i);
+    bbcflex_assert(($footer['contents'][0]['action']['uri'] ?? '') === $product['primary_url'], 'detail URI parity idx=' . $i);
+    bbcflex_assert(($footer['contents'][1]['action']['label'] ?? '') === '行程表', 'itinerary label idx=' . $i);
+    bbcflex_assert(($footer['contents'][1]['color'] ?? '') === '#1E88E5', 'itinerary color idx=' . $i);
+    bbcflex_assert(($footer['contents'][1]['action']['uri'] ?? '') === $product['itinerary_url'], 'itinerary URI parity idx=' . $i);
+
+    // Fact Scheme C
+    bbcflex_assert($productFacts[$i]['fact_id'] === $product['fact_id'], 'fact_id parity idx=' . $i);
+    bbcflex_assert($productFacts[$i]['value'] === $product['title'], 'fact value=title idx=' . $i);
+    bbcflex_assert($factIds[$i] === $product['fact_id'], 'referenced fact id idx=' . $i);
+    foreach (['image', 'dates', 'price', 'representative_image_url', 'departure_dates'] as $forbiddenKey) {
+        bbcflex_assert(!array_key_exists($forbiddenKey, $productFacts[$i]), 'fact no UX array key ' . $forbiddenKey . ' idx=' . $i);
+    }
+}
+bbcflex_assert(count($productFacts) === $publishedSet->getCount(), 'fact count = published count');
 
 bbcflex_assert($dbShortUrlCalls === 0, 'Short URL DB calls remain 0 for entire focused suite');
 

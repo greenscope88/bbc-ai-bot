@@ -160,7 +160,8 @@ final class TourPromptContextService
                 isset($pipeline['multi_source_links']) && is_array($pipeline['multi_source_links'])
                     ? $pipeline['multi_source_links']
                     : [],
-                $pipeline['storeNo'] ?? null
+                $pipeline['storeNo'] ?? null,
+                $this->resolvePrimarySearchDisplayLabel($searchCondition)
             );
         } catch (\Throwable $e) {
             return TourPromptContextResult::empty($userText);
@@ -188,6 +189,21 @@ final class TourPromptContextService
         }
 
         return new TourSearchApiClient();
+    }
+
+    private function resolvePrimarySearchDisplayLabel(SearchCondition $condition): ?string
+    {
+        $destination = $condition->getDestination();
+        if ($destination === []) {
+            return null;
+        }
+        $first = $destination[0] ?? null;
+        if (!is_scalar($first)) {
+            return null;
+        }
+        $label = trim((string) $first);
+
+        return $label !== '' ? $label : null;
     }
 
     private function buildClarificationLegacyContext(BatsSearchIntent $intent, string $userText): string

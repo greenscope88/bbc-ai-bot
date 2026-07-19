@@ -37,9 +37,13 @@ final class TourPromptContextResult
     /** @var int|null */
     private $storeNo;
 
+    private ?string $primarySearchDisplayLabel;
+
     /**
      * @param list<array<string, mixed>> $searchResults
      * @param array<string, mixed> $searchPolicyMeta
+     * @param list<array<string, mixed>> $multiSourceLinks
+     * @param int|string|null $storeNo
      */
     public function __construct(
         BatsSearchIntent $intent,
@@ -53,7 +57,8 @@ final class TourPromptContextResult
         ?string $searchUrl = null,
         string $searchUrlRole = '',
         array $multiSourceLinks = [],
-        $storeNo = null
+        $storeNo = null,
+        ?string $primarySearchDisplayLabel = null
     ) {
         $this->intent = $intent;
         $this->searchCondition = $searchCondition;
@@ -67,6 +72,7 @@ final class TourPromptContextResult
         $this->searchUrlRole = trim($searchUrlRole);
         $this->multiSourceLinks = self::normalizeSearchResults($multiSourceLinks);
         $this->storeNo = $this->normalizeStoreNo($storeNo);
+        $this->primarySearchDisplayLabel = self::normalizeDisplayLabel($primarySearchDisplayLabel);
     }
 
     public static function empty(string $freeText = ''): self
@@ -95,6 +101,9 @@ final class TourPromptContextResult
 
     /**
      * @param list<array<string, mixed>> $searchResults
+     * @param array<string, mixed> $searchPolicyMeta
+     * @param list<array<string, mixed>> $multiSourceLinks
+     * @param int|string|null $storeNo
      */
     public static function searchable(
         BatsSearchIntent $intent,
@@ -106,7 +115,8 @@ final class TourPromptContextResult
         ?string $searchUrl = null,
         string $searchUrlRole = '',
         array $multiSourceLinks = [],
-        $storeNo = null
+        $storeNo = null,
+        ?string $primarySearchDisplayLabel = null
     ): self {
         return new self(
             $intent,
@@ -120,7 +130,8 @@ final class TourPromptContextResult
             $searchUrl,
             $searchUrlRole,
             $multiSourceLinks,
-            $storeNo
+            $storeNo,
+            $primarySearchDisplayLabel
         );
     }
 
@@ -193,6 +204,11 @@ final class TourPromptContextResult
         return $this->storeNo;
     }
 
+    public function getPrimarySearchDisplayLabel(): ?string
+    {
+        return $this->primarySearchDisplayLabel;
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -211,6 +227,7 @@ final class TourPromptContextResult
             'search_url_role' => $this->searchUrlRole,
             'multi_source_links' => $this->multiSourceLinks,
             'storeNo' => $this->storeNo,
+            'primary_search_display_label' => $this->primarySearchDisplayLabel,
         ];
     }
 
@@ -249,5 +266,15 @@ final class TourPromptContextResult
         }
 
         return null;
+    }
+
+    private static function normalizeDisplayLabel(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        $label = trim($value);
+
+        return $label !== '' ? $label : null;
     }
 }

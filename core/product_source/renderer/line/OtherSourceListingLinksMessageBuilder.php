@@ -13,13 +13,17 @@ final class OtherSourceListingLinksMessageBuilder
         'tourcenter:listing' => true,
     ];
 
+    /** @var list<string> */
+    private const ORDINAL_LABELS = ['一館', '二館', '三館'];
+
     /**
      * @param list<array<string, mixed>> $linkFacts
      */
-    public function build(array $linkFacts): OtherSourceListingLinksMessageRenderResult
+    public function build(array $linkFacts, ?string $primarySearchDisplayLabel = null): OtherSourceListingLinksMessageRenderResult
     {
         $lines = [];
         $ids = [];
+        $ordinal = 0;
         foreach ($linkFacts as $fact) {
             if (!is_array($fact)) {
                 continue;
@@ -38,8 +42,12 @@ final class OtherSourceListingLinksMessageBuilder
             if ($platformDoc === null) {
                 throw new \RuntimeException('other_source_platform_unknown');
             }
-            $label = trim((string) ($platformDoc['platform_name'] ?? $platform));
-            $lines[] = $label . '：' . $url;
+            if ($ordinal >= count(self::ORDINAL_LABELS)) {
+                break;
+            }
+            $displayLabel = self::ORDINAL_LABELS[$ordinal];
+            ++$ordinal;
+            $lines[] = $displayLabel . '：' . $url;
             $ids[] = $factId;
         }
 
@@ -47,9 +55,14 @@ final class OtherSourceListingLinksMessageBuilder
             throw new \RuntimeException('other_source_links_empty');
         }
 
+        $label = $primarySearchDisplayLabel !== null ? trim($primarySearchDisplayLabel) : '';
+        $header = $label !== ''
+            ? '其他【' . $label . '】相關行程可參考：'
+            : '其他相關行程可參考：';
+
         return new OtherSourceListingLinksMessageRenderResult([
             'type' => 'text',
-            'text' => "其他平台也有相關行程可參考：\n" . implode("\n", $lines),
+            'text' => $header . "\n" . implode("\n", $lines),
         ], $ids);
     }
 }

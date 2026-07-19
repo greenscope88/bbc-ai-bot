@@ -45,12 +45,36 @@ $searchable = TourPromptContextResult::searchable(
     $intent,
     $condition,
     [['title' => '北海道夏季團']],
-    'legacy context text'
+    'legacy context text',
+    [],
+    '',
+    null,
+    '',
+    [],
+    null,
+    '北海道'
 );
 test_assert($searchable->isClarificationRequired() === false, 'case3: searchable');
 test_assert($searchable->getSearchCondition() !== null, 'case3: search_condition');
 test_assert($searchable->getSearchResults()[0]['title'] === '北海道夏季團', 'case3: search_results');
 test_assert($searchable->getLegacyContext() === 'legacy context text', 'case3: legacy_context');
+test_assert($searchable->getPrimarySearchDisplayLabel() === '北海道', 'case3: getter label');
+
+// Case 3b: null label
+$searchableNull = TourPromptContextResult::searchable(
+    $intent,
+    $condition,
+    [['title' => '北海道夏季團']],
+    'legacy context text',
+    [],
+    '',
+    null,
+    '',
+    [],
+    null,
+    null
+);
+test_assert($searchableNull->getPrimarySearchDisplayLabel() === null, 'case3b: null label');
 
 // Case 4: toArray contract keys
 $arr = $searchable->toArray();
@@ -61,13 +85,16 @@ foreach ([
     'legacy_context',
     'clarification_required',
     'clarification_reason',
+    'primary_search_display_label',
 ] as $key) {
     test_assert(array_key_exists($key, $arr), 'case4: key ' . $key);
 }
+test_assert($arr['primary_search_display_label'] === '北海道', 'case4: label in toArray');
 test_assert(is_array($arr['intent']), 'case4: intent array');
 test_assert(is_array($arr['search_condition']), 'case4: search_condition array');
 test_assert(is_array($arr['search_results']), 'case4: search_results array');
 test_assert(is_string($arr['legacy_context']), 'case4: legacy_context string');
+test_assert($searchableNull->toArray()['primary_search_display_label'] === null, 'case4: null stays null');
 
 if ($failures > 0) {
     fwrite(STDERR, "\n{$failures} test failure(s)\n");

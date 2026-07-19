@@ -291,6 +291,21 @@ test_assert($structuredMockData['called'] === true, '10: Host B called');
 test_assert($structuredResultSearch->getSearchResults() !== [], '10: search_results non-empty');
 test_assert(is_string($structuredResultSearch->getLegacyContext()), '10: legacy_context string');
 test_assert($structuredResultSearch->getLegacyContext() !== '', '10: legacy_context built');
+test_assert($structuredResultSearch->getPrimarySearchDisplayLabel() === '北海道', '10: label from destination[0]');
+
+// 11. primary_search_display_label authority — destination[0] only
+$resolveLabel = static function (SearchCondition $condition) use ($service): ?string {
+    $m = new ReflectionMethod(TourPromptContextService::class, 'resolvePrimarySearchDisplayLabel');
+    $m->setAccessible(true);
+
+    return $m->invoke($service, $condition);
+};
+$labelJapan = $resolveLabel(SearchCondition::empty('raw')->with(['destination' => ['日本'], 'keyword' => 'ignored']));
+test_assert($labelJapan === '日本', '11: destination=[日本] → label=日本');
+$labelEmptyDest = $resolveLabel(SearchCondition::empty('raw')->with(['destination' => [], 'keyword' => '日本']));
+test_assert($labelEmptyDest === null, '11: empty destination → null even if keyword=日本');
+$labelNoDest = $resolveLabel(SearchCondition::empty('日本三月'));
+test_assert($labelNoDest === null, '11: does not parse raw customer text');
 
 if ($failures === 0) {
     echo "OK: TourPromptContextService tests passed.\n";

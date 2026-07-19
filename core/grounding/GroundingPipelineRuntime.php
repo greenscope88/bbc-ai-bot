@@ -210,7 +210,8 @@ final class GroundingPipelineRuntime
             $linkFacts = $linkBuilder->build($bbcshopsLink, $otherLinks);
             (new GroundedListingLinkFactsValidator())->validate($linkFacts);
 
-            $message1Text = self::buildOpeningText($publishedSet->getCount(), $bbcshopsLink);
+            $displayLabel = self::resolvePrimarySearchDisplayLabel($params);
+            $message1Text = self::buildOpeningText($publishedSet->getCount(), $bbcshopsLink, $displayLabel);
             if ($message1Text !== '') {
                 $messages[] = ['type' => 'text', 'text' => $message1Text];
                 if ($bbcshopsLink !== null) {
@@ -232,7 +233,7 @@ final class GroundingPipelineRuntime
 
             $otherFacts = self::filterOtherSourceLinkFacts($linkFacts);
             if ($otherFacts !== []) {
-                $otherResult = (new OtherSourceListingLinksMessageBuilder())->build($otherFacts);
+                $otherResult = (new OtherSourceListingLinksMessageBuilder())->build($otherFacts, $displayLabel);
                 (new OtherSourceListingLinksIntegrityValidator())->validate($otherResult, $otherFacts);
                 $messages[] = $otherResult->getWireMessage();
                 foreach ($otherResult->getLinkFactIds() as $id) {
@@ -477,21 +478,50 @@ final class GroundingPipelineRuntime
     }
 
     /**
+     * @param array<string, mixed> $params
+     */
+    private static function resolvePrimarySearchDisplayLabel(array $params): ?string
+    {
+        if (!array_key_exists('primary_search_display_label', $params)) {
+            return null;
+        }
+        $raw = $params['primary_search_display_label'];
+        if ($raw === null) {
+            return null;
+        }
+        if (!is_scalar($raw)) {
+            return null;
+        }
+        $label = trim((string) $raw);
+
+        return $label !== '' ? $label : null;
+    }
+
+    /**
      * @param array{url: string, role: string}|null $bbcshopsLink
      */
-    private static function buildOpeningText(int $publishedCount, ?array $bbcshopsLink): string
+    private static function buildOpeningText(int $publishedCount, ?array $bbcshopsLink, ?string $displayLabel): string
     {
         if ($publishedCount > 0) {
-            $text = '以下為您整理 BBCShops 精選行程。';
+            if ($displayLabel !== null && $displayLabel !== '') {
+                $text = '以下為您整理' . $displayLabel . '精選行程。';
+                if ($bbcshopsLink !== null && trim($bbcshopsLink['url']) !== '') {
+                    $text .= "\n更多" . $displayLabel . "行程：\n" . trim($bbcshopsLink['url']);
+                }
+
+                return $text;
+            }
+
+            $text = '以下為您整理精選行程。';
             if ($bbcshopsLink !== null && trim($bbcshopsLink['url']) !== '') {
-                $text .= "\n更多 BBCShops 行程：" . trim($bbcshopsLink['url']);
+                $text .= "\n更多行程：\n" . trim($bbcshopsLink['url']);
             }
 
             return $text;
         }
 
         if ($bbcshopsLink !== null && trim($bbcshopsLink['url']) !== '') {
-            return "目前 BBCShops 沒有符合條件的商品。\n可先參考 BBCShops 更多行程：" . trim($bbcshopsLink['url']);
+            return "目前沒有符合條件的商品。\n可先參考更多行程：\n" . trim($bbcshopsLink['url']);
         }
 
         return self::noResultsText();
