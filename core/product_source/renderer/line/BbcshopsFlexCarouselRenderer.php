@@ -167,7 +167,6 @@ final class BbcshopsFlexCarouselRenderer
             'cornerRadius' => '999px',
             'justifyContent' => 'center',
             'alignItems' => 'center',
-            'marginStart' => '8px',
             'contents' => [
                 [
                     'type' => 'text',
@@ -227,6 +226,7 @@ final class BbcshopsFlexCarouselRenderer
             'type' => 'box',
             'layout' => 'horizontal',
             'alignItems' => 'center',
+            'spacing' => 'sm',
             'contents' => [
                 $priceSide,
                 $badgeBox,

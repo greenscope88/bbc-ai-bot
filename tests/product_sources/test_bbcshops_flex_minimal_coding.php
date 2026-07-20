@@ -854,9 +854,10 @@ function bbcflex_assert_circular_badge(array $bubble, array $priceRow, int $bubb
     bbcflex_assert(is_string($badgeBox['alignItems']), $idx . ' badge.alignItems is string');
     bbcflex_assert($badgeBox['alignItems'] === 'center', $idx . ' badge.alignItems === center');
 
-    bbcflex_assert(array_key_exists('marginStart', $badgeBox), $idx . ' badge.marginStart key exists');
-    bbcflex_assert(is_string($badgeBox['marginStart']), $idx . ' badge.marginStart is string');
-    bbcflex_assert($badgeBox['marginStart'] === '8px', $idx . ' badge.marginStart === 8px');
+    bbcflex_assert(!array_key_exists('marginStart', $badgeBox), $idx . ' badge.marginStart absent');
+    bbcflex_assert(array_key_exists('spacing', $priceRow), $idx . ' priceRow.spacing key exists');
+    bbcflex_assert(is_string($priceRow['spacing']), $idx . ' priceRow.spacing is string');
+    bbcflex_assert($priceRow['spacing'] === 'sm', $idx . ' priceRow.spacing === sm');
 
     bbcflex_assert(!array_key_exists('position', $badgeBox), $idx . ' badge.position absent');
     bbcflex_assert(!array_key_exists('offsetTop', $badgeBox), $idx . ' badge.offsetTop absent');
@@ -938,6 +939,12 @@ function bbcflex_assert_circular_badge(array $bubble, array $priceRow, int $bubb
     bbcflex_assert(
         ($priceSide['flex'] ?? null) === 1 || (($priceSide['type'] ?? null) === 'text' && ($priceSide['flex'] ?? null) === 1),
         $idx . ' priceSide.flex === 1 (badge shares price horizontal row)'
+    );
+
+    $bubbleJson = json_encode($bubble, JSON_UNESCAPED_UNICODE);
+    bbcflex_assert(
+        is_string($bubbleJson) && strpos($bubbleJson, 'marginStart') === false,
+        $idx . ' bubble JSON contains no marginStart'
     );
 }
 
@@ -1184,6 +1191,12 @@ foreach ($products as $i => $product) {
     }
 }
 bbcflex_assert(count($productFacts) === $publishedSet->getCount(), 'fact count = published count');
+
+$integrityWireJson = json_encode($wireIntegrity, JSON_UNESCAPED_UNICODE);
+bbcflex_assert(
+    is_string($integrityWireJson) && strpos($integrityWireJson, 'marginStart') === false,
+    'integrity carousel JSON contains no marginStart'
+);
 
 bbcflex_assert($dbShortUrlCalls === 0, 'Short URL DB calls remain 0 for entire focused suite');
 
