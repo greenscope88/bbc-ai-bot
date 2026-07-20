@@ -21,7 +21,7 @@ final class OtherSourceListingLinksMessageBuilder
      */
     public function build(array $linkFacts, ?string $primarySearchDisplayLabel = null): OtherSourceListingLinksMessageRenderResult
     {
-        $lines = [];
+        $blocks = [];
         $ids = [];
         $ordinal = 0;
         foreach ($linkFacts as $fact) {
@@ -47,11 +47,11 @@ final class OtherSourceListingLinksMessageBuilder
             }
             $displayLabel = self::ORDINAL_LABELS[$ordinal];
             ++$ordinal;
-            $lines[] = $displayLabel . '：' . $url;
+            $blocks[] = $displayLabel . "：\n" . $url;
             $ids[] = $factId;
         }
 
-        if ($lines === []) {
+        if ($blocks === []) {
             throw new \RuntimeException('other_source_links_empty');
         }
 
@@ -62,7 +62,7 @@ final class OtherSourceListingLinksMessageBuilder
 
         return new OtherSourceListingLinksMessageRenderResult([
             'type' => 'text',
-            'text' => $header . "\n" . implode("\n", $lines),
+            'text' => $header . "\n\n" . implode("\n\n", $blocks),
         ], $ids);
     }
 }

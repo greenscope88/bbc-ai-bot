@@ -365,7 +365,7 @@ function bbcflex_boundary_bubble(string $padText): array
             'type' => 'image',
             'url' => 'https://kowanbo.com/pubimg/coupon/1/1/boundary.jpg',
             'size' => 'full',
-            'aspectRatio' => '20:13',
+            'aspectRatio' => '1:1',
             'aspectMode' => 'cover',
         ],
         'body' => [
@@ -582,28 +582,30 @@ $wireAgg = $renderAgg->getWireFlexMessage();
 $bubble0 = $wireAgg['contents']['contents'][0];
 bbcflex_assert(($bubble0['hero']['url'] ?? '') === $aggProduct['representative_image_url'], 'bubble hero matches published image');
 bbcflex_assert(($bubble0['hero']['aspectMode'] ?? '') === 'cover', 'hero aspectMode=cover');
-bbcflex_assert(($bubble0['hero']['aspectRatio'] ?? '') === '20:13', 'hero fixed aspectRatio');
+bbcflex_assert(($bubble0['hero']['aspectRatio'] ?? '') === '1:1', 'hero fixed aspectRatio');
+bbcflex_assert(($bubble0['body']['paddingBottom'] ?? '') === '8px', 'body paddingBottom ~12px gap with footer');
 $body0 = $bubble0['body']['contents'];
-bbcflex_assert(($body0[0]['layout'] ?? '') === 'horizontal', 'badge row is horizontal');
-$badgeText = (string) ($body0[0]['contents'][1]['contents'][0]['text'] ?? '');
-bbcflex_assert($badgeText === '1/2', 'badge 1/N uses Published count');
-bbcflex_assert(($body0[1]['maxLines'] ?? null) === 3, 'title maxLines=3');
-bbcflex_assert(strpos((string) ($body0[1]['text'] ?? ''), '東京行程') === 0, 'title original text');
-$datesText = (string) ($body0[2]['text'] ?? '');
+bbcflex_assert(($body0[0]['maxLines'] ?? null) === 3, 'title maxLines=3');
+bbcflex_assert(strpos((string) ($body0[0]['text'] ?? ''), '東京行程') === 0, 'title original text');
+$datesText = (string) ($body0[1]['text'] ?? '');
 bbcflex_assert($datesText === '出發日期：03/01、03/02、03/03、03/04、03/05、03/06', 'renderer shows nearest 6 MM/DD');
 bbcflex_assert(count($aggProduct['departure_dates']) === 10, 'presentation slice does not alter Published count/dates');
-bbcflex_assert((string) ($body0[3]['text'] ?? '') === '旅遊天數：5 日', 'tourDays=5 displays duration');
-bbcflex_assert((string) ($body0[4]['text'] ?? '') === '出發地：台北', 'departure line');
-$priceBox = $body0[5];
+bbcflex_assert((string) ($body0[2]['text'] ?? '') === '旅遊天數：5 日', 'tourDays=5 displays duration');
+bbcflex_assert((string) ($body0[3]['text'] ?? '') === '出發地：台北', 'departure line');
+$priceRow = $body0[4];
+bbcflex_assert(($priceRow['layout'] ?? '') === 'horizontal', 'price row horizontal with circular badge');
+$priceBox = $priceRow['contents'][0];
 bbcflex_assert(($priceBox['layout'] ?? '') === 'baseline', 'price uses baseline box');
 $priceVisual = ((string) ($priceBox['contents'][0]['text'] ?? ''))
     . ((string) ($priceBox['contents'][1]['text'] ?? ''))
     . ((string) ($priceBox['contents'][2]['text'] ?? ''));
-bbcflex_assert($priceVisual === 'NT$88,800 起', 'price visual NT$88,800 起');
+bbcflex_assert($priceVisual === 'NT$ 88,800 起', 'price visual NT$ 88,800 起');
 bbcflex_assert(($priceBox['contents'][1]['weight'] ?? '') === 'bold', 'amount bold');
 bbcflex_assert(($priceBox['contents'][1]['size'] ?? '') === 'xl', 'amount larger');
 bbcflex_assert(($priceBox['contents'][1]['color'] ?? '') === '#E53935', 'amount red');
+bbcflex_assert_circular_badge($bubble0, $priceRow, 0, 2);
 $footer0 = $bubble0['footer'];
+bbcflex_assert(($footer0['paddingTop'] ?? '') === '4px', 'footer paddingTop ~12px gap with price');
 bbcflex_assert(($footer0['layout'] ?? '') === 'horizontal', 'footer buttons horizontal');
 bbcflex_assert(($footer0['contents'][0]['color'] ?? '') === '#06C755', '詳細內容 green');
 bbcflex_assert(($footer0['contents'][0]['action']['label'] ?? '') === '詳細內容', 'left button label');
@@ -677,9 +679,11 @@ bbcflex_assert(
 bbcflex_assert(strpos($openText, 'BBCShops') === false, 'opening does not show platform name');
 $otherText = (string) ($labelMsgs[2]['text'] ?? '');
 bbcflex_assert(strpos($otherText, '其他【日本】相關行程可參考：') === 0, 'other-source header with label');
-bbcflex_assert(strpos($otherText, "一館：https://example.com/grp\n") !== false, 'ordinal 一館 not platform-bound');
-bbcflex_assert(strpos($otherText, '二館：https://example.com/bbc') !== false, 'ordinal 二館');
-bbcflex_assert(strpos($otherText, '三館：https://example.com/tc') !== false, 'ordinal 三館');
+bbcflex_assert(strpos($otherText, "一館：\nhttps://example.com/grp") !== false, 'ordinal 一館 label and URL on separate lines');
+bbcflex_assert(strpos($otherText, "二館：\nhttps://example.com/bbc") !== false, 'ordinal 二館 multiline');
+bbcflex_assert(strpos($otherText, "三館：\nhttps://example.com/tc") !== false, 'ordinal 三館 multiline');
+$otherExpected = "其他【日本】相關行程可參考：\n\n一館：\nhttps://example.com/grp\n\n二館：\nhttps://example.com/bbc\n\n三館：\nhttps://example.com/tc";
+bbcflex_assert($otherText === $otherExpected, 'other-source multiline exact layout');
 bbcflex_assert(strpos($otherText, 'GRP') === false, 'customer text hides GRP');
 bbcflex_assert(strpos($otherText, 'BBC Travel') === false, 'customer text hides BBC Travel');
 bbcflex_assert(strpos($otherText, 'TourCenter') === false, 'customer text hides TourCenter');
@@ -729,7 +733,7 @@ function bbcflex_slot_valid_bubble(): array
             'type' => 'image',
             'url' => 'https://kowanbo.com/pubimg/coupon/12/168/hero.jpg',
             'size' => 'full',
-            'aspectRatio' => '20:13',
+            'aspectRatio' => '1:1',
             'aspectMode' => 'cover',
         ],
         'body' => [
@@ -794,6 +798,147 @@ function bbcflex_expect_reject(array $wire, string $expectedReason, string $mess
             $message . ' — got [' . $e->getMessage() . '] want [' . $expectedReason . ']'
         );
     }
+}
+
+/**
+ * Circular badge contract — inspects real Renderer payload only (no Renderer mock).
+ *
+ * @param array<string, mixed> $bubble
+ * @param array<string, mixed> $priceRow body contents entry that is the price+badge horizontal row
+ */
+function bbcflex_assert_circular_badge(array $bubble, array $priceRow, int $bubbleIndex, int $publishedCount): void
+{
+    $idx = 'bubbleIndex=' . $bubbleIndex;
+
+    bbcflex_assert(($priceRow['type'] ?? null) === 'box', $idx . ' priceRow.type === box');
+    bbcflex_assert(($priceRow['layout'] ?? null) === 'horizontal', $idx . ' priceRow.layout === horizontal');
+    bbcflex_assert(isset($priceRow['contents']) && is_array($priceRow['contents']), $idx . ' priceRow.contents is array');
+    bbcflex_assert(count($priceRow['contents']) === 2, $idx . ' priceRow.contents count === 2 (price+badge)');
+
+    $priceSide = $priceRow['contents'][0];
+    $badgeBox = $priceRow['contents'][1];
+    bbcflex_assert(is_array($priceSide), $idx . ' priceSide is array');
+    bbcflex_assert(is_array($badgeBox), $idx . ' badgeBox is array');
+
+    // --- Badge container (right of price) ---
+    bbcflex_assert(array_key_exists('type', $badgeBox), $idx . ' badge.type key exists');
+    bbcflex_assert(is_string($badgeBox['type']), $idx . ' badge.type is string');
+    bbcflex_assert($badgeBox['type'] === 'box', $idx . ' badge.type === box');
+
+    bbcflex_assert(array_key_exists('width', $badgeBox), $idx . ' badge.width key exists');
+    bbcflex_assert(is_string($badgeBox['width']), $idx . ' badge.width is string');
+    bbcflex_assert($badgeBox['width'] === '48px', $idx . ' badge.width === 48px');
+
+    bbcflex_assert(array_key_exists('height', $badgeBox), $idx . ' badge.height key exists');
+    bbcflex_assert(is_string($badgeBox['height']), $idx . ' badge.height is string');
+    bbcflex_assert($badgeBox['height'] === '48px', $idx . ' badge.height === 48px');
+    bbcflex_assert($badgeBox['width'] === $badgeBox['height'], $idx . ' badge.width === badge.height');
+
+    bbcflex_assert(array_key_exists('flex', $badgeBox), $idx . ' badge.flex key exists');
+    bbcflex_assert(is_int($badgeBox['flex']), $idx . ' badge.flex is int');
+    bbcflex_assert($badgeBox['flex'] === 0, $idx . ' badge.flex === 0');
+
+    bbcflex_assert(array_key_exists('backgroundColor', $badgeBox), $idx . ' badge.backgroundColor key exists');
+    bbcflex_assert(is_string($badgeBox['backgroundColor']), $idx . ' badge.backgroundColor is string');
+    bbcflex_assert($badgeBox['backgroundColor'] === '#000000', $idx . ' badge.backgroundColor === #000000');
+
+    bbcflex_assert(array_key_exists('cornerRadius', $badgeBox), $idx . ' badge.cornerRadius key exists');
+    bbcflex_assert(is_string($badgeBox['cornerRadius']), $idx . ' badge.cornerRadius is string');
+    bbcflex_assert($badgeBox['cornerRadius'] === '999px', $idx . ' badge.cornerRadius === 999px');
+
+    bbcflex_assert(array_key_exists('justifyContent', $badgeBox), $idx . ' badge.justifyContent key exists');
+    bbcflex_assert(is_string($badgeBox['justifyContent']), $idx . ' badge.justifyContent is string');
+    bbcflex_assert($badgeBox['justifyContent'] === 'center', $idx . ' badge.justifyContent === center');
+
+    bbcflex_assert(array_key_exists('alignItems', $badgeBox), $idx . ' badge.alignItems key exists');
+    bbcflex_assert(is_string($badgeBox['alignItems']), $idx . ' badge.alignItems is string');
+    bbcflex_assert($badgeBox['alignItems'] === 'center', $idx . ' badge.alignItems === center');
+
+    bbcflex_assert(array_key_exists('marginStart', $badgeBox), $idx . ' badge.marginStart key exists');
+    bbcflex_assert(is_string($badgeBox['marginStart']), $idx . ' badge.marginStart is string');
+    bbcflex_assert($badgeBox['marginStart'] === '8px', $idx . ' badge.marginStart === 8px');
+
+    bbcflex_assert(!array_key_exists('position', $badgeBox), $idx . ' badge.position absent');
+    bbcflex_assert(!array_key_exists('offsetTop', $badgeBox), $idx . ' badge.offsetTop absent');
+    bbcflex_assert(!array_key_exists('offsetBottom', $badgeBox), $idx . ' badge.offsetBottom absent');
+    bbcflex_assert(!array_key_exists('offsetStart', $badgeBox), $idx . ' badge.offsetStart absent');
+    bbcflex_assert(!array_key_exists('offsetEnd', $badgeBox), $idx . ' badge.offsetEnd absent');
+
+    // --- Badge text (exactly one) ---
+    bbcflex_assert(array_key_exists('contents', $badgeBox), $idx . ' badge.contents key exists');
+    bbcflex_assert(is_array($badgeBox['contents']), $idx . ' badge.contents is array');
+    bbcflex_assert(count($badgeBox['contents']) === 1, $idx . ' badge.contents count === 1');
+
+    $badgeTextNode = $badgeBox['contents'][0];
+    bbcflex_assert(is_array($badgeTextNode), $idx . ' badgeText is array');
+    bbcflex_assert(array_key_exists('type', $badgeTextNode), $idx . ' badgeText.type key exists');
+    bbcflex_assert(is_string($badgeTextNode['type']), $idx . ' badgeText.type is string');
+    bbcflex_assert($badgeTextNode['type'] === 'text', $idx . ' badgeText.type === text');
+
+    $expectedText = ($bubbleIndex + 1) . '/' . $publishedCount;
+    bbcflex_assert(array_key_exists('text', $badgeTextNode), $idx . ' badgeText.text key exists');
+    bbcflex_assert(is_string($badgeTextNode['text']), $idx . ' badgeText.text is string');
+    bbcflex_assert($badgeTextNode['text'] !== '', $idx . ' badgeText.text not empty');
+    bbcflex_assert($badgeTextNode['text'] === $expectedText, $idx . ' badgeText.text === ' . $expectedText);
+
+    bbcflex_assert(array_key_exists('color', $badgeTextNode), $idx . ' badgeText.color key exists');
+    bbcflex_assert(is_string($badgeTextNode['color']), $idx . ' badgeText.color is string');
+    bbcflex_assert($badgeTextNode['color'] === '#FFFFFF', $idx . ' badgeText.color === #FFFFFF');
+
+    bbcflex_assert(array_key_exists('weight', $badgeTextNode), $idx . ' badgeText.weight key exists');
+    bbcflex_assert(is_string($badgeTextNode['weight']), $idx . ' badgeText.weight is string');
+    bbcflex_assert($badgeTextNode['weight'] === 'bold', $idx . ' badgeText.weight === bold');
+
+    bbcflex_assert(array_key_exists('align', $badgeTextNode), $idx . ' badgeText.align key exists');
+    bbcflex_assert(is_string($badgeTextNode['align']), $idx . ' badgeText.align is string');
+    bbcflex_assert($badgeTextNode['align'] === 'center', $idx . ' badgeText.align === center');
+
+    bbcflex_assert(array_key_exists('gravity', $badgeTextNode), $idx . ' badgeText.gravity key exists');
+    bbcflex_assert(is_string($badgeTextNode['gravity']), $idx . ' badgeText.gravity is string');
+    bbcflex_assert($badgeTextNode['gravity'] === 'center', $idx . ' badgeText.gravity === center');
+
+    // --- Uniqueness: one circular badge on price row; none in hero/footer; no legacy top badge ---
+    $bodyContents = $bubble['body']['contents'] ?? null;
+    bbcflex_assert(is_array($bodyContents), $idx . ' body.contents is array');
+    bbcflex_assert(($bodyContents[0]['type'] ?? null) === 'text', $idx . ' body[0].type === text (no legacy top badge row)');
+    bbcflex_assert(($bodyContents[0]['layout'] ?? null) === null, $idx . ' body[0] has no layout (not horizontal badge row)');
+
+    $circularBadgeCount = 0;
+    foreach ($bodyContents as $bodyNode) {
+        if (!is_array($bodyNode) || ($bodyNode['layout'] ?? null) !== 'horizontal' || !isset($bodyNode['contents']) || !is_array($bodyNode['contents'])) {
+            continue;
+        }
+        foreach ($bodyNode['contents'] as $child) {
+            if (!is_array($child)) {
+                continue;
+            }
+            if (
+                ($child['type'] ?? null) === 'box'
+                && ($child['width'] ?? null) === '48px'
+                && ($child['height'] ?? null) === '48px'
+                && ($child['backgroundColor'] ?? null) === '#000000'
+                && ($child['cornerRadius'] ?? null) === '999px'
+            ) {
+                ++$circularBadgeCount;
+            }
+        }
+    }
+    bbcflex_assert($circularBadgeCount === 1, $idx . ' exactly one circular badge in body price row(s)');
+
+    $heroJson = json_encode($bubble['hero'] ?? null, JSON_UNESCAPED_UNICODE);
+    bbcflex_assert(
+        is_string($heroJson) && strpos($heroJson, '"cornerRadius":"999px"') === false,
+        $idx . ' badge not in hero'
+    );
+    $footerJson = json_encode($bubble['footer'] ?? null, JSON_UNESCAPED_UNICODE);
+    bbcflex_assert(
+        is_string($footerJson) && strpos($footerJson, '"cornerRadius":"999px"') === false,
+        $idx . ' badge not in footer'
+    );
+    bbcflex_assert(
+        ($priceSide['flex'] ?? null) === 1 || (($priceSide['type'] ?? null) === 'text' && ($priceSide['flex'] ?? null) === 1),
+        $idx . ' priceSide.flex === 1 (badge shares price horizontal row)'
+    );
 }
 
 $slotValidator = new LineFlexCarouselPayloadValidator();
@@ -963,12 +1108,11 @@ bbcflex_assert($integrityRender->getBubbleFactIds() === $factIds, 'bubble fact i
 foreach ($products as $i => $product) {
     $bubble = $bubbles[$i];
     $body = $bubble['body']['contents'];
-    $badge = (string) ($body[0]['contents'][1]['contents'][0]['text'] ?? '');
-    bbcflex_assert($badge === ($i + 1) . '/' . $publishedSet->getCount(), 'badge ' . ($i + 1) . '/N');
+    bbcflex_assert(($bubble['hero']['aspectRatio'] ?? '') === '1:1', 'hero 1:1 idx=' . $i);
     bbcflex_assert(($bubble['hero']['url'] ?? '') === $product['representative_image_url'], 'hero URL parity idx=' . $i);
-    bbcflex_assert(($body[1]['text'] ?? '') === $product['title'], 'title parity idx=' . $i);
-    bbcflex_assert(($body[1]['wrap'] ?? null) === true, 'title wrap idx=' . $i);
-    bbcflex_assert(($body[1]['maxLines'] ?? null) === 3, 'title maxLines idx=' . $i);
+    bbcflex_assert(($body[0]['text'] ?? '') === $product['title'], 'title parity idx=' . $i);
+    bbcflex_assert(($body[0]['wrap'] ?? null) === true, 'title wrap idx=' . $i);
+    bbcflex_assert(($body[0]['maxLines'] ?? null) === 3, 'title maxLines idx=' . $i);
 
     $expectedDates = [];
     foreach (array_slice($product['departure_dates'], 0, 6) as $date) {
@@ -977,11 +1121,11 @@ foreach ($products as $i => $product) {
         }
     }
     bbcflex_assert(
-        (string) ($body[2]['text'] ?? '') === '出發日期：' . implode('、', $expectedDates),
+        (string) ($body[1]['text'] ?? '') === '出發日期：' . implode('、', $expectedDates),
         'dates parity idx=' . $i
     );
 
-    $cursor = 3;
+    $cursor = 2;
     if ($product['duration_days'] !== null && (int) $product['duration_days'] > 0) {
         bbcflex_assert(
             (string) ($body[$cursor]['text'] ?? '') === '旅遊天數：' . (int) $product['duration_days'] . ' 日',
@@ -1001,22 +1145,25 @@ foreach ($products as $i => $product) {
     );
     ++$cursor;
 
-    $priceBox = $body[$cursor];
+    $priceRow = $body[$cursor];
+    bbcflex_assert(($priceRow['layout'] ?? '') === 'horizontal', 'price row horizontal idx=' . $i);
+    bbcflex_assert_circular_badge($bubble, $priceRow, $i, $publishedSet->getCount());
+    $priceBox = $priceRow['contents'][0];
     bbcflex_assert(($priceBox['layout'] ?? '') === 'baseline', 'price baseline idx=' . $i);
     $nt = (string) ($priceBox['contents'][0]['text'] ?? '');
     $amt = (string) ($priceBox['contents'][1]['text'] ?? '');
     $suffix = (string) ($priceBox['contents'][2]['text'] ?? '');
-    bbcflex_assert($nt === 'NT$', 'NT$ span idx=' . $i);
+    bbcflex_assert($nt === 'NT$ ', 'NT$ span idx=' . $i);
     bbcflex_assert($suffix === ' 起', '起 span idx=' . $i);
     bbcflex_assert(($priceBox['contents'][1]['weight'] ?? '') === 'bold', 'amount bold idx=' . $i);
     bbcflex_assert(($priceBox['contents'][1]['size'] ?? '') === 'xl', 'amount xl idx=' . $i);
     bbcflex_assert(($priceBox['contents'][1]['color'] ?? '') === '#E53935', 'amount red idx=' . $i);
     $visual = $nt . $amt . $suffix;
     if ((int) $product['price'] === 88800) {
-        bbcflex_assert($visual === 'NT$88,800 起', 'price visual 88800 idx=' . $i);
+        bbcflex_assert($visual === 'NT$ 88,800 起', 'price visual 88800 idx=' . $i);
     } else {
         $wantAmt = number_format((int) $product['price'], 0, '.', ',');
-        bbcflex_assert($visual === 'NT$' . $wantAmt . ' 起', 'price visual idx=' . $i);
+        bbcflex_assert($visual === 'NT$ ' . $wantAmt . ' 起', 'price visual idx=' . $i);
     }
 
     $footer = $bubble['footer'];

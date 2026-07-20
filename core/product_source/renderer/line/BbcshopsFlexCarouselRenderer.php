@@ -6,7 +6,7 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'BbcshopsFlexCarouselRenderResult.p
 
 final class BbcshopsFlexCarouselRenderer
 {
-    private const HERO_ASPECT_RATIO = '20:13';
+    private const HERO_ASPECT_RATIO = '1:1';
     private const DETAIL_BUTTON_COLOR = '#06C755';
     private const ITINERARY_BUTTON_COLOR = '#1E88E5';
     private const PRICE_AMOUNT_COLOR = '#E53935';
@@ -66,36 +66,8 @@ final class BbcshopsFlexCarouselRenderer
         $departure = $this->text($product['departure'] ?? ($product['departureStr'] ?? ''));
         $datesLine = $this->formatDepartureDates($product);
         $durationLine = $this->formatDuration($product);
-        $priceBox = $this->buildPriceBox($product);
 
         $bodyContents = [
-            [
-                'type' => 'box',
-                'layout' => 'horizontal',
-                'contents' => [
-                    [
-                        'type' => 'filler',
-                    ],
-                    [
-                        'type' => 'box',
-                        'layout' => 'vertical',
-                        'contents' => [
-                            [
-                                'type' => 'text',
-                                'text' => $index . '/' . $publishedCount,
-                                'size' => 'xs',
-                                'color' => '#FFFFFF',
-                                'align' => 'center',
-                            ],
-                        ],
-                        'backgroundColor' => '#111111',
-                        'cornerRadius' => '4px',
-                        'paddingAll' => '4px',
-                        'paddingStart' => '6px',
-                        'paddingEnd' => '6px',
-                    ],
-                ],
-            ],
             [
                 'type' => 'text',
                 'text' => $title,
@@ -127,7 +99,7 @@ final class BbcshopsFlexCarouselRenderer
             'wrap' => true,
             'size' => 'sm',
         ];
-        $bodyContents[] = $priceBox;
+        $bodyContents[] = $this->buildPriceAndBadgeRow($product, $index, $publishedCount);
 
         return [
             'type' => 'bubble',
@@ -144,11 +116,13 @@ final class BbcshopsFlexCarouselRenderer
                 'layout' => 'vertical',
                 'contents' => $bodyContents,
                 'spacing' => 'sm',
+                'paddingBottom' => '8px',
             ],
             'footer' => [
                 'type' => 'box',
                 'layout' => 'horizontal',
                 'spacing' => 'sm',
+                'paddingTop' => '4px',
                 'contents' => [
                     [
                         'type' => 'button',
@@ -173,6 +147,89 @@ final class BbcshopsFlexCarouselRenderer
                         ],
                     ],
                 ],
+            ],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $product
+     * @return array<string, mixed>
+     */
+    private function buildPriceAndBadgeRow(array $product, int $index, int $publishedCount): array
+    {
+        $badgeBox = [
+            'type' => 'box',
+            'layout' => 'vertical',
+            'width' => '48px',
+            'height' => '48px',
+            'flex' => 0,
+            'backgroundColor' => '#000000',
+            'cornerRadius' => '999px',
+            'justifyContent' => 'center',
+            'alignItems' => 'center',
+            'marginStart' => '8px',
+            'contents' => [
+                [
+                    'type' => 'text',
+                    'text' => $index . '/' . $publishedCount,
+                    'size' => 'sm',
+                    'weight' => 'bold',
+                    'color' => '#FFFFFF',
+                    'align' => 'center',
+                    'gravity' => 'center',
+                ],
+            ],
+        ];
+
+        $raw = $product['price'] ?? ($product['retailPrice'] ?? null);
+        $amount = $this->formatPriceAmount($raw);
+        if ($amount === null) {
+            $priceSide = [
+                'type' => 'text',
+                'text' => '價格：請點選查看',
+                'wrap' => true,
+                'size' => 'sm',
+                'flex' => 1,
+            ];
+        } else {
+            $priceSide = [
+                'type' => 'box',
+                'layout' => 'baseline',
+                'flex' => 1,
+                'contents' => [
+                    [
+                        'type' => 'text',
+                        'text' => 'NT$ ',
+                        'size' => 'sm',
+                        'color' => '#111111',
+                        'flex' => 0,
+                    ],
+                    [
+                        'type' => 'text',
+                        'text' => $amount,
+                        'size' => 'xl',
+                        'weight' => 'bold',
+                        'color' => self::PRICE_AMOUNT_COLOR,
+                        'flex' => 0,
+                    ],
+                    [
+                        'type' => 'text',
+                        'text' => ' 起',
+                        'size' => 'sm',
+                        'color' => '#111111',
+                        'flex' => 0,
+                    ],
+                ],
+            ];
+        }
+
+        return [
+            'type' => 'box',
+            'layout' => 'horizontal',
+            'alignItems' => 'center',
+            'contents' => [
+                $priceSide,
+                $badgeBox,
             ],
         ];
     }
@@ -227,53 +284,6 @@ final class BbcshopsFlexCarouselRenderer
         }
 
         return null;
-    }
-
-    /**
-     * @param array<string, mixed> $product
-     * @return array<string, mixed>
-     */
-    private function buildPriceBox(array $product): array
-    {
-        $raw = $product['price'] ?? ($product['retailPrice'] ?? null);
-        $amount = $this->formatPriceAmount($raw);
-        if ($amount === null) {
-            return [
-                'type' => 'text',
-                'text' => '價格：請點選查看',
-                'wrap' => true,
-                'size' => 'sm',
-            ];
-        }
-
-        return [
-            'type' => 'box',
-            'layout' => 'baseline',
-            'contents' => [
-                [
-                    'type' => 'text',
-                    'text' => 'NT$',
-                    'size' => 'sm',
-                    'color' => '#111111',
-                    'flex' => 0,
-                ],
-                [
-                    'type' => 'text',
-                    'text' => $amount,
-                    'size' => 'xl',
-                    'weight' => 'bold',
-                    'color' => self::PRICE_AMOUNT_COLOR,
-                    'flex' => 0,
-                ],
-                [
-                    'type' => 'text',
-                    'text' => ' 起',
-                    'size' => 'sm',
-                    'color' => '#111111',
-                    'flex' => 0,
-                ],
-            ],
-        ];
     }
 
     /**
