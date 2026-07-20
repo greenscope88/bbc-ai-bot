@@ -161,8 +161,8 @@ final class BbcshopsFlexCarouselRenderer
         $badgeBox = [
             'type' => 'box',
             'layout' => 'vertical',
-            'width' => '48px',
-            'height' => '48px',
+            'width' => '40px',
+            'height' => '40px',
             'flex' => 0,
             'backgroundColor' => '#000000',
             'cornerRadius' => '999px',
@@ -268,12 +268,17 @@ final class BbcshopsFlexCarouselRenderer
             return '出發日期：請點選查看';
         }
 
-        $line = '出發日期：' . implode('、', $display);
-        if (count($dates) > self::MAX_VISIBLE_DATES) {
-            $line .= self::DATE_OVERFLOW_SUFFIX;
+        if (count($display) <= 4) {
+            return '出發日期：' . implode('、', $display);
         }
 
-        return $line;
+        $line1 = '出發日期：' . implode('、', array_slice($display, 0, 4));
+        $line2 = implode('、', array_slice($display, 4, 2));
+        if (count($dates) > self::MAX_VISIBLE_DATES) {
+            $line2 .= self::DATE_OVERFLOW_SUFFIX;
+        }
+
+        return $line1 . "\n" . $line2;
     }
 
     /**

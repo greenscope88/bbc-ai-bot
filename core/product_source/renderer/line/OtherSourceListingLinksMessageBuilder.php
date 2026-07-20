@@ -32,22 +32,26 @@ final class OtherSourceListingLinksMessageBuilder
             if (!isset(self::ALLOWED_SOURCE_REFS[$sourceRef])) {
                 continue;
             }
-            $url = trim((string) ($fact['value'] ?? ''));
-            $factId = trim((string) ($fact['fact_id'] ?? ''));
-            if ($url === '' || $factId === '') {
-                throw new \RuntimeException('other_source_link_fact_invalid');
-            }
-            $platform = substr($sourceRef, 0, strpos($sourceRef, ':'));
-            $platformDoc = SourcePlatformContract::getKnownPlatform($platform);
-            if ($platformDoc === null) {
-                throw new \RuntimeException('other_source_platform_unknown');
-            }
             if ($ordinal >= count(self::ORDINAL_LABELS)) {
                 break;
             }
+            $factId = trim((string) ($fact['fact_id'] ?? ''));
+            if ($factId === '') {
+                continue;
+            }
+            $url = $fact['value'] ?? '';
+            if (!is_string($url) || !$this->isValidCustomerListingUrl($url)) {
+                continue;
+            }
+            $url = trim($url);
+            $platform = substr($sourceRef, 0, strpos($sourceRef, ':'));
+            $platformDoc = SourcePlatformContract::getKnownPlatform($platform);
+            if ($platformDoc === null) {
+                continue;
+            }
             $displayLabel = self::ORDINAL_LABELS[$ordinal];
             ++$ordinal;
-            $blocks[] = $displayLabel . "：\n" . $url;
+            $blocks[] = '✅ ' . $displayLabel . "：\n" . $url;
             $ids[] = $factId;
         }
 
@@ -62,7 +66,34 @@ final class OtherSourceListingLinksMessageBuilder
 
         return new OtherSourceListingLinksMessageRenderResult([
             'type' => 'text',
-            'text' => $header . "\n\n" . implode("\n\n", $blocks),
+            'text' => $header . "\n\n" . implode("\n", $blocks),
         ], $ids);
+    }
+
+    /**
+     * Local format validation only — no network I/O.
+     */
+    private function isValidCustomerListingUrl(string $url): bool
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return false;
+        }
+        if (preg_match('#^https://#i', $url) !== 1) {
+            return false;
+        }
+        if (preg_match('#^https://[^/]*@#i', $url) === 1) {
+            return false;
+        }
+        $parsed = parse_url($url);
+        if (!is_array($parsed)) {
+            return false;
+        }
+        $host = $parsed['host'] ?? '';
+        if (!is_string($host) || $host === '') {
+            return false;
+        }
+
+        return filter_var($url, FILTER_VALIDATE_URL) !== false;
     }
 }

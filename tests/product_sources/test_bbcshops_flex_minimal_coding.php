@@ -10,6 +10,7 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPA
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'published' . DIRECTORY_SEPARATOR . 'PublishedProductSetSelector.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'published' . DIRECTORY_SEPARATOR . 'PublicationIntegrityValidator.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'renderer' . DIRECTORY_SEPARATOR . 'line' . DIRECTORY_SEPARATOR . 'BbcshopsFlexCarouselRenderer.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'renderer' . DIRECTORY_SEPARATOR . 'line' . DIRECTORY_SEPARATOR . 'OtherSourceListingLinksMessageBuilder.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'renderer' . DIRECTORY_SEPARATOR . 'line' . DIRECTORY_SEPARATOR . 'LineFlexCarouselPayloadValidator.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'response' . DIRECTORY_SEPARATOR . 'facts' . DIRECTORY_SEPARATOR . 'GroundedListingLinkFactBuilder.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'response' . DIRECTORY_SEPARATOR . 'facts' . DIRECTORY_SEPARATOR . 'GroundedListingLinkFactsValidator.php';
@@ -28,6 +29,32 @@ function bbcflex_assert(bool $cond, string $message): void
         ++$failures;
         fwrite(STDERR, "FAIL: {$message}\n");
     }
+}
+
+/**
+ * @param list<string> $isoDates
+ */
+function bbcflex_expected_departure_date_text(array $isoDates): string
+{
+    $formatted = [];
+    foreach (array_slice($isoDates, 0, 6) as $date) {
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', (string) $date, $m) === 1) {
+            $formatted[] = $m[2] . '/' . $m[3];
+        }
+    }
+    if ($formatted === []) {
+        return '出發日期：請點選查看';
+    }
+    if (count($formatted) <= 4) {
+        return '出發日期：' . implode('、', $formatted);
+    }
+    $line1 = '出發日期：' . implode('、', array_slice($formatted, 0, 4));
+    $line2 = implode('、', array_slice($formatted, 4, 2));
+    if (count($isoDates) > 6) {
+        $line2 .= '…更多日期';
+    }
+
+    return $line1 . "\n" . $line2;
 }
 
 /**
@@ -592,8 +619,8 @@ bbcflex_assert(($body0[0]['maxLines'] ?? null) === 3, 'title maxLines=3');
 bbcflex_assert(strpos((string) ($body0[0]['text'] ?? ''), '東京行程') === 0, 'title original text');
 $datesText = (string) ($body0[1]['text'] ?? '');
 bbcflex_assert(
-    $datesText === '出發日期：03/01、03/02、03/03、03/04、03/05、03/06…更多日期',
-    'renderer shows first 6 MM/DD plus overflow suffix'
+    $datesText === "出發日期：03/01、03/02、03/03、03/04\n03/05、03/06…更多日期",
+    'renderer shows first 6 MM/DD on two lines plus overflow suffix'
 );
 bbcflex_assert(strpos($datesText, '03/07') === false, '7th date not shown in overflow presentation');
 bbcflex_assert(count($aggProduct['departure_dates']) === 10, 'presentation slice does not alter Published count/dates');
@@ -625,15 +652,19 @@ bbcflex_assert(($footer0['contents'][1]['action']['uri'] ?? '') === $aggProduct[
 // ---- Date overflow presentation (1 / 6 / 7 / >7) — does not mutate Published dates ----
 $dateOverflowCases = [
     '1' => ['2027-05-01'],
+    '4' => ['2027-05-01', '2027-05-02', '2027-05-03', '2027-05-04'],
+    '5' => ['2027-05-01', '2027-05-02', '2027-05-03', '2027-05-04', '2027-05-05'],
     '6' => ['2027-05-01', '2027-05-02', '2027-05-03', '2027-05-04', '2027-05-05', '2027-05-06'],
     '7' => ['2027-05-01', '2027-05-02', '2027-05-03', '2027-05-04', '2027-05-05', '2027-05-06', '2027-05-07'],
     '8' => ['2027-05-01', '2027-05-02', '2027-05-03', '2027-05-04', '2027-05-05', '2027-05-06', '2027-05-07', '2027-05-08'],
 ];
 $dateOverflowExpected = [
     '1' => '出發日期：05/01',
-    '6' => '出發日期：05/01、05/02、05/03、05/04、05/05、05/06',
-    '7' => '出發日期：05/01、05/02、05/03、05/04、05/05、05/06…更多日期',
-    '8' => '出發日期：05/01、05/02、05/03、05/04、05/05、05/06…更多日期',
+    '4' => '出發日期：05/01、05/02、05/03、05/04',
+    '5' => "出發日期：05/01、05/02、05/03、05/04\n05/05",
+    '6' => "出發日期：05/01、05/02、05/03、05/04\n05/05、05/06",
+    '7' => "出發日期：05/01、05/02、05/03、05/04\n05/05、05/06…更多日期",
+    '8' => "出發日期：05/01、05/02、05/03、05/04\n05/05、05/06…更多日期",
 ];
 foreach ($dateOverflowCases as $label => $dates) {
     $row = host_b_normalized_item(30 + (int) $label);
@@ -710,6 +741,55 @@ $multiSch['schLink'] = 'https://agt.tw/scalar-last';
 $setSch = (new PublishedProductSetSelector($detailBuilder, new MockShortUrlProvider()))->select([$multiSch], 168);
 bbcflex_assert($setSch->getProducts()[0]['itinerary_url'] === 'https://reurl.cc/second', 'first ordered schLinks wins');
 
+// Other-source builder: venue layout + local URL filtering (no external I/O)
+$otherBuilder = new OtherSourceListingLinksMessageBuilder();
+$otherThreeFacts = [
+    ['source_ref' => 'grp:listing', 'fact_id' => 'fact-grp', 'value' => 'https://example.com/grp'],
+    ['source_ref' => 'bbctravel:listing', 'fact_id' => 'fact-bbc', 'value' => 'https://example.com/bbc'],
+    ['source_ref' => 'tourcenter:listing', 'fact_id' => 'fact-tc', 'value' => 'https://example.com/tc'],
+];
+$shortCallsBeforeOther = $dbShortUrlCalls;
+$otherThreeResult = $otherBuilder->build($otherThreeFacts, '日本');
+bbcflex_assert($dbShortUrlCalls === $shortCallsBeforeOther, 'other-source builder external request count=0');
+$otherThreeText = (string) ($otherThreeResult->getWireMessage()['text'] ?? '');
+$otherThreeExpected = "其他【日本】相關行程可參考：\n\n✅ 一館：\nhttps://example.com/grp\n✅ 二館：\nhttps://example.com/bbc\n✅ 三館：\nhttps://example.com/tc";
+bbcflex_assert($otherThreeText === $otherThreeExpected, 'other-source three valid links exact string');
+bbcflex_assert(strpos($otherThreeText, "tc\n\n✅") === false, 'other-source venues have no blank line between items');
+bbcflex_assert(strpos($otherThreeText, '✅ 一館：') !== false && strpos($otherThreeText, '✅ 二館：') !== false, 'other-source checkmark ordinals');
+bbcflex_assert($otherThreeResult->getLinkFactIds() === ['fact-grp', 'fact-bbc', 'fact-tc'], 'other-source fact_id order preserved');
+
+$renoFacts = [
+    ['source_ref' => 'grp:listing', 'fact_id' => 'skip-grp', 'value' => ''],
+    ['source_ref' => 'bbctravel:listing', 'fact_id' => 'fact-bbc', 'value' => 'https://example.com/bbc'],
+    ['source_ref' => 'tourcenter:listing', 'fact_id' => 'fact-tc', 'value' => 'https://example.com/tc'],
+];
+$renoResult = $otherBuilder->build($renoFacts, '日本');
+$renoText = (string) ($renoResult->getWireMessage()['text'] ?? '');
+bbcflex_assert(strpos($renoText, '✅ 一館：') !== false && strpos($renoText, "一館：\nhttps://example.com/bbc") !== false, 'first invalid link renumbers to 一館');
+bbcflex_assert(strpos($renoText, 'example.com/grp') === false, 'skipped empty URL omitted');
+bbcflex_assert($renoResult->getLinkFactIds() === ['fact-bbc', 'fact-tc'], 'renumber keeps source order of valid facts');
+
+$middleSkipFacts = [
+    ['source_ref' => 'grp:listing', 'fact_id' => 'fact-grp', 'value' => 'https://example.com/grp'],
+    ['source_ref' => 'bbctravel:listing', 'fact_id' => 'skip-bbc', 'value' => '   '],
+    ['source_ref' => 'tourcenter:listing', 'fact_id' => 'fact-tc', 'value' => 'https://example.com/tc'],
+];
+$middleResult = $otherBuilder->build($middleSkipFacts, '日本');
+$middleText = (string) ($middleResult->getWireMessage()['text'] ?? '');
+bbcflex_assert(strpos($middleText, "✅ 二館：\nhttps://example.com/tc") !== false, 'middle whitespace URL skipped and renumbered');
+bbcflex_assert(strpos($middleText, 'example.com/bbc') === false, 'whitespace URL not shown');
+
+$malformedFacts = [
+    ['source_ref' => 'grp:listing', 'fact_id' => 'fact-grp', 'value' => 'not-a-url'],
+    ['source_ref' => 'bbctravel:listing', 'fact_id' => 'fact-bbc', 'value' => 'http://example.com/http-only'],
+];
+try {
+    $otherBuilder->build($malformedFacts, '日本');
+    bbcflex_assert(false, 'malformed-only facts should throw other_source_links_empty');
+} catch (RuntimeException $e) {
+    bbcflex_assert($e->getMessage() === 'other_source_links_empty', 'malformed URLs yield empty links');
+}
+
 // Opening label / other-source wording
 $labelPipe = GroundingPipelineRuntime::composeBbcshopsFlexMultiSourceReply([
     'search_results' => [host_b_normalized_item(8)],
@@ -736,10 +816,10 @@ bbcflex_assert(
 bbcflex_assert(strpos($openText, 'BBCShops') === false, 'opening does not show platform name');
 $otherText = (string) ($labelMsgs[2]['text'] ?? '');
 bbcflex_assert(strpos($otherText, '其他【日本】相關行程可參考：') === 0, 'other-source header with label');
-bbcflex_assert(strpos($otherText, "一館：\nhttps://example.com/grp") !== false, 'ordinal 一館 label and URL on separate lines');
-bbcflex_assert(strpos($otherText, "二館：\nhttps://example.com/bbc") !== false, 'ordinal 二館 multiline');
-bbcflex_assert(strpos($otherText, "三館：\nhttps://example.com/tc") !== false, 'ordinal 三館 multiline');
-$otherExpected = "其他【日本】相關行程可參考：\n\n一館：\nhttps://example.com/grp\n\n二館：\nhttps://example.com/bbc\n\n三館：\nhttps://example.com/tc";
+bbcflex_assert(strpos($otherText, "✅ 一館：\nhttps://example.com/grp") !== false, 'ordinal 一館 label and URL on separate lines');
+bbcflex_assert(strpos($otherText, "✅ 二館：\nhttps://example.com/bbc") !== false, 'ordinal 二館 multiline');
+bbcflex_assert(strpos($otherText, "✅ 三館：\nhttps://example.com/tc") !== false, 'ordinal 三館 multiline');
+$otherExpected = "其他【日本】相關行程可參考：\n\n✅ 一館：\nhttps://example.com/grp\n✅ 二館：\nhttps://example.com/bbc\n✅ 三館：\nhttps://example.com/tc";
 bbcflex_assert($otherText === $otherExpected, 'other-source multiline exact layout');
 bbcflex_assert(strpos($otherText, 'GRP') === false, 'customer text hides GRP');
 bbcflex_assert(strpos($otherText, 'BBC Travel') === false, 'customer text hides BBC Travel');
@@ -884,11 +964,11 @@ function bbcflex_assert_circular_badge(array $bubble, array $priceRow, int $bubb
 
     bbcflex_assert(array_key_exists('width', $badgeBox), $idx . ' badge.width key exists');
     bbcflex_assert(is_string($badgeBox['width']), $idx . ' badge.width is string');
-    bbcflex_assert($badgeBox['width'] === '48px', $idx . ' badge.width === 48px');
+    bbcflex_assert($badgeBox['width'] === '40px', $idx . ' badge.width === 40px');
 
     bbcflex_assert(array_key_exists('height', $badgeBox), $idx . ' badge.height key exists');
     bbcflex_assert(is_string($badgeBox['height']), $idx . ' badge.height is string');
-    bbcflex_assert($badgeBox['height'] === '48px', $idx . ' badge.height === 48px');
+    bbcflex_assert($badgeBox['height'] === '40px', $idx . ' badge.height === 40px');
     bbcflex_assert($badgeBox['width'] === $badgeBox['height'], $idx . ' badge.width === badge.height');
 
     bbcflex_assert(array_key_exists('flex', $badgeBox), $idx . ' badge.flex key exists');
@@ -972,8 +1052,8 @@ function bbcflex_assert_circular_badge(array $bubble, array $priceRow, int $bubb
             }
             if (
                 ($child['type'] ?? null) === 'box'
-                && ($child['width'] ?? null) === '48px'
-                && ($child['height'] ?? null) === '48px'
+                && ($child['width'] ?? null) === '40px'
+                && ($child['height'] ?? null) === '40px'
                 && ($child['backgroundColor'] ?? null) === '#000000'
                 && ($child['cornerRadius'] ?? null) === '999px'
             ) {
@@ -1180,16 +1260,7 @@ foreach ($products as $i => $product) {
     bbcflex_assert(($body[0]['wrap'] ?? null) === true, 'title wrap idx=' . $i);
     bbcflex_assert(($body[0]['maxLines'] ?? null) === 3, 'title maxLines idx=' . $i);
 
-    $expectedDates = [];
-    foreach (array_slice($product['departure_dates'], 0, 6) as $date) {
-        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', (string) $date, $m) === 1) {
-            $expectedDates[] = $m[2] . '/' . $m[3];
-        }
-    }
-    $expectedDatesLine = '出發日期：' . implode('、', $expectedDates);
-    if (count($product['departure_dates']) > 6) {
-        $expectedDatesLine .= '…更多日期';
-    }
+    $expectedDatesLine = bbcflex_expected_departure_date_text($product['departure_dates']);
     bbcflex_assert(
         (string) ($body[1]['text'] ?? '') === $expectedDatesLine,
         'dates parity idx=' . $i
