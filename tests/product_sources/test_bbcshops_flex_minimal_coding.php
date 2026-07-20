@@ -365,7 +365,7 @@ function bbcflex_boundary_bubble(string $padText): array
             'type' => 'image',
             'url' => 'https://kowanbo.com/pubimg/coupon/1/1/boundary.jpg',
             'size' => 'full',
-            'aspectRatio' => '1:1',
+            'aspectRatio' => '3:4',
             'aspectMode' => 'cover',
         ],
         'body' => [
@@ -581,15 +581,23 @@ $wireAgg = $renderAgg->getWireFlexMessage();
 (new LineFlexCarouselPayloadValidator())->validate($wireAgg);
 $bubble0 = $wireAgg['contents']['contents'][0];
 bbcflex_assert(($bubble0['hero']['url'] ?? '') === $aggProduct['representative_image_url'], 'bubble hero matches published image');
+bbcflex_assert(($bubble0['hero']['size'] ?? '') === 'full', 'hero size=full');
 bbcflex_assert(($bubble0['hero']['aspectMode'] ?? '') === 'cover', 'hero aspectMode=cover');
-bbcflex_assert(($bubble0['hero']['aspectRatio'] ?? '') === '1:1', 'hero fixed aspectRatio');
+bbcflex_assert(($bubble0['hero']['aspectRatio'] ?? '') === '3:4', 'hero fixed aspectRatio 3:4');
+$wireAggJson = json_encode($wireAgg, JSON_UNESCAPED_UNICODE);
+bbcflex_assert(is_string($wireAggJson) && strpos($wireAggJson, '"aspectRatio":"1:1"') === false, 'agg wire has no 1:1 hero');
 bbcflex_assert(($bubble0['body']['paddingBottom'] ?? '') === '8px', 'body paddingBottom ~12px gap with footer');
 $body0 = $bubble0['body']['contents'];
 bbcflex_assert(($body0[0]['maxLines'] ?? null) === 3, 'title maxLines=3');
 bbcflex_assert(strpos((string) ($body0[0]['text'] ?? ''), '東京行程') === 0, 'title original text');
 $datesText = (string) ($body0[1]['text'] ?? '');
-bbcflex_assert($datesText === '出發日期：03/01、03/02、03/03、03/04、03/05、03/06', 'renderer shows nearest 6 MM/DD');
+bbcflex_assert(
+    $datesText === '出發日期：03/01、03/02、03/03、03/04、03/05、03/06…更多日期',
+    'renderer shows first 6 MM/DD plus overflow suffix'
+);
+bbcflex_assert(strpos($datesText, '03/07') === false, '7th date not shown in overflow presentation');
 bbcflex_assert(count($aggProduct['departure_dates']) === 10, 'presentation slice does not alter Published count/dates');
+bbcflex_assert($aggProduct['departure_dates'][6] === '2027-03-07', 'Published still holds 7th date');
 bbcflex_assert((string) ($body0[2]['text'] ?? '') === '旅遊天數：5 日', 'tourDays=5 displays duration');
 bbcflex_assert((string) ($body0[3]['text'] ?? '') === '出發地：台北', 'departure line');
 $priceRow = $body0[4];
@@ -613,6 +621,55 @@ bbcflex_assert(($footer0['contents'][0]['action']['uri'] ?? '') === $aggProduct[
 bbcflex_assert(($footer0['contents'][1]['color'] ?? '') === '#1E88E5', '行程表 blue');
 bbcflex_assert(($footer0['contents'][1]['action']['label'] ?? '') === '行程表', 'right button label');
 bbcflex_assert(($footer0['contents'][1]['action']['uri'] ?? '') === $aggProduct['itinerary_url'], 'itinerary URI');
+
+// ---- Date overflow presentation (1 / 6 / 7 / >7) — does not mutate Published dates ----
+$dateOverflowCases = [
+    '1' => ['2027-05-01'],
+    '6' => ['2027-05-01', '2027-05-02', '2027-05-03', '2027-05-04', '2027-05-05', '2027-05-06'],
+    '7' => ['2027-05-01', '2027-05-02', '2027-05-03', '2027-05-04', '2027-05-05', '2027-05-06', '2027-05-07'],
+    '8' => ['2027-05-01', '2027-05-02', '2027-05-03', '2027-05-04', '2027-05-05', '2027-05-06', '2027-05-07', '2027-05-08'],
+];
+$dateOverflowExpected = [
+    '1' => '出發日期：05/01',
+    '6' => '出發日期：05/01、05/02、05/03、05/04、05/05、05/06',
+    '7' => '出發日期：05/01、05/02、05/03、05/04、05/05、05/06…更多日期',
+    '8' => '出發日期：05/01、05/02、05/03、05/04、05/05、05/06…更多日期',
+];
+foreach ($dateOverflowCases as $label => $dates) {
+    $row = host_b_normalized_item(30 + (int) $label);
+    $row['couponNo'] = 7000 + (int) $label;
+    $row['tourSeqNo'] = 8000 + (int) $label;
+    $row['price'] = 50000;
+    $row['tourDays'] = 3;
+    $row['departureStr'] = '台北';
+    $row['schLinks'] = ['https://agt.tw/overflow' . $label];
+    $row['dmFile'] = 'overflow' . $label . '.jpg';
+    $row['depID'] = 12;
+    $row['couponAttr'] = 0;
+    unset($row['tourDate']);
+    $overflowRows = [];
+    foreach ($dates as $d) {
+        $r = $row;
+        $r['tourDate'] = $d;
+        $overflowRows[] = $r;
+    }
+    $setOv = (new PublishedProductSetSelector($detailBuilder, new MockShortUrlProvider()))->select($overflowRows, 168);
+    bbcflex_assert($setOv->getCount() === 1, 'overflow case ' . $label . ' publishes 1');
+    $pubOv = $setOv->getProducts()[0];
+    bbcflex_assert($pubOv['departure_dates'] === $dates, 'overflow case ' . $label . ' Published dates intact');
+    $wireOv = (new BbcshopsFlexCarouselRenderer())->render($setOv)->getWireFlexMessage();
+    (new LineFlexCarouselPayloadValidator())->validate($wireOv);
+    $bubbleOv = $wireOv['contents']['contents'][0];
+    bbcflex_assert(($bubbleOv['hero']['aspectRatio'] ?? '') === '3:4', 'overflow case ' . $label . ' hero 3:4');
+    $lineOv = (string) ($bubbleOv['body']['contents'][1]['text'] ?? '');
+    bbcflex_assert($lineOv === $dateOverflowExpected[$label], 'overflow case ' . $label . ' date line');
+    if ((int) $label > 6) {
+        bbcflex_assert(strpos($lineOv, '05/07') === false, 'overflow case ' . $label . ' hides 7th');
+        bbcflex_assert(substr_count($lineOv, '…更多日期') === 1, 'overflow case ' . $label . ' one suffix');
+    } else {
+        bbcflex_assert(strpos($lineOv, '…更多日期') === false, 'overflow case ' . $label . ' no suffix');
+    }
+}
 
 // tourDays=0 / missing → omit duration but still publish
 $zeroDays = host_b_normalized_item(3);
@@ -733,7 +790,7 @@ function bbcflex_slot_valid_bubble(): array
             'type' => 'image',
             'url' => 'https://kowanbo.com/pubimg/coupon/12/168/hero.jpg',
             'size' => 'full',
-            'aspectRatio' => '1:1',
+            'aspectRatio' => '3:4',
             'aspectMode' => 'cover',
         ],
         'body' => [
@@ -1115,7 +1172,9 @@ bbcflex_assert($integrityRender->getBubbleFactIds() === $factIds, 'bubble fact i
 foreach ($products as $i => $product) {
     $bubble = $bubbles[$i];
     $body = $bubble['body']['contents'];
-    bbcflex_assert(($bubble['hero']['aspectRatio'] ?? '') === '1:1', 'hero 1:1 idx=' . $i);
+    bbcflex_assert(($bubble['hero']['aspectRatio'] ?? '') === '3:4', 'hero 3:4 idx=' . $i);
+    bbcflex_assert(($bubble['hero']['size'] ?? '') === 'full', 'hero size=full idx=' . $i);
+    bbcflex_assert(($bubble['hero']['aspectMode'] ?? '') === 'cover', 'hero cover idx=' . $i);
     bbcflex_assert(($bubble['hero']['url'] ?? '') === $product['representative_image_url'], 'hero URL parity idx=' . $i);
     bbcflex_assert(($body[0]['text'] ?? '') === $product['title'], 'title parity idx=' . $i);
     bbcflex_assert(($body[0]['wrap'] ?? null) === true, 'title wrap idx=' . $i);
@@ -1127,10 +1186,32 @@ foreach ($products as $i => $product) {
             $expectedDates[] = $m[2] . '/' . $m[3];
         }
     }
+    $expectedDatesLine = '出發日期：' . implode('、', $expectedDates);
+    if (count($product['departure_dates']) > 6) {
+        $expectedDatesLine .= '…更多日期';
+    }
     bbcflex_assert(
-        (string) ($body[1]['text'] ?? '') === '出發日期：' . implode('、', $expectedDates),
+        (string) ($body[1]['text'] ?? '') === $expectedDatesLine,
         'dates parity idx=' . $i
     );
+    if (count($product['departure_dates']) > 6) {
+        bbcflex_assert(
+            strpos((string) ($body[1]['text'] ?? ''), '…更多日期') !== false,
+            'overflow suffix present idx=' . $i
+        );
+        $seventh = $product['departure_dates'][6];
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', (string) $seventh, $m7) === 1) {
+            bbcflex_assert(
+                strpos((string) ($body[1]['text'] ?? ''), $m7[2] . '/' . $m7[3]) === false,
+                '7th date not displayed idx=' . $i
+            );
+        }
+    } else {
+        bbcflex_assert(
+            strpos((string) ($body[1]['text'] ?? ''), '…更多日期') === false,
+            'no overflow suffix when <=6 idx=' . $i
+        );
+    }
 
     $cursor = 2;
     if ($product['duration_days'] !== null && (int) $product['duration_days'] > 0) {

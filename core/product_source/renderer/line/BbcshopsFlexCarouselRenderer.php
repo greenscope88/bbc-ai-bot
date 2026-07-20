@@ -6,11 +6,12 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'BbcshopsFlexCarouselRenderResult.p
 
 final class BbcshopsFlexCarouselRenderer
 {
-    private const HERO_ASPECT_RATIO = '1:1';
+    private const HERO_ASPECT_RATIO = '3:4';
     private const DETAIL_BUTTON_COLOR = '#06C755';
     private const ITINERARY_BUTTON_COLOR = '#1E88E5';
     private const PRICE_AMOUNT_COLOR = '#E53935';
     private const MAX_VISIBLE_DATES = 6;
+    private const DATE_OVERFLOW_SUFFIX = '…更多日期';
 
     public function render(PublishedProductSet $set): BbcshopsFlexCarouselRenderResult
     {
@@ -267,7 +268,12 @@ final class BbcshopsFlexCarouselRenderer
             return '出發日期：請點選查看';
         }
 
-        return '出發日期：' . implode('、', $display);
+        $line = '出發日期：' . implode('、', $display);
+        if (count($dates) > self::MAX_VISIBLE_DATES) {
+            $line .= self::DATE_OVERFLOW_SUFFIX;
+        }
+
+        return $line;
     }
 
     /**
