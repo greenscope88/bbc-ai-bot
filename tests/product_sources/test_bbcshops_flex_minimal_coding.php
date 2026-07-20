@@ -636,9 +636,47 @@ $priceVisual = ((string) ($priceBox['contents'][0]['text'] ?? ''))
     . ((string) ($priceBox['contents'][2]['text'] ?? ''));
 bbcflex_assert($priceVisual === 'NT$ 88,800 起', 'price visual NT$ 88,800 起');
 bbcflex_assert(($priceBox['contents'][1]['weight'] ?? '') === 'bold', 'amount bold');
-bbcflex_assert(($priceBox['contents'][1]['size'] ?? '') === 'xl', 'amount larger');
+bbcflex_assert(($priceBox['contents'][1]['size'] ?? '') === 'xxl', 'amount size xxl');
+bbcflex_assert(($priceBox['contents'][0]['size'] ?? '') === 'sm', 'NT$ prefix size sm unchanged');
+bbcflex_assert(($priceBox['contents'][2]['size'] ?? '') === 'sm', '起 suffix size sm unchanged');
 bbcflex_assert(($priceBox['contents'][1]['color'] ?? '') === '#E53935', 'amount red');
+bbcflex_assert(($priceBox['flex'] ?? null) === 1, 'price side flex=1');
+bbcflex_assert(count($priceRow['contents']) === 2, 'price and badge same row');
 bbcflex_assert_circular_badge($bubble0, $priceRow, 0, 2);
+
+// Price amount xxl across digit widths (prefix/suffix sm, badge 40×40 on same row)
+foreach ([9999 => '9,999', 32300 => '32,300', 888800 => '888,800'] as $priceVal => $formatted) {
+    $priceRowItem = host_b_normalized_item(90 + (int) ($priceVal / 1000));
+    $priceRowItem['price'] = $priceVal;
+    $priceRowItem['couponNo'] = 9100 + (int) ($priceVal % 100);
+    $priceRowItem['tourSeqNo'] = 9200 + (int) ($priceVal % 100);
+    $setPrice = (new PublishedProductSetSelector($detailBuilder, new MockShortUrlProvider()))->select([$priceRowItem], 168);
+    $wirePrice = (new BbcshopsFlexCarouselRenderer())->render($setPrice)->getWireFlexMessage();
+    (new LineFlexCarouselPayloadValidator())->validate($wirePrice);
+    $bubblePrice = $wirePrice['contents']['contents'][0];
+    $bodyPrice = $bubblePrice['body']['contents'];
+    $priceRowPx = $bodyPrice[count($bodyPrice) - 1];
+    bbcflex_assert(($priceRowPx['layout'] ?? '') === 'horizontal', 'price row horizontal price=' . $priceVal);
+    bbcflex_assert(($priceRowPx['spacing'] ?? '') === 'sm', 'price row spacing sm price=' . $priceVal);
+    bbcflex_assert(count($priceRowPx['contents']) === 2, 'price+badge columns price=' . $priceVal);
+    $priceBoxPx = $priceRowPx['contents'][0];
+    bbcflex_assert(($priceBoxPx['flex'] ?? null) === 1, 'price side flex=1 price=' . $priceVal);
+    bbcflex_assert(($priceBoxPx['contents'][0]['size'] ?? '') === 'sm', 'prefix sm price=' . $priceVal);
+    bbcflex_assert(($priceBoxPx['contents'][1]['size'] ?? '') === 'xxl', 'amount xxl price=' . $priceVal);
+    bbcflex_assert(($priceBoxPx['contents'][2]['size'] ?? '') === 'sm', 'suffix sm price=' . $priceVal);
+    bbcflex_assert(($priceBoxPx['contents'][1]['weight'] ?? '') === 'bold', 'amount bold price=' . $priceVal);
+    bbcflex_assert(($priceBoxPx['contents'][1]['color'] ?? '') === '#E53935', 'amount red price=' . $priceVal);
+    $visualPx = (string) ($priceBoxPx['contents'][0]['text'] ?? '')
+        . (string) ($priceBoxPx['contents'][1]['text'] ?? '')
+        . (string) ($priceBoxPx['contents'][2]['text'] ?? '');
+    bbcflex_assert($visualPx === 'NT$ ' . $formatted . ' 起', 'price visual price=' . $priceVal);
+    $badgePx = $priceRowPx['contents'][1];
+    bbcflex_assert(($badgePx['width'] ?? '') === '40px' && ($badgePx['height'] ?? '') === '40px', 'badge 40px price=' . $priceVal);
+    bbcflex_assert(($badgePx['contents'][0]['text'] ?? '') === '1/1', 'badge index/N price=' . $priceVal);
+    $bubblePriceJson = json_encode($bubblePrice, JSON_UNESCAPED_UNICODE);
+    bbcflex_assert(is_string($bubblePriceJson) && strpos($bubblePriceJson, 'marginStart') === false, 'no marginStart price=' . $priceVal);
+}
+
 $footer0 = $bubble0['footer'];
 bbcflex_assert(($footer0['paddingTop'] ?? '') === '4px', 'footer paddingTop ~12px gap with price');
 bbcflex_assert(($footer0['layout'] ?? '') === 'horizontal', 'footer buttons horizontal');
@@ -1315,7 +1353,9 @@ foreach ($products as $i => $product) {
     bbcflex_assert($nt === 'NT$ ', 'NT$ span idx=' . $i);
     bbcflex_assert($suffix === ' 起', '起 span idx=' . $i);
     bbcflex_assert(($priceBox['contents'][1]['weight'] ?? '') === 'bold', 'amount bold idx=' . $i);
-    bbcflex_assert(($priceBox['contents'][1]['size'] ?? '') === 'xl', 'amount xl idx=' . $i);
+    bbcflex_assert(($priceBox['contents'][1]['size'] ?? '') === 'xxl', 'amount xxl idx=' . $i);
+    bbcflex_assert(($priceBox['contents'][0]['size'] ?? '') === 'sm', 'prefix sm idx=' . $i);
+    bbcflex_assert(($priceBox['contents'][2]['size'] ?? '') === 'sm', 'suffix sm idx=' . $i);
     bbcflex_assert(($priceBox['contents'][1]['color'] ?? '') === '#E53935', 'amount red idx=' . $i);
     $visual = $nt . $amt . $suffix;
     if ((int) $product['price'] === 88800) {

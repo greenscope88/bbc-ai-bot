@@ -207,7 +207,7 @@ final class BbcshopsFlexCarouselRenderer
                     [
                         'type' => 'text',
                         'text' => $amount,
-                        'size' => 'xl',
+                        'size' => 'xxl',
                         'weight' => 'bold',
                         'color' => self::PRICE_AMOUNT_COLOR,
                         'flex' => 0,
