@@ -74,6 +74,163 @@ b0_assert(strpos($prompt, 'Destination First') !== false, 'Prompt enforces Desti
 b0_assert(strpos($prompt, 'e.g. missing_travel_dates, intent_ambiguous') === false, 'Prompt no freeform e.g. reason examples');
 b0_assert(strpos($prompt, 'critical slots missing') === false, 'Prompt no freeform critical slots prose');
 
+// --- B0-LINE-01C-10B: general NL date understanding (Prompt guides; Gemini resolves) ---
+b0_assert(strpos($prompt, 'General natural-language dates') !== false, '10B prompt includes general NL date section');
+b0_assert(
+    strpos($prompt, 'native language, calendar, and date reasoning') !== false,
+    '10B prompt assigns native reasoning to Gemini'
+);
+b0_assert(
+    strpos($prompt, 'MUST output date_range.from and date_range.to') !== false,
+    '10B prompt requires complete date_range when reliably resolvable'
+);
+b0_assert(
+    strpos($prompt, 'non-exhaustive') !== false && strpos($prompt, 'NOT an allowlist') !== false,
+    '10B prompt marks examples as non-exhaustive not allowlist'
+);
+b0_assert(
+    strpos($prompt, 'NOT a mapping table') !== false,
+    '10B prompt forbids mapping table semantics'
+);
+b0_assert(strpos($prompt, '農曆過年') !== false, '10B prompt includes illustrative 農曆過年 example');
+b0_assert(
+    preg_match('/農曆過年\s*→\s*\d{4}-\d{2}-\d{2}/u', $prompt) !== 1,
+    '10B prompt has no hard-coded 農曆過年 date mapping'
+);
+b0_assert(
+    strpos($prompt, 'Do NOT set clarification.required=true with missing_travel_dates solely') !== false
+    || strpos($prompt, 'Do NOT set clarification.required=true with missing_travel_dates') !== false,
+    '10B prompt discourages premature missing_travel_dates'
+);
+
+// --- B0-LINE-01C-10B-1: event-centered travel departure window ---
+b0_assert(
+    stripos($prompt, 'Event-Centered Travel Departure Window Policy') !== false,
+    '10B-1 prompt includes event-centered travel departure window policy'
+);
+b0_assert(
+    stripos($prompt, 'exactly three calendar days') !== false
+    && (stripos($prompt, 'through event_anchor_date') !== false || stripos($prompt, 'through the event date') !== false),
+    '10B-1 prompt defines three calendar days before event through event date'
+);
+b0_assert(
+    stripos($prompt, 'Customer explicit date instruction') !== false
+    && stripos($prompt, 'Conversation Context') !== false,
+    '10B-1 prompt states customer explicit date and conversation context precedence'
+);
+b0_assert(
+    stripos($prompt, 'Customer explicit date instruction > Conversation Context') !== false,
+    '10B-1 prompt orders explicit instruction over context over default window'
+);
+b0_assert(
+    stripos($prompt, 'Conversation Context > this default') !== false,
+    '10B-1 conversation context has priority over default event window'
+);
+b0_assert(
+    stripos($prompt, 'You determine event meaning') !== false
+    || stripos($prompt, 'event calendar date') !== false,
+    '10B-1 prompt assigns event date understanding to Gemini'
+);
+b0_assert(
+    stripos($prompt, 'Output complete date_range.from and date_range.to') !== false,
+    '10B-1 prompt requires complete date_range endpoints'
+);
+b0_assert(
+    stripos($prompt, 'preserve date_expression') !== false,
+    '10B-1 prompt preserves date_expression'
+);
+b0_assert(
+    stripos($prompt, 'Illustrative behaviors only') !== false && stripos($prompt, 'non-exhaustive') !== false,
+    '10B-1 examples are illustrative and non-exhaustive'
+);
+b0_assert(
+    stripos($prompt, 'NOT an allowlist') !== false && stripos($prompt, 'NOT a closed-set') !== false,
+    '10B-1 examples are not allowlist or closed-set'
+);
+b0_assert(
+    stripos($prompt, 'NOT a mapping table') !== false,
+    '10B-1 forbids mapping table semantics for event window'
+);
+b0_assert(
+    stripos($prompt, 'missing_travel_dates') !== false
+    && (stripos($prompt, 'unreliable after reference') !== false || stripos($prompt, 'Cannot reliably determine') !== false),
+    '10B-1 clarification only when event date or range unreliable'
+);
+b0_assert(
+    preg_match('/跨年\s*→\s*2026-12-31/u', $prompt) !== 1
+    && preg_match('/跨年\s*→\s*12\/31/u', $prompt) !== 1,
+    '10B-1 prompt has no fixed 跨年 to 12/31 mapping row'
+);
+b0_assert(
+    preg_match('/父親節\s*→\s*2026-08-08/u', $prompt) !== 1
+    && preg_match('/父親節\s*→\s*08\/08/u', $prompt) !== 1,
+    '10B-1 prompt has no fixed 父親節 to 08/08 mapping row'
+);
+b0_assert(
+    strpos(file_get_contents($root . '/core/intent/AiuDateEntityResolver.php'), '跨年') === false
+    && strpos(file_get_contents($root . '/core/intent/AiuDateEntityResolver.php'), '父親節') === false,
+    '10B-1 runtime resolver has no event keyword parsing'
+);
+
+// --- B0-LINE-01C-10B-2: no static event-date illustration in Production Prompt ---
+b0_assert(
+    stripos($prompt, 'minus exactly three calendar days') !== false
+    && stripos($prompt, 'date_range.to = event_anchor_date') !== false,
+    '10B-2 prompt keeps event-minus-3 through event-date general formula'
+);
+b0_assert(strpos($prompt, '2026-07-20') === false, '10B-2 prompt has no static reference 2026-07-20');
+b0_assert(strpos($prompt, '2026-12-28') === false, '10B-2 prompt has no static 2026-12-28');
+b0_assert(strpos($prompt, '2026-12-31') === false, '10B-2 prompt has no static 2026-12-31');
+b0_assert(
+    stripos($prompt, 'Policy illustration only') === false
+    && strpos($prompt, 'date_range.from 2026-12-28') === false,
+    '10B-2 prompt has no fixed 跨年 event-to-date range illustration'
+);
+b0_assert(
+    stripos($prompt, 'Customer explicit date instruction > Conversation Context') !== false,
+    '10B-2 precedence chain preserved'
+);
+b0_assert(
+    stripos($prompt, 'Illustrative behaviors only') !== false && stripos($prompt, 'NOT a mapping table') !== false,
+    '10B-2 illustrative non-exhaustive not mapping table preserved'
+);
+
+// --- B0-LINE-01C-10B-3: event window arithmetic boundary ---
+b0_assert(
+    stripos($prompt, 'minus exactly three calendar days') !== false,
+    '10B-3 prompt requires minus exactly three calendar days'
+);
+b0_assert(
+    stripos($prompt, 'exactly four calendar dates') !== false,
+    '10B-3 prompt requires exactly four calendar dates inclusive'
+);
+b0_assert(
+    stripos($prompt, 'date_range.from + exactly 3 calendar days must equal date_range.to') !== false,
+    '10B-3 prompt requires from + 3 calendar days = to self-check'
+);
+b0_assert(
+    stripos($prompt, 'transition events') !== false
+    && stripos($prompt, 'primary celebration begins') !== false,
+    '10B-3 prompt states transition-event anchor principle'
+);
+b0_assert(
+    stripos($prompt, 'Do NOT treat the event_anchor_date as one of the three days before') !== false,
+    '10B-3 prompt forbids counting anchor as one of the three prior days'
+);
+b0_assert(
+    stripos($prompt, 'Customer explicit date instruction > Conversation Context') !== false
+    && stripos($prompt, 'Illustrative behaviors only') !== false
+    && stripos($prompt, 'non-exhaustive') !== false,
+    '10B-3 preserves explicit-date/context priority and non-exhaustive contract'
+);
+b0_assert(
+    preg_match('/跨年\s*[→=].*\d{4}-\d{2}-\d{2}/u', $prompt) !== 1
+    && preg_match('/父親節\s*[→=].*\d{4}-\d{2}-\d{2}/u', $prompt) !== 1
+    && strpos($prompt, '2026-12-28') === false
+    && strpos($prompt, '2026-08-05') === false,
+    '10B-3 prompt has no fixed event YYYY-MM-DD mapping'
+);
+
 // Cross-year reference injection (Dec 20)
 $refDec20 = new DateTimeImmutable('2026-12-20', $tz);
 $reqDec = new AiuPromptRequest('sno', 'line', '1月', [], ConversationOwner::AI, 'active', null, $refDec20, null);

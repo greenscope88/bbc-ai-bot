@@ -112,6 +112,40 @@ Resolve date expressions into date_range using reference_calendar_date and refer
 Both date_range endpoints are inclusive. Format every endpoint as YYYY-MM-DD.
 Always preserve the original phrasing in date_expression when a date was mentioned.
 
+General natural-language dates (Gemini native reasoning):
+- Travel dates are NOT limited to explicit Gregorian year/month/day in the customer utterance.
+- Use your native language, calendar, and date reasoning together with reference_calendar_date, reference_timezone, Conversation Context, and the full Customer Utterance.
+- Understand relative dates, holidays, vacation periods, seasons, year boundaries, lunar-calendar festival names, and other context-resolvable expressions when you can form a reliable inclusive date_range.
+- When you can reliably resolve a range, you MUST output date_range.from and date_range.to (YYYY-MM-DD) AND keep date_expression as the customer's original phrasing.
+- Do NOT set clarification.required=true with missing_travel_dates solely because the customer did not state explicit Gregorian dates, if you can still derive a reliable range from context.
+- Illustrative examples only (non-exhaustive; NOT an allowlist; NOT a closed-set; NOT a mapping table; generalize beyond these labels):
+  農曆過年, 農曆春節, 過年, 跨年 — resolve using lunar/Gregorian reasoning and reference time; never output memorized fixed date ranges tied only to these example words.
+- Only when, after reference time, timezone, utterance, and context, you still cannot form a reliable date_range: preserve date_expression, set date_range to null, and follow [B-04] for missing_travel_dates.
+
+Event-Centered Travel Departure Window Policy (calendar-event travel timing without a precise departure day):
+- Precedence (strict): Customer explicit date instruction > Conversation Context > this default event-centered departure window.
+- You determine event meaning, regional/locale context, event year, and the event_anchor_date (the local calendar date of the main celebration the customer intends to participate in) using reference_calendar_date, reference_timezone, the Customer Utterance, and Conversation Context.
+- For transition events that span a year/day boundary, event_anchor_date is the local calendar day when the primary celebration begins — not the next calendar day after the boundary.
+- Default departure search window applies ONLY when the customer did not specify a more precise departure day and context does not override:
+  date_range.from = event_anchor_date minus exactly three calendar days;
+  date_range.to = event_anchor_date;
+  both endpoints inclusive → exactly four calendar dates.
+- Do NOT treat the event_anchor_date as one of the three days before the event; that mistake yields only three dates and is forbidden.
+- Before output, perform an arithmetic self-check: date_range.from + exactly 3 calendar days must equal date_range.to. If the check fails, recalculate until it holds.
+- Output complete date_range.from and date_range.to (YYYY-MM-DD) and preserve date_expression as the customer's original phrasing.
+- Do NOT apply this default when the customer names a specific departure day, the event day only, a day relative to the event, post-event wording, or a broader semantic range around the event — honor that instruction instead.
+- Only when event date or range remains unreliable after reference time, timezone, utterance, and context: set date_range to null and follow [B-04] for missing_travel_dates.
+
+Illustrative behaviors only (non-exhaustive; NOT an allowlist; NOT a closed-set; NOT a mapping table; generalize beyond these utterances):
+  Event-themed trip without precise departure → event_anchor_date minus exactly three calendar days through event_anchor_date (exactly four calendar dates).
+  Explicit departure on a stated calendar day for an event-themed trip → that explicit day only, not the default window.
+  Departing on the event day → event date per customer instruction, not the three-days-before default.
+  Post-event travel wording → post-event semantics; do not force the three-days-before default.
+  A single calendar day relative to an event (e.g. the day before) → that relative day only.
+  Flexible wording around an event (e.g. before and after acceptable) → inclusive range matching full utterance semantics across the event.
+  Cannot reliably determine event date or year → clarification per [B-04].
+- Compute event dates by reasoning; do not memorize fixed event-to-date rows or static reference-date illustrations in output.
+
 Month-only rules (no explicit year):
 - Future month (month number > reference month in the same year):
   date_range.from = first day of that month in the reference year;
@@ -164,6 +198,7 @@ Product Search Destination First + entity conditions (structured entities only):
   clarification.reason = missing_destination
 - Destination present AND usable travel dates missing or incomplete (date_range / date_from+date_to not both usable):
   clarification.reason = missing_travel_dates
+- Do NOT use missing_travel_dates only because the customer omitted explicit Gregorian dates when [B-03c] still allows you to resolve a reliable date_range from natural-language date_expression.
 
 Forbidden Product Search clarification.reason values (do NOT use):
 - critical_slots_missing
