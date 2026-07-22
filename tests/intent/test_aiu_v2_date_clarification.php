@@ -17,6 +17,10 @@ require_once $root . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'searc
 require_once $root . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search'
     . DIRECTORY_SEPARATOR . 'ClarificationPolicy.php';
 require_once $root . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tour_prompt_context_service.php';
+require_once $root . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'intent'
+    . DIRECTORY_SEPARATOR . 'AiuGeminiUnderstandingClientStub.php';
+require_once $root . DIRECTORY_SEPARATOR . 'tests' . DIRECTORY_SEPARATOR . 'support'
+    . DIRECTORY_SEPARATOR . 'AiuGoldUtteranceUnderstandingFixtures.php';
 require_once $root . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'product_source'
     . DIRECTORY_SEPARATOR . 'recommendation' . DIRECTORY_SEPARATOR . 'ProductRecommendationBuilder.php';
 
@@ -35,7 +39,9 @@ $tz = new DateTimeZone('Asia/Taipei');
 $ref = new DateTimeImmutable('2026-07-08', $tz);
 $pilotSno = '5f99b8d665e8444d';
 $cid = $pilotSno . ':line:U-date-clarify';
-$runtime = AiIntentUnderstandingRuntime::createForTesting();
+$runtime = AiIntentUnderstandingRuntime::createForTesting(
+    new AiuGeminiUnderstandingClientStub(AiuGoldUtteranceUnderstandingFixtures::resolver())
+);
 $translator = new AiuProductIntentTranslator();
 $mapper = new BatsSearchIntentMapper();
 $urlBuilder = new SearchUrlBuilder(false);

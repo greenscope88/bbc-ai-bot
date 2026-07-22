@@ -11,6 +11,7 @@ require_once dirname(__DIR__, 2) . '/core/intent/StructuredSearchResumeLoadResul
 require_once dirname(__DIR__, 2) . '/core/intent/StructuredSearchResumeMutationResult.php';
 require_once dirname(__DIR__, 2) . '/core/intent/StructuredSearchResumeDispositionContract.php';
 require_once dirname(__DIR__, 2) . '/core/intent/AiIntentCategory.php';
+require_once dirname(__DIR__, 2) . '/tests/support/AiuDestinationSemanticsTestFixtures.php';
 
 $failures = 0;
 function assert_true(bool $cond, string $msg): void
@@ -26,7 +27,7 @@ $dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'bbc_resume_rt_' . getmypid();
 @mkdir($dir, 0775, true);
 $store = new StructuredSearchResumeStateStore($dir);
 $identity = StructuredSearchResumeIdentity::fromParts('5f99b8d665e8444d', 'OArt', 'Urt');
-$ref = new DateTimeImmutable('2026-07-16 12:00:00', new DateTimeZone('Asia/Taipei'));
+$ref = new DateTimeImmutable('now', new DateTimeZone('Asia/Taipei'));
 
 $lastPrompt = null;
 $script = [];
@@ -64,12 +65,11 @@ function product_clarif_missing_dates(array $dest, string $disposition = ''): ar
 {
     $out = [
         'intent' => 'product_search',
-        'entities' => [
-            'destination' => $dest,
+        'entities' => AiuDestinationSemanticsTestFixtures::mergeEntities([
             'date_range' => null,
             'date_from' => null,
             'date_to' => null,
-        ],
+        ], $dest, 'single'),
         'confidence' => 0.9,
         'clarification' => ['required' => true, 'reason' => 'missing_travel_dates'],
     ];
@@ -84,13 +84,12 @@ function product_ready(array $dest, string $from, string $to, string $dispositio
 {
     $out = [
         'intent' => 'product_search',
-        'entities' => [
-            'destination' => $dest,
+        'entities' => AiuDestinationSemanticsTestFixtures::mergeEntities([
             'date_range' => ['from' => $from, 'to' => $to],
             'date_from' => $from,
             'date_to' => $to,
             'date_expression' => '8月',
-        ],
+        ], $dest, 'single'),
         'confidence' => 0.95,
         'clarification' => ['required' => false, 'reason' => ''],
     ];
@@ -108,7 +107,9 @@ assert_true($r1->isClarificationRequired(), 'clarif required');
 assert_true($lastPrompt !== null && !$lastPrompt->hasStructuredSearchResumeState(), 'no prior injected');
 $load = $store->load($identity, $ref);
 assert_true($load->isFound(), 'saved before clarif return');
-assert_true($load->getState()->getStateVersion() === 1, 'v1 saved');
+assert_true($load->getState()->getStateVersion() === 1, 'v1 state_version saved');
+assert_true($load->getState()->getSchemaVersion() === 2, 'schema v2 saved');
+assert_true($load->getState()->getStatus() === 'WAITING_CLARIFICATION', 'aiu waiting status');
 assert_true($load->getState()->getKnownEntities()['destination'] === ['日本'], 'dest persisted');
 
 // 17 continue_pending — Gemini full authority, no Runtime merge

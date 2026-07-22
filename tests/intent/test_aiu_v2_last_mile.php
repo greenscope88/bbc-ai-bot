@@ -18,6 +18,10 @@ require_once $root . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'inten
     . DIRECTORY_SEPARATOR . 'AiIntentUnderstandingRuntimeSelector.php';
 require_once $root . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'tour_prompt_context_service.php';
 require_once $root . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'saas_router.php';
+require_once $root . DIRECTORY_SEPARATOR . 'tests' . DIRECTORY_SEPARATOR . 'support'
+    . DIRECTORY_SEPARATOR . 'AiuGoldUtteranceUnderstandingFixtures.php';
+require_once $root . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'intent'
+    . DIRECTORY_SEPARATOR . 'AiuGeminiUnderstandingClientStub.php';
 
 $failures = 0;
 
@@ -31,7 +35,9 @@ function lm_assert(bool $cond, string $message): void
 }
 
 $translator = new AiuProductIntentTranslator();
-$runtime = AiIntentUnderstandingRuntime::createForTesting();
+$runtime = AiIntentUnderstandingRuntime::createForTesting(
+    new AiuGeminiUnderstandingClientStub(AiuGoldUtteranceUnderstandingFixtures::resolver())
+);
 $cid = '5f99b8d665e8444d:line:U-lastmile';
 $pilotSno = '5f99b8d665e8444d';
 

@@ -37,6 +37,7 @@ require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'product_source' . DIRECTO
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'response' . DIRECTORY_SEPARATOR . 'validation'
     . DIRECTORY_SEPARATOR . 'GroundedOutputDegrader.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'BatsSearchIntent.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'DestinationExecutionGateReplyComposer.php';
 
 /**
  * Phase 2-F Step 2-F-2b — authoritative Grounding pipeline with legacy fallback.
@@ -63,6 +64,8 @@ final class GroundingPipelineRuntime
     public const ROUTE_GENERATIVE_CLARIFICATION = 'phase_9c1_generative_clarification';
 
     public const ROUTE_CLARIFICATION_FAIL_CLOSED = 'phase_9c1_clarification_fail_closed';
+
+    public const ROUTE_DESTINATION_EXECUTION_GATE = 'phase_9c1_destination_execution_gate';
 
     /**
      * @param array<string, mixed> $config
@@ -399,6 +402,55 @@ final class GroundingPipelineRuntime
             $contract->getMissingEntity(),
             $failureReason
         );
+    }
+
+    /**
+     * Destination execution gate — no Search / Host B / multi-source links.
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     */
+    public static function composeDestinationExecutionGateReply(array $params): array
+    {
+        $decision = trim((string) ($params['execution_gate_decision'] ?? ''));
+        $text = DestinationExecutionGateReplyComposer::compose($decision);
+        $tone = is_array($params['tone'] ?? null) ? $params['tone'] : [
+            'persona' => 'travel_consultant',
+            'allow_emoji' => true,
+        ];
+        $persona = trim((string) ($tone['persona'] ?? 'travel_consultant'));
+
+        $output = new GroundedOutput(
+            $text,
+            true,
+            0,
+            GroundedInput::SOURCE_TENANT_PRIVATE,
+            false,
+            [],
+            ReplyType::CLARIFICATION,
+            LayoutProfile::MINIMAL,
+            true,
+            true,
+            $persona !== '' ? $persona : 'travel_consultant',
+            ['destination_execution_gate:' . $decision],
+            [],
+            null,
+            LineMessagePayload::fromMessages([
+                ['type' => 'text', 'text' => $text],
+            ])
+        );
+
+        return [
+            'output' => $output,
+            'pipeline' => self::PIPELINE_CLARIFICATION,
+            'route' => self::ROUTE_DESTINATION_EXECUTION_GATE,
+            'execution_gate_decision' => $decision,
+            'host_b_executed' => false,
+            'final_owner' => 'destination_execution_gate',
+            'failure_reason' => null,
+            'validation_passed' => true,
+            'used_facts_count' => 0,
+        ];
     }
 
     /**

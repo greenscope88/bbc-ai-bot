@@ -19,6 +19,7 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'StructuredSearchResumeStateStore.p
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'StructuredSearchResumeLoadResult.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'StructuredSearchResumeMutationResult.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'StructuredSearchResumeDispositionContract.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuClarificationReasonContract.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'conversation' . DIRECTORY_SEPARATOR . 'ConversationOwner.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'logger.php';
 
@@ -156,8 +157,11 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
             'resume_load_status' => $loadStatus,
             'state_found' => $stateInjected,
             'prior_state_version' => $priorState !== null ? $priorState->getStateVersion() : null,
-            'prior_missing_entity' => $priorState !== null ? $priorState->getMissingEntity() : null,
+            'prior_asked_entity' => $priorState !== null ? $priorState->getAskedEntity() : null,
+            'prior_resume_reason' => $priorState !== null ? $priorState->getResumeReason() : null,
             'prior_reason' => $priorState !== null ? $priorState->getAiuClarificationReason() : null,
+            'resume_schema_version' => $priorState !== null ? $priorState->getSchemaVersion() : null,
+            'state_valid' => $stateInjected,
             'state_identity_hash_prefix' => $storageKeyPrefix,
             'state_injected_into_prompt' => $stateInjected,
             'trace_id' => $traceId,
@@ -230,9 +234,23 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
         $obs = [
             'resume_load_status' => $loadStatus,
             'state_found' => $stateInjected,
+            'state_valid' => $stateInjected,
             'prior_state_version' => $priorState !== null ? $priorState->getStateVersion() : null,
-            'prior_missing_entity' => $priorState !== null ? $priorState->getMissingEntity() : null,
+            'prior_asked_entity' => $priorState !== null ? $priorState->getAskedEntity() : null,
+            'prior_resume_reason' => $priorState !== null ? $priorState->getResumeReason() : null,
             'prior_reason' => $priorState !== null ? $priorState->getAiuClarificationReason() : null,
+            'prior_destination_relation' => $priorState !== null
+                ? ($priorState->getKnownEntities()['destination_relation'] ?? null)
+                : null,
+            'prior_date_from' => $priorState !== null
+                ? ($priorState->getKnownEntities()['date_from'] ?? null)
+                : null,
+            'prior_date_to' => $priorState !== null
+                ? ($priorState->getKnownEntities()['date_to'] ?? null)
+                : null,
+            'resume_schema_version' => $priorState !== null
+                ? $priorState->getSchemaVersion()
+                : StructuredSearchResumeState::SCHEMA_VERSION,
             'resume_disposition' => $resumeDisposition,
             'mutation_operation' => $mutationOp,
             'mutation_result' => $mutationStatus,
@@ -278,6 +296,23 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
         if ($isProduct && $result->isClarificationRequired()) {
             if ($webhookEventId === '') {
                 throw new \RuntimeException('structured_search_resume_invalid_state:missing_webhook_event_id');
+            }
+
+            // Prior capability WAITING already retained absolute dates — asking dates again is retention failure.
+            if ($priorState !== null
+                && $priorState->isCapabilityWaiting()
+                && trim($result->getClarificationReason()) === AiuClarificationReasonContract::AIU_MISSING_TRAVEL_DATES
+            ) {
+                $known = $priorState->getKnownEntities();
+                $priorFrom = isset($known['date_from']) ? trim((string) $known['date_from']) : '';
+                $priorTo = isset($known['date_to']) ? trim((string) $known['date_to']) : '';
+                if ($priorFrom !== '' && $priorTo !== '') {
+                    $clear = $this->resumeStore->clear($identity, $priorState->getStateVersion());
+                    $out['operation'] = 'clear';
+                    $out['status'] = $clear->getStatus();
+                    $out['version'] = $clear->getVersion();
+                    throw new \RuntimeException('structured_search_resume_context_retention_failure');
+                }
             }
 
             // new_request while clarifying: clear prior then create fresh from authoritative Gemini output.
@@ -337,7 +372,17 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
         }
 
         // Resolved product search → clear-before-search when prior pending exists.
+        // Capability WAITING must NOT clear here; consume only after SearchCondition success.
         if ($isProduct && !$result->isClarificationRequired()) {
+            if ($priorState !== null && $priorState->isCapabilityWaiting()) {
+                $out['clear_before_search'] = 'deferred_capability_waiting';
+                $out['operation'] = null;
+                $out['status'] = null;
+                $out['version'] = $priorState->getStateVersion();
+
+                return $out;
+            }
+
             if ($priorState !== null) {
                 $mutation = $this->resumeStore->clear($identity, $priorState->getStateVersion());
                 $out['operation'] = 'clear';

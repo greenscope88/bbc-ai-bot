@@ -17,23 +17,33 @@ function assert_true(bool $cond, string $msg): void
 
 $ref = new DateTimeImmutable('2026-07-16 10:00:00', new DateTimeZone('Asia/Taipei'));
 $pending = [
-    'schema_version' => 1,
+    'schema_version' => 2,
     'conversation_id' => 't:line:oa:u',
     'state_version' => 1,
     'intent_scope' => 'product_search',
+    'status' => 'WAITING_CLARIFICATION',
+    'resume_reason' => 'aiu_product_clarification',
+    'resume_trigger_source' => 'aiu_clarification',
+    'asked_entity' => 'date',
+    'response_route' => 'aiu_product_clarification',
     'known_entities' => [
         'destination' => ['日本'],
+        'destination_relation' => null,
+        'destination_semantics' => [],
         'departure' => null,
         'date_from' => null,
         'date_to' => null,
+        'date_expression' => null,
         'duration_days' => null,
         'budget_amount' => null,
         'people_count' => null,
         'product_type' => null,
+        'must_have' => [],
+        'avoid' => [],
     ],
     'clarification_required' => true,
     'aiu_clarification_reason' => 'missing_travel_dates',
-    'missing_entity' => 'date',
+    'relation_capability_version' => '',
     'provenance_reference_timezone' => 'Asia/Taipei',
     'provenance_reference_calendar_date' => '2026-07-15',
 ];
@@ -59,6 +69,7 @@ assert_true(strpos($prompt, 'provenance_reference_calendar_date') !== false, 'pr
 assert_true(strpos($prompt, 'resume_disposition') !== false, 'disposition in output schema');
 assert_true(strpos($prompt, 'continue_pending') !== false, 'continue_pending instructed');
 assert_true(strpos($prompt, 'You are the sole merge authority') !== false, 'gemini sole merge');
+assert_true(strpos($prompt, 'asked_entity') !== false, 'asked_entity in prompt');
 
 $without = new AiuPromptRequest(
     't',

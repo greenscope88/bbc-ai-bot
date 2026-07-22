@@ -38,7 +38,11 @@ require_once __DIR__ . '/intent/AiIntentUnderstandingShadowProbe.php';
 require_once __DIR__ . '/intent/AiIntentUnderstandingRuntimeSelector.php';
 require_once __DIR__ . '/intent/AiRuntimeIntent.php';
 require_once __DIR__ . '/intent/AiuProductIntentTranslator.php';
+require_once __DIR__ . '/intent/AiIntentUnderstandingResult.php';
+require_once __DIR__ . '/intent/StructuredSearchResumeIdentity.php';
+require_once __DIR__ . '/intent/StructuredSearchCapabilityResumeService.php';
 require_once __DIR__ . '/intent/DispatchPlan.php';
+require_once __DIR__ . '/search/DestinationFeasibilityContracts.php';
 require_once __DIR__ . '/grounding/GroundingShadowProbe.php';
 require_once __DIR__ . '/grounding/GroundingOrchestratorContextFactory.php';
 require_once __DIR__ . '/grounding/GroundingPipelineRuntime.php';
@@ -1102,14 +1106,39 @@ class SaaSRouter
             ], $aiuRuntime);
 
             if (($intentSelection['runtime_source'] ?? '') === AiIntentUnderstandingRuntimeSelector::SOURCE_FAIL_CLOSED) {
+                $failureReason = (string) ($intentSelection['failure_reason'] ?? '');
                 $failClosedPayload = [
                     'trace_id' => $traceId,
                     'tenant_sno' => $tenantSno,
                     'conversation_id' => $conversationKey,
                     'runtime_source' => (string) ($intentSelection['runtime_source'] ?? ''),
-                    'failure_reason' => (string) ($intentSelection['failure_reason'] ?? ''),
+                    'failure_reason' => $failureReason,
                     'final_route' => 'phase_9c1_aiu_fail_closed',
                 ];
+
+                if ($failureReason === AiIntentUnderstandingRuntimeSelector::FAILURE_REASON_CONTEXT_RETENTION) {
+                    $failClosedPayload['final_route'] = 'phase_9c1_resume_context_retention_failure';
+                    $safeText = 'BATS Phase 9-C-1 pilot：目前無法產生回覆，請稍後再試。';
+                    $replyRes = null;
+                    if (is_callable($lineReplySender)) {
+                        $replyRes = $lineReplySender($lineReplyUrl, $lineToken, $replyToken, $safeText);
+                    } else {
+                        $replyRes = LineService::replyToLine($lineReplyUrl, $lineToken, $replyToken, $safeText);
+                    }
+                    $failClosedPayload['line_http_status'] = is_array($replyRes)
+                        ? ($replyRes['http_code'] ?? $replyRes['status'] ?? null)
+                        : null;
+                    $failClosedPayload['line_transport'] = 'reply';
+                    Logger::log('saas_router.log', 'phase_9c1_resume_context_retention_failure', $failClosedPayload);
+                    self::appendWebhookLog('phase_9c1_resume_context_retention_failure', $failClosedPayload);
+
+                    return [
+                        'ok' => true,
+                        'message' => 'phase_9c1_resume_context_retention_failure',
+                        'phase_9c1' => $failClosedPayload,
+                    ];
+                }
+
                 Logger::log('saas_router.log', 'phase_9c1_aiu_fail_closed', $failClosedPayload);
                 self::appendWebhookLog('phase_9c1_aiu_fail_closed', $failClosedPayload);
 
@@ -1461,6 +1490,18 @@ class SaaSRouter
             }
             $contextParams['productUnderstandingTrace'] = $productUnderstandingTrace;
 
+            $resumeIdentity = null;
+            if ($tenantSno !== '' && $channelId !== '' && $runtimeUserId !== '') {
+                $resumeIdentity = StructuredSearchResumeIdentity::fromParts(
+                    $tenantSno,
+                    $channelId,
+                    $runtimeUserId,
+                    'line'
+                );
+                $contextParams['resumeIdentity'] = $resumeIdentity;
+                $contextParams['capabilityResumeService'] = new StructuredSearchCapabilityResumeService();
+            }
+
             $intentType = (string) ($intentDetection['intent_type'] ?? '');
             $waitingReplySent = false;
             $ackText = '';
@@ -1550,7 +1591,117 @@ class SaaSRouter
             $clarificationHostBExecuted = null;
             $clarificationValidationPassed = null;
 
-            if ($structuredResult->isClarificationRequired()) {
+            if ($structuredResult->isExecutionGateBlocked()) {
+                $gateMeta = $structuredResult->getSearchPolicyMeta();
+                $executionDecision = (string) ($structuredResult->getExecutionGateDecision() ?? '');
+                $capabilityResumeService = new StructuredSearchCapabilityResumeService();
+                $aiuEntities = [];
+                if (($intentSelection['aiu_result'] ?? null) instanceof AiIntentUnderstandingResult) {
+                    $aiuEntities = $intentSelection['aiu_result']->getEntities();
+                }
+
+                if ($executionDecision === DestinationFeasibilityContracts::EXECUTION_DENY_RELATION_CAPABILITY_UNAVAILABLE
+                    && $authoritativeProductIntent instanceof BatsSearchIntent
+                ) {
+                    $persist = $capabilityResumeService->persistWaitingSingleDestination(
+                        $resumeIdentity,
+                        $authoritativeProductIntent,
+                        is_array($gateMeta) ? $gateMeta : [],
+                        $webhookEventId,
+                        $traceId,
+                        $now,
+                        $aiuEntities
+                    );
+                    if (!$persist['ok']) {
+                        $safeText = 'BATS Phase 9-C-1 pilot：目前無法產生回覆，請稍後再試。';
+                        $replyRes = null;
+                        $pushRes = null;
+                        if ($waitingReplySent) {
+                            if (is_callable($linePushSender)) {
+                                $pushRes = $linePushSender($linePushApiUrl, $lineToken, $trimmedUserId, $safeText);
+                            } else {
+                                $pushRes = LineService::pushToLine($linePushApiUrl, $lineToken, $trimmedUserId, $safeText);
+                            }
+                        } else {
+                            if (is_callable($lineReplySender)) {
+                                $replyRes = $lineReplySender($lineReplyUrl, $lineToken, $replyToken, $safeText);
+                            } else {
+                                $replyRes = LineService::replyToLine($lineReplyUrl, $lineToken, $replyToken, $safeText);
+                            }
+                        }
+                        $failPayload = array_merge($persist['observability'], [
+                            'trace_id' => $traceId,
+                            'tenant_sno' => $tenantSno,
+                            'conversation_id' => $conversationKey,
+                            'final_route' => 'phase_9c1_capability_resume_persist_failed',
+                            'final_owner' => 'structured_search_capability_resume',
+                            'response_route' => 'phase_9c1_capability_resume_persist_failed',
+                            'line_transport' => $waitingReplySent ? 'push' : 'reply',
+                            'line_http_status' => is_array($replyRes)
+                                ? ($replyRes['http_code'] ?? $replyRes['status'] ?? null)
+                                : (is_array($pushRes) ? ($pushRes['http_code'] ?? $pushRes['status'] ?? null) : null),
+                            'host_b_executed' => false,
+                            'search_condition_created' => false,
+                        ]);
+                        Logger::log('saas_router.log', 'phase_9c1_capability_resume_persist_failed', $failPayload);
+                        self::appendWebhookLog('phase_9c1_capability_resume_persist_failed', $failPayload);
+
+                        return [
+                            'ok' => true,
+                            'message' => 'phase_9c1_capability_resume_persist_failed',
+                            'phase_9c1' => $failPayload,
+                        ];
+                    }
+                } elseif (in_array($executionDecision, [
+                    DestinationFeasibilityContracts::EXECUTION_DENY_MIXED_DESTINATION,
+                    DestinationFeasibilityContracts::EXECUTION_DENY_NON_EXECUTABLE,
+                    DestinationFeasibilityContracts::EXECUTION_DENY_RELATION_UNCERTAIN,
+                    DestinationFeasibilityContracts::EXECUTION_DENY_UNCERTAIN,
+                    DestinationFeasibilityContracts::EXECUTION_FAIL_CLOSED,
+                ], true)) {
+                    $capabilityResumeService->clearCapabilityWaitingIfPresent(
+                        $resumeIdentity,
+                        $now,
+                        $traceId
+                    );
+                }
+
+                $gateCompose = GroundingPipelineRuntime::composeDestinationExecutionGateReply([
+                    'execution_gate_decision' => $executionDecision,
+                    'trace_id' => $traceId,
+                    'tenant_sno' => $tenantSno,
+                    'conversation_id' => $runtimeConversationId,
+                    'tone' => [
+                        'persona' => 'travel_consultant',
+                        'allow_emoji' => true,
+                    ],
+                ]);
+                $groundedOutput = $gateCompose['output'];
+                $replyText = $groundedOutput->getReplyText();
+                $groundedReplyType = $groundedOutput->getReplyType();
+                $groundedLayoutProfile = $groundedOutput->getLayoutProfile();
+                $groundedUsedFactsCount = $groundedOutput->getUsedFactsCount();
+                $clarificationFinalRoute = (string) ($gateCompose['route'] ?? GroundingPipelineRuntime::ROUTE_DESTINATION_EXECUTION_GATE);
+                $clarificationFinalOwner = (string) ($gateCompose['final_owner'] ?? 'destination_execution_gate');
+                $clarificationHostBExecuted = false;
+                $clarificationValidationPassed = true;
+                $clarificationAskedEntity = $executionDecision
+                    === DestinationFeasibilityContracts::EXECUTION_DENY_RELATION_CAPABILITY_UNAVAILABLE
+                    ? 'destination'
+                    : null;
+
+                Logger::log('saas_router.log', $clarificationFinalRoute, [
+                    'trace_id' => $traceId,
+                    'execution_gate_decision' => $structuredResult->getExecutionGateDecision(),
+                    'destination_relation' => $gateMeta['destination_relation'] ?? null,
+                    'semantic_gate_decision' => $gateMeta['semantic_gate_decision'] ?? null,
+                    'capability_gate_decision' => $gateMeta['capability_gate_decision'] ?? null,
+                    'response_route' => $gateMeta['response_route'] ?? null,
+                    'asked_entity' => $clarificationAskedEntity,
+                    'search_condition_created' => $gateMeta['search_condition_created'] ?? false,
+                    'host_b_executed' => false,
+                ]);
+            } elseif ($structuredResult->isClarificationRequired()) {
                 $tenantArray = is_array($tenant) ? $tenant : [];
                 if (!isset($tenantArray['tenant_sno']) && $tenantSno !== '') {
                     $tenantArray['tenant_sno'] = $tenantSno;

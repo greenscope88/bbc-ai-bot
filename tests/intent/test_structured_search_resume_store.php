@@ -26,7 +26,7 @@ $dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'bbc_resume_store_' . getmypid
 $store = new StructuredSearchResumeStateStore($dir);
 $identity = StructuredSearchResumeIdentity::fromParts('tStore', 'OAx', 'Ustore');
 $other = StructuredSearchResumeIdentity::fromParts('tStore', 'OAx', 'Uother');
-$ref = new DateTimeImmutable('2026-07-16 12:00:00', new DateTimeZone('Asia/Taipei'));
+$ref = new DateTimeImmutable('now', new DateTimeZone('Asia/Taipei'));
 
 function make_state(
     StructuredSearchResumeIdentity $identity,

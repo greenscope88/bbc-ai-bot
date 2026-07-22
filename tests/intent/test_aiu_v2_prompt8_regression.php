@@ -14,6 +14,8 @@ require_once $root . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'inten
     . DIRECTORY_SEPARATOR . 'AiIntentUnderstandingRuntimeSelector.php';
 require_once $root . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'intent'
     . DIRECTORY_SEPARATOR . 'AiuGeminiUnderstandingClientStub.php';
+require_once $root . DIRECTORY_SEPARATOR . 'tests' . DIRECTORY_SEPARATOR . 'support'
+    . DIRECTORY_SEPARATOR . 'AiuGoldUtteranceUnderstandingFixtures.php';
 require_once $root . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'saas_router.php';
 require_once $root . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search'
     . DIRECTORY_SEPARATOR . 'Phase9C1FeatureGate.php';
@@ -35,7 +37,9 @@ $tz = new DateTimeZone('Asia/Taipei');
 $now = new DateTimeImmutable('2026-08-01', $tz);
 $pilotSno = Phase9C1FeatureGate::TRAVEL_B_SNO;
 $cid = $pilotSno . ':line:U-prompt8';
-$runtime = AiIntentUnderstandingRuntime::createForTesting();
+$runtime = AiIntentUnderstandingRuntime::createForTesting(
+    new AiuGeminiUnderstandingClientStub(AiuGoldUtteranceUnderstandingFixtures::resolver())
+);
 
 // 1. 火星五日遊 8月 vs 火星五日遊8月 — understanding parity
 $marsA = $runtime->understand('火星五日遊 8月', ['conversation_id' => $cid, 'tenant_sno' => $pilotSno]);

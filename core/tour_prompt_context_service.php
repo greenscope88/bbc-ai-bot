@@ -24,6 +24,12 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'B
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'ClarificationPolicy.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'TourPromptContextResult.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'ProductSearchPolicyRuntime.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'DestinationExecutionGate.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'intent' . DIRECTORY_SEPARATOR . 'StructuredSearchCapabilityResumeService.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'intent' . DIRECTORY_SEPARATOR . 'StructuredSearchResumeIdentity.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'intent' . DIRECTORY_SEPARATOR . 'StructuredSearchResumeState.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'intent' . DIRECTORY_SEPARATOR . 'StructuredSearchResumeLoadResult.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'logger.php';
 
 
 
@@ -62,7 +68,9 @@ final class TourPromptContextService
      *   searchUrlBuilder?: SearchUrlBuilder,
      *   authoritativeIntent?: BatsSearchIntent,
      *   productUnderstandingTrace?: array<string, mixed>,
-     *   referenceDate?: \DateTimeImmutable
+     *   referenceDate?: \DateTimeImmutable,
+     *   resumeIdentity?: StructuredSearchResumeIdentity|null,
+     *   capabilityResumeService?: StructuredSearchCapabilityResumeService|null
      * } $params
      */
     public function buildTourContextResult(array $params): TourPromptContextResult
@@ -103,6 +111,23 @@ final class TourPromptContextService
                 );
             }
 
+            $gateResult = DestinationExecutionGate::evaluate($batsIntent);
+            if (!$gateResult['execution_allowed']) {
+                $observability = $gateResult['observability'];
+                $observability['search_condition_created'] = false;
+                $observability['product_source_executed'] = false;
+                $observability['host_b_executed'] = false;
+                $observability['multi_source_links_built'] = false;
+                $observability['search_group_count'] = 0;
+
+                return TourPromptContextResult::executionGateBlocked($batsIntent, $observability);
+            }
+
+            $executableDestinations = $gateResult['executable_destinations'];
+            if ($executableDestinations !== []) {
+                $batsIntent = $batsIntent->with(['destination' => $executableDestinations]);
+            }
+
             $searchCondition = $batsMapper->toSearchCondition($batsIntent);
             if ($searchCondition === null) {
                 return TourPromptContextResult::clarificationRequired(
@@ -113,6 +138,15 @@ final class TourPromptContextService
                     ''
                 );
             }
+
+            // Capability Resume v2: CAS consume only after SearchCondition success, before Product Source.
+            $resumeConsumeMeta = $this->consumeCapabilityResumeAfterSearchCondition(
+                $params,
+                $referenceDate,
+                trim((string) ($params['traceId'] ?? '')),
+                $batsIntent,
+                is_array($gateResult['observability'] ?? null) ? $gateResult['observability'] : []
+            );
 
             $searchClient = $this->resolveSearchClient($params);
             $contextBuilder = $params['contextBuilder'] ?? new GeminiTourContextBuilder();
@@ -147,6 +181,12 @@ final class TourPromptContextService
                     'understanding_source' => 'gemini_aiu',
                 ]);
             }
+            $searchPolicyMeta = array_merge($searchPolicyMeta, $gateResult['observability']);
+            $searchPolicyMeta['search_condition_created'] = true;
+            $searchPolicyMeta['search_group_count'] = 1;
+            if ($resumeConsumeMeta !== []) {
+                $searchPolicyMeta = array_merge($searchPolicyMeta, $resumeConsumeMeta);
+            }
 
             return TourPromptContextResult::searchable(
                 $batsIntent,
@@ -166,6 +206,127 @@ final class TourPromptContextService
         } catch (\Throwable $e) {
             return TourPromptContextResult::empty($userText);
         }
+    }
+
+    /**
+     * Emit independent SC-created observability (capability WAITING only), then CAS consume.
+     * Observability failures never alter search / consume / Host B outcomes.
+     *
+     * @param array<string, mixed> $params
+     * @param array<string, mixed> $gateObservability
+     * @return array<string, mixed>
+     */
+    private function consumeCapabilityResumeAfterSearchCondition(
+        array $params,
+        \DateTimeImmutable $referenceDate,
+        string $traceId,
+        BatsSearchIntent $intent,
+        array $gateObservability
+    ): array {
+        $identity = $params['resumeIdentity'] ?? null;
+        if (!$identity instanceof StructuredSearchResumeIdentity) {
+            return [];
+        }
+        $service = $params['capabilityResumeService'] ?? null;
+        if (!$service instanceof StructuredSearchCapabilityResumeService) {
+            $service = new StructuredSearchCapabilityResumeService();
+        }
+
+        $activeCapabilityState = null;
+        try {
+            $load = $service->getStore()->load($identity, $referenceDate);
+            if ($load->isFound()
+                && $load->getState() !== null
+                && $load->getState()->isCapabilityWaiting()
+            ) {
+                $activeCapabilityState = $load->getState();
+            }
+        } catch (\Throwable $e) {
+            $activeCapabilityState = null;
+        }
+
+        if ($activeCapabilityState instanceof StructuredSearchResumeState) {
+            $this->logCapabilityResumeSearchConditionCreated(
+                $params,
+                $traceId,
+                $identity,
+                $activeCapabilityState,
+                $intent,
+                $gateObservability
+            );
+        }
+
+        $result = $service->consumeAfterSearchConditionCreated($identity, $referenceDate, $traceId);
+
+        return [
+            'capability_resume_consume_status' => $result['mutation_status'],
+            'capability_resume_consume_ok' => $result['ok'],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $params
+     * @param array<string, mixed> $gateObservability
+     */
+    private function logCapabilityResumeSearchConditionCreated(
+        array $params,
+        string $traceId,
+        StructuredSearchResumeIdentity $identity,
+        StructuredSearchResumeState $state,
+        BatsSearchIntent $intent,
+        array $gateObservability
+    ): void {
+        $destinations = $intent->getDestination();
+        $payload = [
+            'trace_id' => $traceId,
+            'understanding_source' => (string) ($gateObservability['understanding_source']
+                ?? ($params['productUnderstandingTrace']['understanding_source'] ?? 'gemini_aiu')),
+            'execution_gate_decision' => (string) ($gateObservability['execution_gate_decision'] ?? ''),
+            'semantic_gate_decision' => (string) ($gateObservability['semantic_gate_decision'] ?? ''),
+            'capability_gate_decision' => (string) ($gateObservability['capability_gate_decision'] ?? ''),
+            'destination_relation' => $intent->getDestinationRelation(),
+            'destination_count' => count($destinations),
+            'destination_labels_hash8' => self::destinationLabelsHash8($destinations),
+            'date_from' => $intent->getDateFrom(),
+            'date_to' => $intent->getDateTo(),
+            'search_condition_created' => true,
+            'resume_schema_version' => $state->getSchemaVersion(),
+            'resume_reason' => $state->getResumeReason(),
+            'resume_state_id' => substr($identity->getStorageKey(), 0, 12),
+            'resume_state_version' => $state->getStateVersion(),
+            'next_operation' => 'consume_after_search_condition_created',
+            'relation_capability_version' => (string) ($gateObservability['relation_capability_version']
+                ?? $state->getRelationCapabilityVersion()),
+        ];
+
+        try {
+            $logger = $params['resumeObservabilityLogger'] ?? null;
+            if (is_callable($logger)) {
+                $logger('capability_resume_search_condition_created', $payload);
+            } else {
+                Logger::log('saas_router.log', 'capability_resume_search_condition_created', $payload);
+            }
+        } catch (\Throwable $e) {
+            // Observability must never change business result.
+        }
+    }
+
+    /**
+     * Safe hash8 of projected destination labels (order-preserving join). No labels logged.
+     *
+     * @param list<string> $labels
+     */
+    public static function destinationLabelsHash8(array $labels): string
+    {
+        $normalized = [];
+        foreach ($labels as $label) {
+            $s = trim((string) $label);
+            if ($s !== '') {
+                $normalized[] = $s;
+            }
+        }
+
+        return substr(hash('sha256', implode("\n", $normalized)), 0, 8);
     }
 
 

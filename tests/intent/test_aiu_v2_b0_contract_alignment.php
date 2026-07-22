@@ -15,6 +15,9 @@ require_once $root . '/core/intent/AiIntentUnderstandingResult.php';
 require_once $root . '/core/intent/AiIntentCategory.php';
 require_once $root . '/core/intent/AiIntentUnderstandingRuntimeSelector.php';
 require_once $root . '/core/conversation/ConversationOwner.php';
+require_once $root . '/tests/support/AiuDestinationSemanticsTestFixtures.php';
+
+
 
 function b0_assert(bool $cond, string $msg): void
 {
@@ -244,12 +247,11 @@ $client = new AiuGeminiUnderstandingClient(null, static function () {
         'ok' => true,
         'text' => json_encode([
             'intent' => 'product_search',
-            'entities' => [
-                'destination' => ['京都', '大阪'],
+            'entities' => AiuDestinationSemanticsTestFixtures::mergeEntities([
                 'date_range' => ['from' => '2026-10-01', 'to' => '2026-10-31'],
                 'date_expression' => '10月',
                 'product_type' => '自由行',
-            ],
+            ], ['京都', '大阪'], 'single'),
             'confidence' => 0.9,
             'clarification' => ['required' => false, 'reason' => ''],
             'semantic_notes' => 'should be dropped',
@@ -365,11 +367,10 @@ b0_assert(!array_key_exists('semantic_notes', $norm), 'B0-2 normalize has no sem
 // Fuzzy date: expression only → date_range null, no invent
 $fuzzy = $normalizer->normalize([
     'intent' => 'product_search',
-    'entities' => [
-        'destination' => ['日本'],
+    'entities' => AiuDestinationSemanticsTestFixtures::mergeEntities([
         'date_range' => null,
         'date_expression' => '有空再去',
-    ],
+    ], ['日本']),
     'confidence' => 0.6,
     'clarification' => ['required' => true, 'reason' => 'missing_travel_dates'],
 ], '有空再去日本');
@@ -382,7 +383,7 @@ b0_assert(($fuzzy['clarification_reason'] ?? '') === 'missing_travel_dates', 'B0
 try {
     $normalizer->normalize([
         'intent' => 'product_search',
-        'entities' => ['destination' => []],
+        'entities' => array_merge(['destination' => []], AiuDestinationSemanticsTestFixtures::missingDestinationContract()),
         'confidence' => 0.5,
         'clarification' => ['required' => true, 'reason' => 'critical_slots_missing'],
     ], '想找行程');
@@ -396,10 +397,10 @@ try {
 
 $normMissingDest = $normalizer->normalize([
     'intent' => 'product_search',
-    'entities' => [
-        'destination' => [],
-        'date_range' => ['from' => '2026-08-01', 'to' => '2026-08-31'],
-    ],
+    'entities' => array_merge(
+        AiuDestinationSemanticsTestFixtures::missingDestinationContract(),
+        ['date_range' => ['from' => '2026-08-01', 'to' => '2026-08-31']]
+    ),
     'confidence' => 0.8,
     'clarification' => ['required' => true, 'reason' => 'missing_destination'],
 ], '我想找8月從台北出發的行程');
@@ -408,12 +409,11 @@ b0_assert(($normMissingDest['clarification_reason'] ?? '') === 'missing_destinat
 // --- Date Prompt Contract: fixture Gemini JSON (no live Gemini; Normalize only flattens) ---
 $fixtureFutureMonth = $normalizer->normalize([
     'intent' => 'product_search',
-    'entities' => [
-        'destination' => ['日本'],
+    'entities' => AiuDestinationSemanticsTestFixtures::mergeEntities([
         'departure' => '台北',
         'date_expression' => '8月',
         'date_range' => ['from' => '2026-08-01', 'to' => '2026-08-31'],
-    ],
+    ], ['日本']),
     'confidence' => 0.9,
     'clarification' => ['required' => false, 'reason' => ''],
 ], '我想找8月從台北出發去日本的行程', $refJul14);
@@ -423,10 +423,13 @@ b0_assert(($fixtureFutureMonth['entities']['date_expression'] ?? null) === '8月
 
 $fixtureCurrentMonth = $normalizer->normalize([
     'intent' => 'product_search',
-    'entities' => [
-        'date_expression' => '7月',
-        'date_range' => ['from' => '2026-07-14', 'to' => '2026-07-31'],
-    ],
+    'entities' => array_merge(
+        AiuDestinationSemanticsTestFixtures::missingDestinationContract(),
+        [
+            'date_expression' => '7月',
+            'date_range' => ['from' => '2026-07-14', 'to' => '2026-07-31'],
+        ]
+    ),
     'confidence' => 0.9,
     'clarification' => ['required' => false, 'reason' => ''],
 ], '7月行程', $refJul14);
@@ -436,10 +439,13 @@ b0_assert(($fixtureCurrentMonth['entities']['date_expression'] ?? null) === '7�
 
 $fixtureCrossYear = $normalizer->normalize([
     'intent' => 'product_search',
-    'entities' => [
-        'date_expression' => '1月',
-        'date_range' => ['from' => '2027-01-01', 'to' => '2027-01-31'],
-    ],
+    'entities' => array_merge(
+        AiuDestinationSemanticsTestFixtures::missingDestinationContract(),
+        [
+            'date_expression' => '1月',
+            'date_range' => ['from' => '2027-01-01', 'to' => '2027-01-31'],
+        ]
+    ),
     'confidence' => 0.9,
     'clarification' => ['required' => false, 'reason' => ''],
 ], '1月', $refDec20);
@@ -449,10 +455,13 @@ b0_assert(($fixtureCrossYear['entities']['date_expression'] ?? null) === '1月',
 
 $fixtureExplicit = $normalizer->normalize([
     'intent' => 'product_search',
-    'entities' => [
-        'date_expression' => '2027年3月',
-        'date_range' => ['from' => '2027-03-01', 'to' => '2027-03-31'],
-    ],
+    'entities' => array_merge(
+        AiuDestinationSemanticsTestFixtures::missingDestinationContract(),
+        [
+            'date_expression' => '2027年3月',
+            'date_range' => ['from' => '2027-03-01', 'to' => '2027-03-31'],
+        ]
+    ),
     'confidence' => 0.9,
     'clarification' => ['required' => false, 'reason' => ''],
 ], '2027年3月', $refJul14);
@@ -462,10 +471,13 @@ b0_assert(($fixtureExplicit['entities']['date_expression'] ?? null) === '2027年
 
 $fixtureRecent = $normalizer->normalize([
     'intent' => 'product_search',
-    'entities' => [
-        'date_expression' => '近期',
-        'date_range' => ['from' => '2026-07-14', 'to' => '2026-09-12'],
-    ],
+    'entities' => array_merge(
+        AiuDestinationSemanticsTestFixtures::missingDestinationContract(),
+        [
+            'date_expression' => '近期',
+            'date_range' => ['from' => '2026-07-14', 'to' => '2026-09-12'],
+        ]
+    ),
     'confidence' => 0.9,
     'clarification' => ['required' => false, 'reason' => ''],
 ], '近期想出國', $refJul14);
@@ -475,10 +487,13 @@ b0_assert(($fixtureRecent['entities']['date_expression'] ?? null) === '近期', 
 
 $fixtureComplete = $normalizer->normalize([
     'intent' => 'product_search',
-    'entities' => [
-        'date_expression' => '2026-08-10到2026-08-20',
-        'date_range' => ['from' => '2026-08-10', 'to' => '2026-08-20'],
-    ],
+    'entities' => array_merge(
+        AiuDestinationSemanticsTestFixtures::missingDestinationContract(),
+        [
+            'date_expression' => '2026-08-10到2026-08-20',
+            'date_range' => ['from' => '2026-08-10', 'to' => '2026-08-20'],
+        ]
+    ),
     'confidence' => 0.95,
     'clarification' => ['required' => false, 'reason' => ''],
 ], '2026-08-10到2026-08-20', $refJul14);
@@ -488,10 +503,13 @@ b0_assert(($fixtureComplete['entities']['date_to'] ?? null) === '2026-08-20', 'F
 // Responsibility: Normalizer must not invent dates from utterance when Gemini omitted range
 $noInvent = $normalizer->normalize([
     'intent' => 'product_search',
-    'entities' => [
-        'date_expression' => '8月',
-        'date_range' => null,
-    ],
+    'entities' => array_merge(
+        AiuDestinationSemanticsTestFixtures::missingDestinationContract(),
+        [
+            'date_expression' => '8月',
+            'date_range' => null,
+        ]
+    ),
     'confidence' => 0.7,
     'clarification' => ['required' => false, 'reason' => ''],
 ], '我想找8月從台北出發去日本的行程', $refJul14);

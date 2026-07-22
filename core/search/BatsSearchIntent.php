@@ -65,11 +65,18 @@ final class BatsSearchIntent
     /** @var string */
     private $free_text;
 
+    /** @var string */
+    private $destination_relation;
+
+    /** @var list<array<string, mixed>> */
+    private $destination_semantics;
+
     /**
      * @param list<string> $destination
      * @param list<string> $destination_alias
      * @param list<string> $must_have
      * @param list<string> $avoid
+     * @param list<array<string, mixed>> $destination_semantics
      */
     public function __construct(
         string $free_text,
@@ -90,7 +97,9 @@ final class BatsSearchIntent
         array $avoid = [],
         bool $clarification_required = false,
         ?string $clarification_reason = null,
-        float $confidence = 0.0
+        float $confidence = 0.0,
+        string $destination_relation = '',
+        array $destination_semantics = []
     ) {
         $this->free_text = trim($free_text);
         $this->intent = $intent;
@@ -111,6 +120,8 @@ final class BatsSearchIntent
         $this->clarification_required = $clarification_required;
         $this->clarification_reason = self::nullableString($clarification_reason);
         $this->confidence = max(0.0, min(1.0, $confidence));
+        $this->destination_relation = trim($destination_relation);
+        $this->destination_semantics = self::semanticsList($destination_semantics);
     }
 
     public static function empty(string $freeText): self
@@ -217,6 +228,17 @@ final class BatsSearchIntent
         return $this->free_text;
     }
 
+    public function getDestinationRelation(): string
+    {
+        return $this->destination_relation;
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function getDestinationSemantics(): array
+    {
+        return $this->destination_semantics;
+    }
+
     /**
      * @param array<string, mixed> $patch
      */
@@ -255,7 +277,13 @@ final class BatsSearchIntent
             array_key_exists('clarification_reason', $patch)
                 ? self::nullableString($patch['clarification_reason'])
                 : $this->clarification_reason,
-            isset($patch['confidence']) ? (float) $patch['confidence'] : $this->confidence
+            isset($patch['confidence']) ? (float) $patch['confidence'] : $this->confidence,
+            array_key_exists('destination_relation', $patch)
+                ? (string) $patch['destination_relation']
+                : $this->destination_relation,
+            array_key_exists('destination_semantics', $patch)
+                ? self::semanticsList($patch['destination_semantics'])
+                : $this->destination_semantics
         );
     }
 
@@ -284,7 +312,28 @@ final class BatsSearchIntent
             'clarification_reason' => $this->clarification_reason,
             'confidence' => round($this->confidence, 2),
             'free_text' => $this->free_text,
+            'destination_relation' => $this->destination_relation,
+            'destination_semantics' => $this->destination_semantics,
         ];
+    }
+
+    /**
+     * @param mixed $value
+     * @return list<array<string, mixed>>
+     */
+    private static function semanticsList($value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+        $out = [];
+        foreach ($value as $item) {
+            if (is_array($item)) {
+                $out[] = $item;
+            }
+        }
+
+        return $out;
     }
 
     /**

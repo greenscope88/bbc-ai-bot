@@ -56,6 +56,10 @@ final class AiIntentUnderstandingRuntimeSelector
 
 
 
+    public const FAILURE_REASON_CONTEXT_RETENTION = 'RESUME_CONTEXT_RETENTION_FAILURE';
+
+
+
     public const UNDERSTANDING_GEMINI_AIU = 'gemini_aiu';
 
 
@@ -237,21 +241,27 @@ final class AiIntentUnderstandingRuntimeSelector
 
         } catch (\Throwable $e) {
 
+            $errorMessage = $e->getMessage();
+            $failureReason = self::FAILURE_REASON_RUNTIME;
+            if (strpos($errorMessage, 'structured_search_resume_context_retention_failure') !== false) {
+                $failureReason = self::FAILURE_REASON_CONTEXT_RETENTION;
+            }
+
             Logger::log('saas_router.log', 'aiu_selector_fail_closed', [
 
                 'tenant_sno' => trim((string) ($params['tenant_sno'] ?? '')),
 
                 'conversation_id' => trim((string) ($params['conversation_id'] ?? '')),
 
-                'failure_reason' => self::FAILURE_REASON_RUNTIME,
+                'failure_reason' => $failureReason,
 
-                'error' => $e->getMessage(),
+                'error' => $errorMessage,
 
             ]);
 
 
 
-            return self::failClosedResult(self::FAILURE_REASON_RUNTIME);
+            return self::failClosedResult($failureReason);
 
         }
 

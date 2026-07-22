@@ -4,25 +4,42 @@ declare(strict_types=1);
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'StructuredSearchResumeIdentity.php';
 
 /**
- * Pending Structured Search Resume State document (schema v1).
+ * Pending Structured Search Resume State document (schema v2 only).
  */
 final class StructuredSearchResumeState
 {
-    public const SCHEMA_VERSION = 1;
+    public const SCHEMA_VERSION = 2;
     public const INTENT_SCOPE_PRODUCT_SEARCH = 'product_search';
     public const OP_CREATE = 'create';
     public const OP_REPLACE = 'replace';
 
+    public const STATUS_WAITING_SINGLE_DESTINATION = 'WAITING_SINGLE_DESTINATION';
+    public const STATUS_WAITING_CLARIFICATION = 'WAITING_CLARIFICATION';
+
+    public const RESUME_REASON_RELATION_CAPABILITY_UNAVAILABLE = 'relation_capability_unavailable';
+    public const RESUME_REASON_AIU_PRODUCT_CLARIFICATION = 'aiu_product_clarification';
+
+    public const TRIGGER_DESTINATION_EXECUTION_GATE = 'destination_execution_gate';
+    public const TRIGGER_AIU_CLARIFICATION = 'aiu_clarification';
+
+    public const RESPONSE_ROUTE_CAPABILITY_UNAVAILABLE = 'destination_relation_capability_unavailable';
+    public const RESPONSE_ROUTE_AIU_CLARIFICATION = 'aiu_product_clarification';
+
     /** @var list<string> */
     public const KNOWN_ENTITY_KEYS = [
         'destination',
+        'destination_relation',
+        'destination_semantics',
         'departure',
         'date_from',
         'date_to',
+        'date_expression',
         'duration_days',
         'budget_amount',
         'people_count',
         'product_type',
+        'must_have',
+        'avoid',
     ];
 
     private int $schemaVersion;
@@ -37,11 +54,16 @@ final class StructuredSearchResumeState
     private string $expiresAt;
     private int $stateVersion;
     private string $intentScope;
+    private string $status;
+    private string $resumeReason;
+    private string $resumeTriggerSource;
+    private string $askedEntity;
+    private string $responseRoute;
     /** @var array<string, mixed> */
     private array $knownEntities;
     private bool $clarificationRequired;
     private string $aiuClarificationReason;
-    private string $missingEntity;
+    private string $relationCapabilityVersion;
     private string $provenanceReferenceTimezone;
     private string $provenanceReferenceCalendarDate;
     private string $lastEventId;
@@ -61,9 +83,14 @@ final class StructuredSearchResumeState
         string $updatedAt,
         string $expiresAt,
         int $stateVersion,
+        string $status,
+        string $resumeReason,
+        string $resumeTriggerSource,
+        string $askedEntity,
+        string $responseRoute,
         array $knownEntities,
         string $aiuClarificationReason,
-        string $missingEntity,
+        string $relationCapabilityVersion,
         string $provenanceReferenceTimezone,
         string $provenanceReferenceCalendarDate,
         string $lastEventId,
@@ -84,10 +111,15 @@ final class StructuredSearchResumeState
         $this->expiresAt = $expiresAt;
         $this->stateVersion = $stateVersion;
         $this->intentScope = $intentScope;
+        $this->status = $status;
+        $this->resumeReason = $resumeReason;
+        $this->resumeTriggerSource = $resumeTriggerSource;
+        $this->askedEntity = $askedEntity;
+        $this->responseRoute = $responseRoute;
         $this->knownEntities = $knownEntities;
         $this->clarificationRequired = $clarificationRequired;
         $this->aiuClarificationReason = $aiuClarificationReason;
-        $this->missingEntity = $missingEntity;
+        $this->relationCapabilityVersion = $relationCapabilityVersion;
         $this->provenanceReferenceTimezone = $provenanceReferenceTimezone;
         $this->provenanceReferenceCalendarDate = $provenanceReferenceCalendarDate;
         $this->lastEventId = $lastEventId;
@@ -154,6 +186,31 @@ final class StructuredSearchResumeState
         return $this->intentScope;
     }
 
+    public function getStatus(): string
+    {
+        return $this->status;
+    }
+
+    public function getResumeReason(): string
+    {
+        return $this->resumeReason;
+    }
+
+    public function getResumeTriggerSource(): string
+    {
+        return $this->resumeTriggerSource;
+    }
+
+    public function getAskedEntity(): string
+    {
+        return $this->askedEntity;
+    }
+
+    public function getResponseRoute(): string
+    {
+        return $this->responseRoute;
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -172,9 +229,9 @@ final class StructuredSearchResumeState
         return $this->aiuClarificationReason;
     }
 
-    public function getMissingEntity(): string
+    public function getRelationCapabilityVersion(): string
     {
-        return $this->missingEntity;
+        return $this->relationCapabilityVersion;
     }
 
     public function getProvenanceReferenceTimezone(): string
@@ -195,6 +252,12 @@ final class StructuredSearchResumeState
     public function getLastEventOperation(): string
     {
         return $this->lastEventOperation;
+    }
+
+    public function isCapabilityWaiting(): bool
+    {
+        return $this->status === self::STATUS_WAITING_SINGLE_DESTINATION
+            && $this->resumeReason === self::RESUME_REASON_RELATION_CAPABILITY_UNAVAILABLE;
     }
 
     public function toIdentity(): StructuredSearchResumeIdentity
@@ -230,10 +293,15 @@ final class StructuredSearchResumeState
             'conversation_id' => $this->conversationId,
             'state_version' => $this->stateVersion,
             'intent_scope' => $this->intentScope,
+            'status' => $this->status,
+            'resume_reason' => $this->resumeReason,
+            'resume_trigger_source' => $this->resumeTriggerSource,
+            'asked_entity' => $this->askedEntity,
+            'response_route' => $this->responseRoute,
             'known_entities' => $this->knownEntities,
             'clarification_required' => $this->clarificationRequired,
             'aiu_clarification_reason' => $this->aiuClarificationReason,
-            'missing_entity' => $this->missingEntity,
+            'relation_capability_version' => $this->relationCapabilityVersion,
             'provenance_reference_timezone' => $this->provenanceReferenceTimezone,
             'provenance_reference_calendar_date' => $this->provenanceReferenceCalendarDate,
         ];
@@ -257,10 +325,15 @@ final class StructuredSearchResumeState
             'expires_at' => $this->expiresAt,
             'state_version' => $this->stateVersion,
             'intent_scope' => $this->intentScope,
+            'status' => $this->status,
+            'resume_reason' => $this->resumeReason,
+            'resume_trigger_source' => $this->resumeTriggerSource,
+            'asked_entity' => $this->askedEntity,
+            'response_route' => $this->responseRoute,
             'known_entities' => $this->knownEntities,
             'clarification_required' => $this->clarificationRequired,
             'aiu_clarification_reason' => $this->aiuClarificationReason,
-            'missing_entity' => $this->missingEntity,
+            'relation_capability_version' => $this->relationCapabilityVersion,
             'provenance_reference_timezone' => $this->provenanceReferenceTimezone,
             'provenance_reference_calendar_date' => $this->provenanceReferenceCalendarDate,
             'last_event_id' => $this->lastEventId,

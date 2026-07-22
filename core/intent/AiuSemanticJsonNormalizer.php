@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiIntentCategory.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuDateEntityResolver.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuClarificationReasonContract.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuDestinationSemanticsNormalizer.php';
 
 /**
  * AIU v2 Normalize — Translation Layer.
@@ -112,6 +113,9 @@ final class AiuSemanticJsonNormalizer
                 $clarificationReason,
                 $entities
             );
+
+            $destinationPatch = AiuDestinationSemanticsNormalizer::apply($entities, $rawEntities);
+            $entities = array_merge($entities, $destinationPatch);
         }
 
         if ($intent === AiIntentCategory::AMBIGUOUS) {

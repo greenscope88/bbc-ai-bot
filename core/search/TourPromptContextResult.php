@@ -39,6 +39,8 @@ final class TourPromptContextResult
 
     private ?string $primarySearchDisplayLabel;
 
+    private bool $executionGateBlocked;
+
     /**
      * @param list<array<string, mixed>> $searchResults
      * @param array<string, mixed> $searchPolicyMeta
@@ -58,7 +60,8 @@ final class TourPromptContextResult
         string $searchUrlRole = '',
         array $multiSourceLinks = [],
         $storeNo = null,
-        ?string $primarySearchDisplayLabel = null
+        ?string $primarySearchDisplayLabel = null,
+        bool $executionGateBlocked = false
     ) {
         $this->intent = $intent;
         $this->searchCondition = $searchCondition;
@@ -73,6 +76,7 @@ final class TourPromptContextResult
         $this->multiSourceLinks = self::normalizeSearchResults($multiSourceLinks);
         $this->storeNo = $this->normalizeStoreNo($storeNo);
         $this->primarySearchDisplayLabel = self::normalizeDisplayLabel($primarySearchDisplayLabel);
+        $this->executionGateBlocked = $executionGateBlocked;
     }
 
     public static function empty(string $freeText = ''): self
@@ -96,6 +100,29 @@ final class TourPromptContextResult
             $legacyContext,
             true,
             $intent->getClarificationReason()
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $gateObservability
+     */
+    public static function executionGateBlocked(BatsSearchIntent $intent, array $gateObservability): self
+    {
+        return new self(
+            $intent,
+            null,
+            [],
+            '',
+            false,
+            null,
+            $gateObservability,
+            '',
+            null,
+            '',
+            [],
+            null,
+            null,
+            true
         );
     }
 
@@ -209,6 +236,18 @@ final class TourPromptContextResult
         return $this->primarySearchDisplayLabel;
     }
 
+    public function isExecutionGateBlocked(): bool
+    {
+        return $this->executionGateBlocked;
+    }
+
+    public function getExecutionGateDecision(): ?string
+    {
+        $decision = $this->searchPolicyMeta['execution_gate_decision'] ?? null;
+
+        return is_string($decision) && $decision !== '' ? $decision : null;
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -228,6 +267,7 @@ final class TourPromptContextResult
             'multi_source_links' => $this->multiSourceLinks,
             'storeNo' => $this->storeNo,
             'primary_search_display_label' => $this->primarySearchDisplayLabel,
+            'execution_gate_blocked' => $this->executionGateBlocked,
         ];
     }
 

@@ -5,6 +5,8 @@ declare(strict_types=1);
  * Phase 9-C-1d-β1: SaaSRouter structured pilot path tests (no live HTTP / DB).
  */
 
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'tests' . DIRECTORY_SEPARATOR . 'support'
+    . DIRECTORY_SEPARATOR . 'AiuDestinationSemanticsTestFixtures.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'saas_router.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'Phase9C1FeatureGate.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'ConversationStatusResolver.php';
@@ -225,44 +227,41 @@ function pilotRawLineEvent(string $userId, string $webhookEventId, string $desti
 
 $pilotSemanticHokkaidoClarify = pilotGeminiSemantic(
     'Product Search',
-    ['destination' => ['北海道']],
+    AiuDestinationSemanticsTestFixtures::mergeEntities([], ['北海道']),
     0.5,
     true,
     'missing_travel_dates'
 );
 $pilotSemanticHokkaidoJuly = pilotGeminiSemantic(
     'Product Search',
-    [
-        'destination' => ['北海道'],
+    AiuDestinationSemanticsTestFixtures::mergeEntities([
         'date_range' => ['from' => '2026-07-01', 'to' => '2026-07-31'],
         'date_expression' => '7月',
         'date_from' => '2026-07-01',
         'date_to' => '2026-07-31',
-    ]
+    ], ['北海道'])
 );
 $pilotSemanticKnowledge = pilotGeminiSemantic('Knowledge', [], 0.9, false, '');
 $pilotSemanticAmbiguous = pilotGeminiSemantic('Ambiguous', [], 0.4, true, 'intent_ambiguous');
 $pilotSemanticRecentTokyo = pilotGeminiSemantic(
     'Product Search',
-    [
-        'destination' => ['東京'],
+    AiuDestinationSemanticsTestFixtures::mergeEntities([
         'date_range' => ['from' => '2026-06-06', 'to' => '2026-08-05'],
         'date_expression' => '近期',
         'date_from' => '2026-06-06',
         'date_to' => '2026-08-05',
-    ]
+    ], ['東京'])
 );
 $pilotSemanticRecentTokyoFiveDays = pilotGeminiSemantic(
     'Product Search',
-    [
-        'destination' => ['東京'],
+    AiuDestinationSemanticsTestFixtures::mergeEntities([
         'duration' => '5日',
         'duration_days' => 5,
         'date_range' => ['from' => '2026-06-06', 'to' => '2026-08-05'],
         'date_expression' => '近期',
         'date_from' => '2026-06-06',
         'date_to' => '2026-08-05',
-    ]
+    ], ['東京'])
 );
 
 $pilotRuntimeHokkaidoClarify = pilotAiuRuntimeFromSemantic($pilotSemanticHokkaidoClarify);
@@ -400,12 +399,14 @@ test_assert(
 // Case 2b: invalid AIU reason → fail-closed before Search (Host B = 0; no generative clarif)
 $pilotSemanticInvalidReason = pilotGeminiSemantic(
     'Product Search',
-    [
-        'destination' => [],
-        'date_range' => ['from' => '2026-08-01', 'to' => '2026-08-31'],
-        'date_from' => '2026-08-01',
-        'date_to' => '2026-08-31',
-    ],
+    array_merge(
+        AiuDestinationSemanticsTestFixtures::missingDestinationContract(),
+        [
+            'date_range' => ['from' => '2026-08-01', 'to' => '2026-08-31'],
+            'date_from' => '2026-08-01',
+            'date_to' => '2026-08-31',
+        ]
+    ),
     0.8,
     true,
     'critical_slots_missing'
@@ -501,12 +502,14 @@ test_assert($invalidReasonGeminiCalls === 0, 'case2b: no Clarification Composer 
 // Case 2c: valid missing_destination → generative clarification (destination ask)
 $pilotSemanticMissingDest = pilotGeminiSemantic(
     'Product Search',
-    [
-        'destination' => [],
-        'date_range' => ['from' => '2026-08-01', 'to' => '2026-08-31'],
-        'date_from' => '2026-08-01',
-        'date_to' => '2026-08-31',
-    ],
+    array_merge(
+        AiuDestinationSemanticsTestFixtures::missingDestinationContract(),
+        [
+            'date_range' => ['from' => '2026-08-01', 'to' => '2026-08-31'],
+            'date_from' => '2026-08-01',
+            'date_to' => '2026-08-31',
+        ]
+    ),
     0.8,
     true,
     'missing_destination'

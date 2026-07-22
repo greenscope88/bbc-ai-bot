@@ -22,6 +22,8 @@ require_once $searchDir . DIRECTORY_SEPARATOR . 'ProductSearchPolicyRuntime.php'
 require_once $searchDir . DIRECTORY_SEPARATOR . 'ApiQueryMapper.php';
 require_once $psDir . DIRECTORY_SEPARATOR . 'SourceQueryMapper.php';
 require_once $convDir . DIRECTORY_SEPARATOR . 'ConversationRuntimeFacade.php';
+require_once $root . DIRECTORY_SEPARATOR . 'tests' . DIRECTORY_SEPARATOR . 'support'
+    . DIRECTORY_SEPARATOR . 'AiuDestinationSemanticsTestFixtures.php';
 
 $failures = 0;
 
@@ -170,13 +172,14 @@ try {
 }
 
 // --- 19–24 / 29. Runtime: Validator before Normalizer; 行程 → null; resume same path ---
-$normOnly = (new AiuSemanticJsonNormalizer())->normalize(v_semantic([
-    'product_type' => '行程',
-    'destination' => ['日本'],
-    'date_from' => '2027-03-01',
-    'date_to' => '2027-03-31',
-    'keyword' => null,
-]), '日本有什麼推薦行程');
+$normOnly = (new AiuSemanticJsonNormalizer())->normalize(v_semantic(
+    AiuDestinationSemanticsTestFixtures::mergeEntities([
+        'product_type' => '行程',
+        'date_from' => '2027-03-01',
+        'date_to' => '2027-03-31',
+        'keyword' => null,
+    ], ['日本'])
+), '日本有什麼推薦行程');
 v_assert(($normOnly['entities']['product_type'] ?? '') === '行程', '19: Normalizer alone would keep 行程');
 
 $orderProbe = new class implements AiuGeminiUnderstandingClientInterface {
@@ -195,13 +198,14 @@ $orderProbe = new class implements AiuGeminiUnderstandingClientInterface {
     }
 };
 
-$orderProbe->payload = v_semantic([
-    'product_type' => '行程',
-    'destination' => ['日本'],
-    'date_from' => '2027-03-01',
-    'date_to' => '2027-03-31',
-    'keyword' => null,
-]);
+$orderProbe->payload = v_semantic(
+    AiuDestinationSemanticsTestFixtures::mergeEntities([
+        'product_type' => '行程',
+        'date_from' => '2027-03-01',
+        'date_to' => '2027-03-31',
+        'keyword' => null,
+    ], ['日本'])
+);
 
 $cid = '5f99b8d665e8444d:line:Uvalidator01';
 $runtime = new AiIntentUnderstandingRuntime(
@@ -240,13 +244,15 @@ v_assert($result->getIntent() === AiIntentCategory::PRODUCT_SEARCH, '20: authori
 
 // Resume-shaped second Gemini result through the same Runtime entry (same Validator).
 $orderProbe->calls = 0;
-$orderProbe->payload = v_semantic([
-    'product_type' => '行程',
-    'destination' => ['日本'],
-    'date_from' => '2027-03-01',
-    'date_to' => '2027-03-31',
-    'keyword' => null,
-], ['resume_disposition' => StructuredSearchResumeDispositionContract::NEW_REQUEST]);
+$orderProbe->payload = v_semantic(
+    AiuDestinationSemanticsTestFixtures::mergeEntities([
+        'product_type' => '行程',
+        'date_from' => '2027-03-01',
+        'date_to' => '2027-03-31',
+        'keyword' => null,
+    ], ['日本']),
+    ['resume_disposition' => StructuredSearchResumeDispositionContract::NEW_REQUEST]
+);
 $resumeResult = $runtime->understand(
     '3月還有嗎',
     [
@@ -303,13 +309,14 @@ $legalRuntime = new AiIntentUnderstandingRuntime(
         {
             unset($request);
 
-            return v_semantic([
-                'product_type' => '自由行',
-                'destination' => ['首爾'],
-                'date_from' => '2026-11-01',
-                'date_to' => '2026-11-30',
-                'keyword' => null,
-            ]);
+            return v_semantic(
+                AiuDestinationSemanticsTestFixtures::mergeEntities([
+                    'product_type' => '自由行',
+                    'date_from' => '2026-11-01',
+                    'date_to' => '2026-11-30',
+                    'keyword' => null,
+                ], ['首爾'])
+            );
         }
     },
     null,
@@ -348,12 +355,13 @@ $shadowOnProbe = new class implements AiuGeminiUnderstandingClientInterface {
     {
         unset($request);
 
-        return v_semantic([
-            'product_type' => '推薦',
-            'destination' => ['京都'],
-            'date_from' => '2026-08-01',
-            'date_to' => '2026-08-31',
-        ]);
+        return v_semantic(
+            AiuDestinationSemanticsTestFixtures::mergeEntities([
+                'product_type' => '推薦',
+                'date_from' => '2026-08-01',
+                'date_to' => '2026-08-31',
+            ], ['京都'])
+        );
     }
 };
 $shadowRuntime = new AiIntentUnderstandingRuntime(

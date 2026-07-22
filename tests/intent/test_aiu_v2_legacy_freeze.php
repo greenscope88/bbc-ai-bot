@@ -11,6 +11,7 @@ require_once $root . '/core/product_source/SourceQueryMapper.php';
 require_once $root . '/core/tour_prompt_context_service.php';
 require_once $root . '/core/saas_router.php';
 require_once $root . '/core/search/Phase9C1FeatureGate.php';
+require_once $root . '/tests/support/AiuDestinationSemanticsTestFixtures.php';
 
 $failures = 0;
 function lf_assert(bool $ok, string $msg): void { global $failures; if (!$ok) { ++$failures; fwrite(STDERR, "FAIL: $msg\n"); } }
@@ -48,13 +49,12 @@ function runCase(string $utterance, AiIntentUnderstandingRuntime $runtime): arra
 $runtime1 = new AiIntentUnderstandingRuntime(new AiuGeminiUnderstandingClientStub(static function (AiuPromptRequest $req): array {
     return [
         'intent' => 'product_search',
-        'entities' => [
-            'destination' => ['峇里島'],
+        'entities' => AiuDestinationSemanticsTestFixtures::mergeEntities([
             'date_from' => '2026-10-01',
             'date_to' => '2026-10-31',
             'theme' => ['蜜月'],
             'free_text' => $req->getCustomerUtterance(),
-        ],
+        ], ['峇里島']),
         'confidence' => 0.9,
         'clarification' => ['required' => false, 'reason' => ''],
     ];
@@ -67,14 +67,14 @@ lf_assert(strpos((string)($c1['auth']->getDateFrom() ?? ''), '2026-10') === 0, '
 lf_assert($c1['auth']->getDestination() !== ['BATS測試我想10月去峇里島'], 'case1 not legacy dest');
 
 $runtime2 = new AiIntentUnderstandingRuntime(new AiuGeminiUnderstandingClientStub(static function (): array {
-    return ['intent' => 'product_search', 'entities' => ['destination' => ['歐洲'], 'theme' => ['賞花'], 'date_from' => '2026-10-01', 'date_to' => '2026-10-31'], 'confidence' => 0.9, 'clarification' => ['required' => false, 'reason' => '']];
+    return ['intent' => 'product_search', 'entities' => AiuDestinationSemanticsTestFixtures::mergeEntities(['theme' => ['賞花'], 'date_from' => '2026-10-01', 'date_to' => '2026-10-31'], ['歐洲']), 'confidence' => 0.9, 'clarification' => ['required' => false, 'reason' => '']];
 }));
 $c2 = runCase('BATS測試 請推薦歐洲賞花，10月', $runtime2);
 lf_assert(($c2['trace']['understanding_source'] ?? '') === 'gemini_aiu', 'case2 understanding_source');
 lf_assert($c2['src'] === '歐洲', 'case2 source destination only (B2 theme mapping deferred)');
 
 $runtime3 = new AiIntentUnderstandingRuntime(new AiuGeminiUnderstandingClientStub(static function (): array {
-    return ['intent' => 'product_search', 'entities' => ['destination' => ['京都'], 'theme' => ['鐵道','溫泉','賞楓'], 'date_from' => '2026-11-01', 'date_to' => '2026-11-30'], 'confidence' => 0.95, 'clarification' => ['required' => false, 'reason' => '']];
+    return ['intent' => 'product_search', 'entities' => AiuDestinationSemanticsTestFixtures::mergeEntities(['theme' => ['鐵道','溫泉','賞楓'], 'date_from' => '2026-11-01', 'date_to' => '2026-11-30'], ['京都']), 'confidence' => 0.95, 'clarification' => ['required' => false, 'reason' => '']];
 }));
 $c3 = runCase('BATS測試 我想安排11月京都鐵道溫泉賞楓', $runtime3);
 lf_assert(($c3['trace']['understanding_source'] ?? '') === 'gemini_aiu', 'case3 understanding_source');
@@ -90,7 +90,7 @@ lf_assert(count($c4['sel']) === 2, 'case4 only 2 fields');
 lf_assert($c4['auth'] === null, 'case4 no authoritative intent');
 
 $routerRuntime = new AiIntentUnderstandingRuntime(new AiuGeminiUnderstandingClientStub(static function (): array {
-    return ['intent' => 'product_search', 'entities' => ['destination' => ['峇里島'], 'theme' => ['蜜月'], 'date_from' => '2026-10-01', 'date_to' => '2026-10-31'], 'confidence' => 0.9, 'clarification' => ['required' => false, 'reason' => '']];
+    return ['intent' => 'product_search', 'entities' => AiuDestinationSemanticsTestFixtures::mergeEntities(['theme' => ['蜜月'], 'date_from' => '2026-10-01', 'date_to' => '2026-10-31'], ['峇里島']), 'confidence' => 0.9, 'clarification' => ['required' => false, 'reason' => '']];
 }));
 $routerRes = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     ['sno' => $pilotSno, 'company_name' => 'Travel B', 'channel_id' => 'ch', 'tenant_key' => 'travel_b'],

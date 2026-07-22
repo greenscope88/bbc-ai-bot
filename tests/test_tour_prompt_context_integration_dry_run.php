@@ -15,12 +15,18 @@ require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARAT
     . DIRECTORY_SEPARATOR . 'ClarificationPolicy.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'search'
     . DIRECTORY_SEPARATOR . 'HybridDateRequiredGate.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'intent'
+    . DIRECTORY_SEPARATOR . 'AiuGeminiUnderstandingClientStub.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'tests' . DIRECTORY_SEPARATOR . 'support'
+    . DIRECTORY_SEPARATOR . 'AiuGoldUtteranceUnderstandingFixtures.php';
 
 $failures = 0;
 $baseUrl = 'https://bonusmee.com/api/gateway/tour/search.php';
 $stagingSno = 'e1fd133c7e8e45a1';
 $structuredRef = new DateTimeImmutable('2026-06-05', new DateTimeZone('Asia/Taipei'));
-$aiuRuntime = AiIntentUnderstandingRuntime::createForTesting();
+$aiuRuntime = AiIntentUnderstandingRuntime::createForTesting(
+    new AiuGeminiUnderstandingClientStub(AiuGoldUtteranceUnderstandingFixtures::resolver())
+);
 $translator = new AiuProductIntentTranslator();
 $aiuCtx = [
     'conversation_id' => $stagingSno . ':line:U-integration-dry-run',

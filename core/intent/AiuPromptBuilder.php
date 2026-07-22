@@ -63,6 +63,8 @@ TXT;
 Extract into entities object (fixed keys). Use null for missing scalars; [] for missing arrays.
 Keys:
 destination (array of strings — country/city/subnational/landmark; do NOT pick a primary),
+destination_relation (string — REQUIRED for product_search: single | and | or | sequential | uncertain; never omit; never null),
+destination_semantics (array — REQUIRED for product_search; nested candidate objects; use [] when no candidates),
 travel_area (string|null — continent/large region e.g. 歐洲),
 date_range (object|null — {"from":"YYYY-MM-DD","to":"YYYY-MM-DD"} when resolvable; null only when genuinely unresolvable),
 date_expression (string|null — original date phrasing; always preserve when the customer mentioned a date),
@@ -86,6 +88,35 @@ unclassified_terms (array).
 
 Do not put destination/theme/meal_preference values into preserved_keywords.
 "希望直飛" → transportation_preference; "不要轉機" → exclusion.
+
+[B-03c Destination Feasibility & Relation — Product Search]
+For EVERY product_search result you MUST output all three keys (never omit; never null):
+- destination (array)
+- destination_relation: single | and | or | sequential | uncertain
+- destination_semantics (array)
+
+destination_semantics items — one per candidate the customer mentioned or implied — each MUST be:
+  label (string),
+  semantic_role: travel_destination | named_place_or_poi | preference_or_descriptor | uncertain,
+  travel_feasibility: { status: executable | non_executable | uncertain, feasibility_reason: string }
+Only this nested travel_feasibility shape is valid. Do NOT output a flat string feasibility.
+
+General destination-intent policy (role vs feasibility):
+- If the customer clearly treats an entity, concept, or place as a travel destination they want to go to, preserve that destination intent.
+- Even when that destination is unrealistic, unreachable, unbookable, or not served by ordinary travel products, still assign a destination projection role (travel_destination or named_place_or_poi) and set travel_feasibility.status = non_executable with a short general feasibility_reason.
+- Whether something is a destination is decided by the customer's semantic role; whether it can be searched is decided only by feasibility.
+- Do NOT use missing_destination merely because a stated travel destination looks fictional, celestial, mythical, abstract, or commercially unavailable.
+- Use natural language and world knowledge; do NOT rely on fixed place lists, closed destination vocabularies, or destination-to-result mapping tables.
+
+Use preference_or_descriptor for themes, events, seasons, preferences, or descriptors — never mark those as travel_destination.
+entities.destination MUST contain exactly the labels whose semantic_role is travel_destination or named_place_or_poi, in first-seen candidate order, regardless of travel_feasibility status.
+Do not filter destination by executable vs non_executable; feasibility is for runtime gates only.
+When destination candidates exist, destination_relation MUST be an explicit allowed value — never omit and never invent a silent default.
+When no destination candidate exists for product_search:
+  destination = []
+  destination_semantics = []
+  destination_relation = uncertain
+  (and follow [B-04] missing_destination clarification rules)
 TXT;
     }
 
@@ -196,9 +227,12 @@ When intent is product_search and clarification.required = true, clarification.r
 Product Search Destination First + entity conditions (structured entities only):
 - Destination missing (entities.destination empty), regardless of dates:
   clarification.reason = missing_destination
+  ALSO set: destination=[], destination_semantics=[], destination_relation=uncertain
+  (all three keys required; never omit destination_relation; never use single as a silent stand-in for missing destination)
 - Destination present AND usable travel dates missing or incomplete (date_range / date_from+date_to not both usable):
   clarification.reason = missing_travel_dates
 - Do NOT use missing_travel_dates only because the customer omitted explicit Gregorian dates when [B-03c] still allows you to resolve a reliable date_range from natural-language date_expression.
+- Do NOT use missing_destination when the customer named a travel destination intent that is merely non_executable; keep the destination candidate and set feasibility accordingly.
 
 Forbidden Product Search clarification.reason values (do NOT use):
 - critical_slots_missing
@@ -260,8 +294,16 @@ Prior provenance_reference_* fields are audit-only. They are NOT the date-resolu
 Current-request reference_calendar_date / reference_timezone remain the sole date-resolution anchor.
 Prior absolute date fields inside known_entities are known facts you may retain or revise.
 
+status / resume_reason / asked_entity describe why Runtime is waiting.
+When resume_reason is "relation_capability_unavailable" and asked_entity is "destination":
+the latest customer message answers the single-destination request.
+Retain known date_from/date_to and other known_entities unless the customer clearly revises them.
+Re-evaluate destination candidates, destination_relation, destination_semantics, and travel_feasibility.
+Output a FULL authoritative AIU result (not a delta). Do NOT blindly accept a place name without semantic judgment.
+
 You are the sole merge authority. Output a FULL authoritative AIU result (not a delta).
 Runtime will NOT merge old and new entities.
+Runtime will NOT rewrite destination_relation or invent dates.
 
 When this pending block is present, you MUST set resume_disposition to exactly one of:
 - "continue_pending" — customer continues filling the prior missing condition using prior facts
@@ -283,12 +325,26 @@ TXT;
 Respond with JSON only (no markdown):
 {
   "intent": "product_search | knowledge | human_service | ambiguous",
-  "entities": {},
+  "entities": {
+    "destination": [],
+    "destination_relation": "single | and | or | sequential | uncertain",
+    "destination_semantics": [
+      {
+        "label": "string",
+        "semantic_role": "travel_destination | named_place_or_poi | preference_or_descriptor | uncertain",
+        "travel_feasibility": {
+          "status": "executable | non_executable | uncertain",
+          "feasibility_reason": "string"
+        }
+      }
+    ]
+  },
   "confidence": 0.0,
   "clarification": { "required": false, "reason": "" },
   "resume_disposition": "continue_pending | modify_pending | new_request"
 }
 resume_disposition is REQUIRED because Structured Search Resume State was injected.
+For product_search, destination, destination_relation, and destination_semantics are REQUIRED keys (use [] / uncertain when empty; never omit; never null).
 entities must include all fixed keys. Do NOT output semantic_notes.
 Do NOT output dispatch_plan, execution_hint, runtime_action, or search_action.
 TXT;
@@ -299,12 +355,26 @@ TXT;
 Respond with JSON only (no markdown):
 {
   "intent": "product_search | knowledge | human_service | ambiguous",
-  "entities": {},
+  "entities": {
+    "destination": [],
+    "destination_relation": "single | and | or | sequential | uncertain",
+    "destination_semantics": [
+      {
+        "label": "string",
+        "semantic_role": "travel_destination | named_place_or_poi | preference_or_descriptor | uncertain",
+        "travel_feasibility": {
+          "status": "executable | non_executable | uncertain",
+          "feasibility_reason": "string"
+        }
+      }
+    ]
+  },
   "confidence": 0.0,
   "clarification": { "required": false, "reason": "" },
   "resume_disposition": "new_request"
 }
 resume_disposition may be omitted or "new_request" when no pending Structured Search Resume State was injected.
+For product_search, destination, destination_relation, and destination_semantics are REQUIRED keys (use [] / uncertain when empty; never omit; never null).
 entities must include all fixed keys. Do NOT output semantic_notes.
 Do NOT output dispatch_plan, execution_hint, runtime_action, or search_action.
 TXT;

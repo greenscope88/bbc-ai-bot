@@ -58,7 +58,9 @@ final class AiuProductIntentTranslator
             [],
             $clarificationRequired,
             $clarificationReason,
-            $result->getConfidence()
+            $result->getConfidence(),
+            $this->nullableString($entities['destination_relation'] ?? null) ?? '',
+            is_array($entities['destination_semantics'] ?? null) ? $entities['destination_semantics'] : []
         );
     }
 

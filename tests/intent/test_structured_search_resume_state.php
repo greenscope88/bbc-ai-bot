@@ -37,10 +37,14 @@ $state = StructuredSearchResumeStateFactory::fromValidatedClarification(
     'trace-1',
     1
 );
-assert_true($state->getMissingEntity() === 'date', 'missing_entity derived from closed reason');
+assert_true($state->getSchemaVersion() === 2, 'schema v2');
+assert_true($state->getAskedEntity() === 'date', 'asked_entity derived from closed reason');
 assert_true($state->getAiuClarificationReason() === 'missing_travel_dates', 'persist AIU reason only');
+assert_true($state->getResumeReason() === StructuredSearchResumeState::RESUME_REASON_AIU_PRODUCT_CLARIFICATION, 'resume_reason aiu');
+assert_true($state->getStatus() === StructuredSearchResumeState::STATUS_WAITING_CLARIFICATION, 'status clarification');
 assert_true($state->getKnownEntities()['destination'] === ['日本'], 'known destination retained');
 assert_true($state->getLastEventOperation() === 'create', 'create operation');
+assert_true(!array_key_exists('missing_entity', $state->toArray()), 'no missing_entity dual-read');
 
 $round = StructuredSearchResumeStateFactory::fromDocument($state->toArray());
 assert_true($round->getStateVersion() === 1, 'document round-trip');
@@ -61,6 +65,15 @@ try {
     assert_true(false, 'missing required key must reject');
 } catch (InvalidArgumentException $e) {
     assert_true(true, 'missing key rejected');
+}
+
+$bad3 = $state->toArray();
+$bad3['schema_version'] = 1;
+try {
+    StructuredSearchResumeStateFactory::fromDocument($bad3);
+    assert_true(false, 'v1 must reject');
+} catch (InvalidArgumentException $e) {
+    assert_true(strpos($e->getMessage(), 'schema_version') !== false, 'v1 rejected');
 }
 
 assert_true(
