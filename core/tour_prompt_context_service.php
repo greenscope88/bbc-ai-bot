@@ -436,7 +436,8 @@ final class TourPromptContextService
             $condition->toArray(),
             $apiParamsInternal,
             $requestUrl,
-            $apiResult
+            $apiResult,
+            $apiMapper->providerWireObservability($condition, $traceId, 'hostb')
         );
 
         $urlBuilder = $params['searchUrlBuilder'] ?? $this->createSearchUrlBuilder();
