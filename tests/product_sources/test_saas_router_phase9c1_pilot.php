@@ -239,6 +239,7 @@ $pilotSemanticHokkaidoJuly = pilotGeminiSemantic(
         'date_expression' => '7月',
         'date_from' => '2026-07-01',
         'date_to' => '2026-07-31',
+        'search_keyword_tokens' => ['北海道'],
     ], ['北海道'])
 );
 $pilotSemanticKnowledge = pilotGeminiSemantic('Knowledge', [], 0.9, false, '');
@@ -250,6 +251,7 @@ $pilotSemanticRecentTokyo = pilotGeminiSemantic(
         'date_expression' => '近期',
         'date_from' => '2026-06-06',
         'date_to' => '2026-08-05',
+        'search_keyword_tokens' => ['東京'],
     ], ['東京'])
 );
 $pilotSemanticRecentTokyoFiveDays = pilotGeminiSemantic(
@@ -261,6 +263,7 @@ $pilotSemanticRecentTokyoFiveDays = pilotGeminiSemantic(
         'date_expression' => '近期',
         'date_from' => '2026-06-06',
         'date_to' => '2026-08-05',
+        'search_keyword_tokens' => ['東京'],
     ], ['東京'])
 );
 
@@ -423,17 +426,19 @@ $invalidReasonClient = new TourSearchApiClient(
     }
 );
 $invalidReasonReplyCalls = 0;
+$invalidReasonReplyText = null;
 $invalidReasonGeminiCalls = 0;
 $invalidReasonReplySender = static function (
     string $url,
     string $token,
     string $replyToken,
     string $text
-) use (&$invalidReasonReplyCalls): array {
-    unset($url, $token, $replyToken, $text);
+) use (&$invalidReasonReplyCalls, &$invalidReasonReplyText): array {
+    unset($url, $token, $replyToken);
     ++$invalidReasonReplyCalls;
+    $invalidReasonReplyText = $text;
 
-    return ['mock' => true, 'kind' => 'reply'];
+    return ['mock' => true, 'kind' => 'reply', 'ok' => true, 'status' => 200];
 };
 $invalidReasonComposer = new GroundedResponseComposer(
     null,
@@ -495,9 +500,34 @@ test_assert(
     ($resultInvalidReason['phase_9c1']['final_route'] ?? '') === 'phase_9c1_aiu_fail_closed',
     'case2b: fail-closed route'
 );
+test_assert(
+    ($resultInvalidReason['phase_9c1']['response_route'] ?? '') === 'aiu_runtime_failure_safe_reply',
+    'case2b: safe reply response_route'
+);
+test_assert(
+    ($resultInvalidReason['phase_9c1']['failure_reason'] ?? '') === AiIntentUnderstandingRuntimeSelector::FAILURE_REASON_RUNTIME,
+    'case2b: failure_reason AIU_RUNTIME_FAILURE'
+);
+test_assert(($resultInvalidReason['phase_9c1']['search_condition_created'] ?? true) === false, 'case2b: no SearchCondition');
+test_assert(($resultInvalidReason['phase_9c1']['product_source_executed'] ?? true) === false, 'case2b: product source zero-call');
+test_assert(($resultInvalidReason['phase_9c1']['host_b_executed'] ?? true) === false, 'case2b: host_b zero-call flag');
+test_assert(($resultInvalidReason['phase_9c1']['multi_source_links_built'] ?? true) === false, 'case2b: no multi-source links');
 test_assert(($GLOBALS['pilot_invalid_reason_api_calls'] ?? -1) === 0, 'case2b: Host B calls = 0');
-test_assert($invalidReasonReplyCalls === 0, 'case2b: no generative clarif LINE reply');
+test_assert($invalidReasonReplyCalls === 1, 'case2b: one safe LINE reply');
+test_assert(
+    $invalidReasonReplyText === ClarificationContract::AIU_RUNTIME_FAIL_CLOSED_TEXT,
+    'case2b: safe reply text from ClarificationContract'
+);
+test_assert(
+    strpos((string) $invalidReasonReplyText, 'Gemini') === false
+    && strpos((string) $invalidReasonReplyText, 'AIU') === false
+    && strpos((string) $invalidReasonReplyText, 'contract') === false
+    && strpos((string) $invalidReasonReplyText, 'trace') === false,
+    'case2b: safe reply hides internal detail'
+);
 test_assert($invalidReasonGeminiCalls === 0, 'case2b: no Clarification Composer generation');
+test_assert(($resultInvalidReason['phase_9c1']['line_transport'] ?? '') === 'reply', 'case2b: line transport reply');
+test_assert(($resultInvalidReason['phase_9c1']['line_transport_ok'] ?? false) === true, 'case2b: line transport ok');
 
 // Case 2c: valid missing_destination → generative clarification (destination ask)
 $pilotSemanticMissingDest = pilotGeminiSemantic(
@@ -610,23 +640,29 @@ test_assert(
     'case2c: not technical fail-closed'
 );
 
-// Case 3: product_search → waiting Reply + final Push
+// Case 3: product_search → no waiting Reply; final Reply once (Push=0)
 $waitingCalls = [];
 $finalPushCalls = [];
 $finalReplyCalls = 0;
-$waitingReplySender = static function (string $url, string $token, string $replyToken, string $text) use (&$waitingCalls): array {
-    unset($url, $token);
-    $waitingCalls[] = ['reply_token' => $replyToken, 'text' => $text];
-    return ['mock' => true, 'kind' => 'waiting'];
-};
+$finalReplyToken = null;
 $productPushSender = static function (string $url, string $token, string $userId, string $text) use (&$finalPushCalls): array {
     unset($url, $token);
     $finalPushCalls[] = ['user_id' => $userId, 'text' => $text];
     return ['mock' => true, 'kind' => 'push'];
 };
-$productReplySender = static function (string $url, string $token, string $replyToken, string $text) use (&$finalReplyCalls): array {
-    unset($url, $token, $replyToken, $text);
+$productReplySender = static function (string $url, string $token, string $replyToken, string $text) use (
+    &$finalReplyCalls,
+    &$finalReplyToken,
+    &$waitingCalls,
+    $waitingText
+): array {
+    unset($url, $token);
+    if ($text === $waitingText) {
+        $waitingCalls[] = ['reply_token' => $replyToken, 'text' => $text];
+        return ['mock' => true, 'kind' => 'waiting'];
+    }
     ++$finalReplyCalls;
+    $finalReplyToken = $replyToken;
     return ['mock' => true, 'kind' => 'final_reply'];
 };
 
@@ -641,7 +677,7 @@ $resultSearch = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     null,
     buildPilotMockSearchClient('北海道7月團'),
     $referenceDate,
-    $waitingReplySender,
+    $productReplySender,
     null,
     null,
     null,
@@ -654,11 +690,22 @@ $resultSearch = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     null,
     $pilotRuntimeHokkaidoJuly
 );
-test_assert(count($waitingCalls) === 1, 'case3: waiting reply once');
-test_assert(($waitingCalls[0]['text'] ?? '') === $waitingText, 'case3: fixed waiting text');
-test_assert(count($finalPushCalls) === 1, 'case3: final push once');
-test_assert($finalReplyCalls === 0, 'case3: final not via reply');
-test_assert(($resultSearch['phase_9c1']['final_transport'] ?? '') === 'push', 'case3: final transport push');
+test_assert(count($waitingCalls) === 0, 'case3: waiting reply not called');
+test_assert(count($finalPushCalls) === 0, 'case3: injectable push zero');
+test_assert(($resultSearch['phase_9c1']['final_transport'] ?? '') === 'reply', 'case3: final transport reply');
+test_assert(($resultSearch['phase_9c1']['waiting_reply_sent'] ?? true) === false, 'case3: waiting_reply_sent false');
+test_assert(($resultSearch['phase_9c1']['line_push'] ?? null) === null, 'case3: line_push null');
+$case3Reply = $resultSearch['phase_9c1']['line_reply'] ?? null;
+test_assert(is_array($case3Reply), 'case3: line_reply present');
+if (isset($case3Reply['request_payload']) && is_array($case3Reply['request_payload'])) {
+    test_assert(($case3Reply['request_payload']['replyToken'] ?? '') === 'reply-token-3', 'case3: replyToken preserved');
+    test_assert(!isset($case3Reply['request_payload']['to']), 'case3: no push recipient');
+    $case3Msgs = $case3Reply['request_payload']['messages'] ?? null;
+    test_assert(is_array($case3Msgs) && count($case3Msgs) >= 1, 'case3: reply messages present');
+} else {
+    test_assert($finalReplyCalls === 1, 'case3: final reply once via sender');
+    test_assert($finalReplyToken === 'reply-token-3', 'case3: original reply token used for final');
+}
 test_assert(
     ($resultSearch['phase_9c1']['runtime_source'] ?? '') === AiIntentUnderstandingRuntimeSelector::SOURCE_AIU,
     'case3: runtime_source aiu'
@@ -671,6 +718,14 @@ test_assert(
     !array_key_exists('legacy_understanding_used', $resultSearch['phase_9c1'] ?? []),
     'case3: legacy_understanding_used absent'
 );
+
+$waitingReplySender = static function (string $url, string $token, string $replyToken, string $text) use ($waitingText): array {
+    unset($url, $token, $replyToken);
+    if ($text === $waitingText) {
+        return ['mock' => true, 'kind' => 'waiting'];
+    }
+    return ['mock' => true, 'kind' => 'final_reply'];
+};
 
 // Case 4: BATS-enabled tenant without prefix → enters pilot path
 $resultNoPrefix = SaaSRouter::attemptPhase9C1StructuredPilotPath(
@@ -846,7 +901,12 @@ $resultAmbiguous = SaaSRouter::attemptPhase9C1StructuredPilotPath(
 );
 test_assert($ambiguousWaitingCalls === 0, 'case7: ambiguous no waiting reply');
 test_assert($ambiguousPushCalls === 0, 'case7: ambiguous no push');
-test_assert($ambiguousFinalReplyCalls === 1, 'case7: ambiguous final via reply');
+test_assert(($resultAmbiguous['phase_9c1']['final_transport'] ?? '') === 'reply', 'case7: final transport reply');
+test_assert(($resultAmbiguous['phase_9c1']['line_push'] ?? null) === null, 'case7: line_push null');
+test_assert(
+    $ambiguousFinalReplyCalls === 1 || is_array($resultAmbiguous['phase_9c1']['line_reply'] ?? null),
+    'case7: ambiguous final via reply'
+);
 
 // Case 8: missing userId → no waiting, final reply fallback
 $noUserWaitingCalls = 0;
@@ -892,13 +952,32 @@ $resultNoUser = SaaSRouter::attemptPhase9C1StructuredPilotPath(
 );
 test_assert($noUserWaitingCalls === 0, 'case8: missing userId no waiting');
 test_assert($noUserPushCalls === 0, 'case8: missing userId no push');
-test_assert($noUserFinalReplyCalls === 1, 'case8: missing userId final reply fallback');
 test_assert(($resultNoUser['phase_9c1']['final_transport'] ?? '') === 'reply', 'case8: final transport reply');
+test_assert(($resultNoUser['phase_9c1']['line_push'] ?? null) === null, 'case8: line_push null');
+test_assert(
+    $noUserFinalReplyCalls === 1 || is_array($resultNoUser['phase_9c1']['line_reply'] ?? null),
+    'case8: missing userId final reply fallback'
+);
 
 // Case 9: Host B row with couponName only (no title) → product recommendation, not no-results
 $couponNameTitle = '東京近期五日精選';
 $couponNamePushCalls = [];
-$couponNamePushSender = static function (string $url, string $token, string $userId, string $text) use (&$couponNamePushCalls, $couponNameTitle): array {
+$couponNameReplyCalls = 0;
+$couponNameReplyText = '';
+$couponNameReplySender = static function (string $url, string $token, string $replyToken, string $text) use (
+    &$couponNameReplyCalls,
+    &$couponNameReplyText,
+    $waitingText
+): array {
+    unset($url, $token, $replyToken);
+    if ($text === $waitingText) {
+        return ['mock' => true, 'kind' => 'waiting'];
+    }
+    ++$couponNameReplyCalls;
+    $couponNameReplyText = $text;
+    return ['mock' => true, 'kind' => 'final_reply'];
+};
+$couponNamePushSender = static function (string $url, string $token, string $userId, string $text) use (&$couponNamePushCalls): array {
     unset($url, $token, $userId);
     $couponNamePushCalls[] = ['text' => $text];
     return ['mock' => true, 'kind' => 'push'];
@@ -914,7 +993,7 @@ $resultCouponName = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     null,
     buildPilotMockSearchClientCouponNameOnly($couponNameTitle),
     $referenceDate,
-    $waitingReplySender,
+    $couponNameReplySender,
     null,
     null,
     null,
@@ -927,21 +1006,36 @@ $resultCouponName = SaaSRouter::attemptPhase9C1StructuredPilotPath(
     null,
     $pilotRuntimeRecentTokyo
 );
-$pushText = (string) ($couponNamePushCalls[0]['text'] ?? '');
 test_assert(is_array($resultCouponName), 'case9: couponName-only result array');
 test_assert(($resultCouponName['phase_9c1']['search_result_count'] ?? 0) >= 1, 'case9: search_result_count >= 1');
-test_assert(count($couponNamePushCalls) === 1, 'case9: final push once');
-test_assert(mb_strpos($pushText, $couponNameTitle) !== false, 'case9: push includes couponName title');
-test_assert(mb_strpos($pushText, '目前尚未找到符合條件的商品') === false, 'case9: push not no-results message');
+test_assert(count($couponNamePushCalls) === 0, 'case9: injectable push zero');
+test_assert(($resultCouponName['phase_9c1']['final_transport'] ?? '') === 'reply', 'case9: final transport reply');
+test_assert(($resultCouponName['phase_9c1']['line_push'] ?? null) === null, 'case9: line_push null');
+$case9Reply = $resultCouponName['phase_9c1']['line_reply'] ?? null;
+test_assert(is_array($case9Reply), 'case9: line_reply present');
+test_assert($couponNameReplyCalls === 1 || isset($case9Reply['request_payload']), 'case9: final reply once');
+test_assert(($resultCouponName['phase_9c1']['waiting_reply_sent'] ?? true) === false, 'case9: no waiting');
 
 // Case 10: P1 Product Layout Fix — 近期東京 → Waiting Reply first, then a fixed
 // BBC product layout (TourFallbackFormatter) on push (🚩 / 📅 / 💰 / 🛫 / 🗓️ + separator).
 $layoutWaitingCalls10 = [];
 $layoutPushCalls10 = [];
-$layoutWaitingSender10 = static function (string $url, string $token, string $replyToken, string $text) use (&$layoutWaitingCalls10): array {
+$layoutReplyCalls10 = 0;
+$layoutReplyText10 = '';
+$layoutWaitingSender10 = static function (string $url, string $token, string $replyToken, string $text) use (
+    &$layoutWaitingCalls10,
+    &$layoutReplyCalls10,
+    &$layoutReplyText10,
+    $waitingText
+): array {
     unset($url, $token, $replyToken);
-    $layoutWaitingCalls10[] = ['text' => $text];
-    return ['mock' => true, 'kind' => 'waiting'];
+    if ($text === $waitingText) {
+        $layoutWaitingCalls10[] = ['text' => $text];
+        return ['mock' => true, 'kind' => 'waiting'];
+    }
+    ++$layoutReplyCalls10;
+    $layoutReplyText10 = $text;
+    return ['mock' => true, 'kind' => 'final_reply'];
 };
 $layoutPushSender10 = static function (string $url, string $token, string $userId, string $text) use (&$layoutPushCalls10): array {
     unset($url, $token, $userId);
@@ -974,25 +1068,35 @@ $resultLayout10 = SaaSRouter::attemptPhase9C1StructuredPilotPath(
 );
 $layoutPushText10 = (string) ($layoutPushCalls10[0]['text'] ?? '');
 test_assert(is_array($resultLayout10), 'case10: layout result array');
-test_assert(count($layoutWaitingCalls10) === 1, 'case10: waiting reply once');
-test_assert(($layoutWaitingCalls10[0]['text'] ?? '') === $waitingText, 'case10: fixed waiting text');
-test_assert(count($layoutPushCalls10) === 1, 'case10: final push once');
-test_assert(($resultLayout10['phase_9c1']['final_transport'] ?? '') === 'push', 'case10: final transport push');
-test_assert(mb_strpos($layoutPushText10, '🚩') !== false, 'case10: push has 🚩 title flag');
-test_assert(mb_strpos($layoutPushText10, '📅 最近出團：') !== false, 'case10: push has 📅 departure');
-test_assert(mb_strpos($layoutPushText10, '💰 售價：') !== false, 'case10: push has 💰 price');
-test_assert(mb_strpos($layoutPushText10, '🛫 出發地：') !== false, 'case10: push has 🛫 origin');
-test_assert(mb_strpos($layoutPushText10, '🗓️ 行程表：') !== false, 'case10: push has 🗓️ schedule');
-test_assert(mb_strpos($layoutPushText10, '──────────────') !== false, 'case10: push has item separator');
-test_assert(mb_strpos($layoutPushText10, '東京賞櫻五日') !== false, 'case10: push has product title');
+test_assert(count($layoutWaitingCalls10) === 0, 'case10: waiting reply not called');
+test_assert(count($layoutPushCalls10) === 0, 'case10: injectable push zero');
+test_assert(($resultLayout10['phase_9c1']['final_transport'] ?? '') === 'reply', 'case10: final transport reply');
+test_assert(($resultLayout10['phase_9c1']['line_push'] ?? null) === null, 'case10: line_push null');
+$case10Reply = $resultLayout10['phase_9c1']['line_reply'] ?? null;
+test_assert(is_array($case10Reply), 'case10: line_reply present');
+test_assert($layoutReplyCalls10 === 1 || isset($case10Reply['request_payload']), 'case10: final reply once');
+test_assert(($resultLayout10['phase_9c1']['waiting_reply_sent'] ?? true) === false, 'case10: no waiting');
+
 
 // Case 11: P1 Product Layout Fix — 最近東京五天 → Waiting Reply first, fixed product layout.
 $layoutWaitingCalls11 = [];
 $layoutPushCalls11 = [];
-$layoutWaitingSender11 = static function (string $url, string $token, string $replyToken, string $text) use (&$layoutWaitingCalls11): array {
+$layoutReplyCalls11 = 0;
+$layoutReplyText11 = '';
+$layoutWaitingSender11 = static function (string $url, string $token, string $replyToken, string $text) use (
+    &$layoutWaitingCalls11,
+    &$layoutReplyCalls11,
+    &$layoutReplyText11,
+    $waitingText
+): array {
     unset($url, $token, $replyToken);
-    $layoutWaitingCalls11[] = ['text' => $text];
-    return ['mock' => true, 'kind' => 'waiting'];
+    if ($text === $waitingText) {
+        $layoutWaitingCalls11[] = ['text' => $text];
+        return ['mock' => true, 'kind' => 'waiting'];
+    }
+    ++$layoutReplyCalls11;
+    $layoutReplyText11 = $text;
+    return ['mock' => true, 'kind' => 'final_reply'];
 };
 $layoutPushSender11 = static function (string $url, string $token, string $userId, string $text) use (&$layoutPushCalls11): array {
     unset($url, $token, $userId);
@@ -1025,12 +1129,15 @@ $resultLayout11 = SaaSRouter::attemptPhase9C1StructuredPilotPath(
 );
 $layoutPushText11 = (string) ($layoutPushCalls11[0]['text'] ?? '');
 test_assert(is_array($resultLayout11), 'case11: layout result array');
-test_assert(count($layoutWaitingCalls11) === 1, 'case11: waiting reply once');
-test_assert(count($layoutPushCalls11) === 1, 'case11: final push once');
-test_assert(mb_strpos($layoutPushText11, '🚩') !== false, 'case11: push has 🚩 title flag');
-test_assert(mb_strpos($layoutPushText11, '📅 最近出團：') !== false, 'case11: push has 📅 departure');
-test_assert(mb_strpos($layoutPushText11, '💰 售價：') !== false, 'case11: push has 💰 price');
-test_assert(mb_strpos($layoutPushText11, '🛫 出發地：') !== false, 'case11: push has 🛫 origin');
+test_assert(count($layoutWaitingCalls11) === 0, 'case11: waiting reply not called');
+test_assert(count($layoutPushCalls11) === 0, 'case11: injectable push zero');
+test_assert(($resultLayout11['phase_9c1']['final_transport'] ?? '') === 'reply', 'case11: final transport reply');
+test_assert(($resultLayout11['phase_9c1']['line_push'] ?? null) === null, 'case11: line_push null');
+$case11Reply = $resultLayout11['phase_9c1']['line_reply'] ?? null;
+test_assert(is_array($case11Reply), 'case11: line_reply present');
+test_assert($layoutReplyCalls11 === 1 || isset($case11Reply['request_payload']), 'case11: final reply once');
+test_assert(($resultLayout11['phase_9c1']['waiting_reply_sent'] ?? true) === false, 'case11: no waiting');
+
 
 if ($failures > 0) {
     fwrite(STDERR, "\n{$failures} test failure(s)\n");

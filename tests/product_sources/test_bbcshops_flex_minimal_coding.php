@@ -278,8 +278,16 @@ $output = $pipeline['output'];
 bbcflex_assert($output->isValidationPassed(), 'pipeline validation passes with enriched URLs');
 bbcflex_assert($output->getReplyType() === ReplyType::NORMAL, 'positive reply is normal_reply');
 $messages = $output->getChannelMessages()->getMessages();
-bbcflex_assert(count($messages) === 3, 'text + flex + other-source');
+bbcflex_assert(count($messages) === 3, 'text + flex + listing-links');
 bbcflex_assert(($messages[1]['type'] ?? '') === 'flex', 'message 2 is Flex carousel');
+bbcflex_assert(
+    strpos((string) ($messages[0]['text'] ?? ''), 'https://') === false,
+    'opening text has no URL'
+);
+bbcflex_assert(
+    strpos((string) ($messages[2]['text'] ?? ''), 'https://bbcshops.com/s/GVPHP') !== false,
+    'message 3 includes Bonusmee search_url'
+);
 $bubbleCount = count($messages[1]['contents']['contents'] ?? []);
 $productRefs = array_values(array_filter($output->getReferencedFactIds(), static function (string $id): bool {
     return strpos($id, 'bbcshops:') === 0 && strpos($id, 'link:') !== 0;
@@ -327,32 +335,21 @@ $formatterPos = strpos((string) $routerSrc, 'TourFallbackFormatter::');
 bbcflex_assert($composePos !== false, 'saas_router wires composeBbcshopsFlexMultiSourceReply');
 bbcflex_assert($formatterPos === false, 'saas_router has zero TourFallbackFormatter:: calls after 06B-4 product wiring');
 
-// 16: waiting後唯一 final — exclusive reply XOR push with same typed payload
+// 16: product-search final delivery is Reply-only (Push=0) with same typed payload
 $shared = $output->getChannelMessages();
 bbcflex_assert($shared instanceof LineMessagePayload, 'typed channel payload present');
-$waitingPaths = [true, false];
-foreach ($waitingPaths as $waiting) {
-    $sendCount = 0;
-    $transport = 'http://127.0.0.1:1/line-stub';
-    if ($waiting) {
-        $res = LineService::pushMessages($transport, 'tok', 'Uuser', $shared);
-        ++$sendCount;
-        bbcflex_assert(isset($res['request_payload']['messages']), 'push path builds messages payload');
-        bbcflex_assert($res['request_payload']['messages'] === $shared->getMessages(), 'push preserves typed messages');
-    } else {
-        $res = LineService::replyMessages($transport, 'tok', 'reply-token', $shared);
-        ++$sendCount;
-        bbcflex_assert(isset($res['request_payload']['messages']), 'reply path builds messages payload');
-        bbcflex_assert($res['request_payload']['messages'] === $shared->getMessages(), 'reply preserves typed messages');
-    }
-    bbcflex_assert($sendCount === 1, 'waiting path sends exactly once (reply XOR push)');
-}
+$replyOnly = LineService::replyMessages('http://127.0.0.1:1/line-stub', 'tok', 'reply-token', $shared);
+bbcflex_assert(isset($replyOnly['request_payload']['messages']), 'reply path builds messages payload');
+bbcflex_assert($replyOnly['request_payload']['messages'] === $shared->getMessages(), 'reply preserves typed messages');
+bbcflex_assert(isset($replyOnly['request_payload']['replyToken']), 'reply uses replyToken');
+bbcflex_assert(!isset($replyOnly['request_payload']['to']), 'reply payload has no push recipient');
+bbcflex_assert(count($replyOnly['request_payload']['messages']) === 3, 'final reply has exactly 3 message objects');
 
-// 17: replyMessages / pushMessages same typed messages; Flex not rewrapped as text
+// 17: replyMessages typed messages; Flex not rewrapped as text
 $replyRes = LineService::replyMessages('http://127.0.0.1:1/r', 't', 'rt', $shared);
-$pushRes = LineService::pushMessages('http://127.0.0.1:1/p', 't', 'uid', $shared);
-bbcflex_assert($replyRes['request_payload']['messages'] === $pushRes['request_payload']['messages'], 'reply/push share identical messages');
 bbcflex_assert(($replyRes['request_payload']['messages'][1]['type'] ?? '') === 'flex', 'Flex not rewrapped as text');
+bbcflex_assert(($replyRes['request_payload']['messages'][0]['type'] ?? '') === 'text', 'object 1 text');
+bbcflex_assert(($replyRes['request_payload']['messages'][2]['type'] ?? '') === 'text', 'object 3 text');
 
 // Fixture primary_url must not be Production authority
 $fixtureTrap = host_b_normalized_item(9);
@@ -845,20 +842,26 @@ $labelPipe = GroundingPipelineRuntime::composeBbcshopsFlexMultiSourceReply([
 ]);
 bbcflex_assert($labelPipe['validation_passed'] === true, 'label pipeline validation passes');
 $labelMsgs = $labelPipe['output']->getChannelMessages()->getMessages();
-bbcflex_assert(count($labelMsgs) === 3, 'opening + flex + other-source');
+bbcflex_assert(count($labelMsgs) === 3, 'opening + flex + listing-links');
 $openText = (string) ($labelMsgs[0]['text'] ?? '');
 bbcflex_assert(
-    $openText === "以下為您整理日本精選行程。\n更多日本行程：\nhttps://bbcshops.com/s/GVPHP",
-    'opening with label exact copy'
+    $openText === "您好，我是您的旅遊客服，已瞭解您的需求。\n以下為日本行程精選圖卡，歡迎參考。",
+    'opening with label exact frozen copy'
 );
+bbcflex_assert(strpos($openText, 'https://') === false, 'opening has no URL');
 bbcflex_assert(strpos($openText, 'BBCShops') === false, 'opening does not show platform name');
 $otherText = (string) ($labelMsgs[2]['text'] ?? '');
-bbcflex_assert(strpos($otherText, '其他【日本】相關行程可參考：') === 0, 'other-source header with label');
+bbcflex_assert(strpos($otherText, '🎁 更多日本精選促銷行程，可點選如下網址：') === 0, 'message 3 starts with Bonusmee block');
+bbcflex_assert(strpos($otherText, "https://bbcshops.com/s/GVPHP") !== false, 'message 3 includes Bonusmee URL before halls');
+bbcflex_assert(strpos($otherText, '其他【日本】相關行程可參考：') !== false, 'other-source header with label');
 bbcflex_assert(strpos($otherText, "✅ 一館：\nhttps://example.com/grp") !== false, 'ordinal 一館 label and URL on separate lines');
 bbcflex_assert(strpos($otherText, "✅ 二館：\nhttps://example.com/bbc") !== false, 'ordinal 二館 multiline');
 bbcflex_assert(strpos($otherText, "✅ 三館：\nhttps://example.com/tc") !== false, 'ordinal 三館 multiline');
-$otherExpected = "其他【日本】相關行程可參考：\n\n✅ 一館：\nhttps://example.com/grp\n✅ 二館：\nhttps://example.com/bbc\n✅ 三館：\nhttps://example.com/tc";
-bbcflex_assert($otherText === $otherExpected, 'other-source multiline exact layout');
+$bonusPos = strpos($otherText, 'https://bbcshops.com/s/GVPHP');
+$hall1Pos = strpos($otherText, 'https://example.com/grp');
+bbcflex_assert($bonusPos !== false && $hall1Pos !== false && $bonusPos < $hall1Pos, 'URL order Bonusmee then 一館');
+$otherExpected = "🎁 更多日本精選促銷行程，可點選如下網址：\nhttps://bbcshops.com/s/GVPHP\n\n其他【日本】相關行程可參考：\n\n✅ 一館：\nhttps://example.com/grp\n✅ 二館：\nhttps://example.com/bbc\n✅ 三館：\nhttps://example.com/tc";
+bbcflex_assert($otherText === $otherExpected, 'message 3 merged listing links exact layout');
 bbcflex_assert(strpos($otherText, 'GRP') === false, 'customer text hides GRP');
 bbcflex_assert(strpos($otherText, 'BBC Travel') === false, 'customer text hides BBC Travel');
 bbcflex_assert(strpos($otherText, 'TourCenter') === false, 'customer text hides TourCenter');
@@ -877,10 +880,12 @@ $noLabelPipe = GroundingPipelineRuntime::composeBbcshopsFlexMultiSourceReply([
 ]);
 $noLabelMsgs = $noLabelPipe['output']->getChannelMessages()->getMessages();
 bbcflex_assert(
-    (string) ($noLabelMsgs[0]['text'] ?? '') === "以下為您整理精選行程。\n更多行程：\nhttps://bbcshops.com/s/GVPHP",
+    (string) ($noLabelMsgs[0]['text'] ?? '') === "您好，我是您的旅遊客服，已瞭解您的需求。\n以下為行程精選圖卡，歡迎參考。",
     'opening without label exact copy'
 );
-bbcflex_assert(strpos((string) ($noLabelMsgs[2]['text'] ?? ''), '其他相關行程可參考：') === 0, 'other-source without label');
+bbcflex_assert(strpos((string) ($noLabelMsgs[0]['text'] ?? ''), 'https://') === false, 'no-label opening has no URL');
+bbcflex_assert(strpos((string) ($noLabelMsgs[2]['text'] ?? ''), '🎁 更多精選促銷行程') === 0, 'no-label message 3 Bonusmee block');
+bbcflex_assert(strpos((string) ($noLabelMsgs[2]['text'] ?? ''), '其他相關行程可參考：') !== false, 'other-source without label');
 
 $zeroOther = GroundingPipelineRuntime::composeBbcshopsFlexMultiSourceReply([
     'search_results' => [host_b_normalized_item(10)],
@@ -892,7 +897,12 @@ $zeroOther = GroundingPipelineRuntime::composeBbcshopsFlexMultiSourceReply([
     'published_product_set_selector' => new PublishedProductSetSelector($detailBuilder, new MockShortUrlProvider()),
     'tenant' => ['tenant_sno' => '5f99b8d665e8444d'],
 ]);
-bbcflex_assert(count($zeroOther['output']->getChannelMessages()->getMessages()) === 2, 'other-source 0 links → no third message');
+$zeroMsgs = $zeroOther['output']->getChannelMessages()->getMessages();
+bbcflex_assert(count($zeroMsgs) === 3, 'Bonusmee-only listing links still yield third message');
+bbcflex_assert(
+    (string) ($zeroMsgs[2]['text'] ?? '') === "🎁 更多日本精選促銷行程，可點選如下網址：\nhttps://bbcshops.com/s/GVPHP",
+    'third message Bonusmee-only exact copy'
+);
 
 // ---- 06B-5H: schema-slot URI negatives + Published→Bubble field integrity ----
 

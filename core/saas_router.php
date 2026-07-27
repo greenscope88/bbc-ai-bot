@@ -1509,11 +1509,11 @@ class SaaSRouter
             $linePushApiUrl = self::resolveLinePushApiUrl($lineReplyUrl);
             $trimmedUserId = trim($userId);
 
+            // Product-search final delivery uses the original Reply Token once (no waiting Reply).
             if (
                 $intentType === AiRuntimeIntent::PRODUCT_SEARCH
                 && $authoritativeProductIntent instanceof BatsSearchIntent
             ) {
-                $preflightIntent = $authoritativeProductIntent;
                 $preflightGate = FinalReplyGate::evaluate($statusResolver->resolveStatus($conversationKey, $now));
                 self::recordReplyGateCompare(
                     ConversationReplyGateCompareProbe::GATE_POINT_PRODUCT_PREFLIGHT,
@@ -1524,34 +1524,6 @@ class SaaSRouter
                     $traceId,
                     $now
                 );
-                if (
-                    !$preflightIntent->isClarificationRequired()
-                    && ($preflightGate['allowed'] ?? false) === true
-                    && $trimmedUserId !== ''
-                ) {
-                    $ackText = AcknowledgementReplyComposer::composeProductWaitingReply();
-                    if ($ackText !== '') {
-                        if (is_callable($lineReplySender)) {
-                            $ackReply = $lineReplySender($lineReplyUrl, $lineToken, $replyToken, $ackText);
-                        } else {
-                            $ackReply = LineService::replyToLine($lineReplyUrl, $lineToken, $replyToken, $ackText);
-                        }
-                        $waitingReplySent = true;
-                        Logger::log('saas_router.log', 'phase_9c1_waiting_reply_sent', [
-                            'trace_id' => $traceId,
-                            'conversation_id' => $conversationKey,
-                            'intent_type' => $intentType,
-                            'ack_text_length' => mb_strlen($ackText),
-                            'user_id_present' => true,
-                        ]);
-                        self::appendWebhookLog('phase_9c1_waiting_reply_sent', [
-                            'trace_id' => $traceId,
-                            'conversation_id' => $conversationKey,
-                            'intent_type' => $intentType,
-                            'ack_text_length' => mb_strlen($ackText),
-                        ]);
-                    }
-                }
             }
 
             $structuredResult = $service->buildTourContextResult($contextParams);

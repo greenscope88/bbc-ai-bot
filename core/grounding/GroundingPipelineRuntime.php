@@ -214,14 +214,9 @@ final class GroundingPipelineRuntime
             (new GroundedListingLinkFactsValidator())->validate($linkFacts);
 
             $displayLabel = self::resolvePrimarySearchDisplayLabel($params);
-            $message1Text = self::buildOpeningText($publishedSet->getCount(), $bbcshopsLink, $displayLabel);
+            $message1Text = self::buildOpeningText($publishedSet->getCount(), $displayLabel);
             if ($message1Text !== '') {
                 $messages[] = ['type' => 'text', 'text' => $message1Text];
-                if ($bbcshopsLink !== null) {
-                    $referencedFactIds[] = $bbcshopsLink['role'] === 'listing'
-                        ? 'link:bbcshops:listing'
-                        : 'link:bbcshops:search';
-                }
             }
 
             if ($publishedSet->getCount() > 0) {
@@ -234,12 +229,10 @@ final class GroundingPipelineRuntime
                 }
             }
 
-            $otherFacts = self::filterOtherSourceLinkFacts($linkFacts);
-            if ($otherFacts !== []) {
-                $otherResult = (new OtherSourceListingLinksMessageBuilder())->build($otherFacts, $displayLabel);
-                (new OtherSourceListingLinksIntegrityValidator())->validate($otherResult, $otherFacts);
-                $messages[] = $otherResult->getWireMessage();
-                foreach ($otherResult->getLinkFactIds() as $id) {
+            $listingLinkText = self::buildMergedListingLinksText($bbcshopsLink, $linkFacts, $displayLabel);
+            if ($listingLinkText !== null) {
+                $messages[] = ['type' => 'text', 'text' => $listingLinkText['text']];
+                foreach ($listingLinkText['fact_ids'] as $id) {
                     $referencedFactIds[] = $id;
                 }
             }
@@ -250,7 +243,9 @@ final class GroundingPipelineRuntime
 
             $channelPayload = LineMessagePayload::fromMessages($messages);
             $facts = array_merge($productFacts, $linkFacts);
-            $presentable = $publishedSet->getCount() + count($otherFacts);
+            $presentable = $publishedSet->getCount()
+                + (($bbcshopsLink !== null && trim($bbcshopsLink['url']) !== '') ? 1 : 0)
+                + count(self::filterOtherSourceLinkFacts($linkFacts));
             $replyPolicy = [
                 'mode' => $presentable > 0 ? 'recommend' : 'no_results',
                 'grounded_only' => true,
@@ -552,31 +547,69 @@ final class GroundingPipelineRuntime
     /**
      * @param array{url: string, role: string}|null $bbcshopsLink
      */
-    private static function buildOpeningText(int $publishedCount, ?array $bbcshopsLink, ?string $displayLabel): string
+    private static function buildOpeningText(int $publishedCount, ?string $displayLabel): string
     {
-        if ($publishedCount > 0) {
-            if ($displayLabel !== null && $displayLabel !== '') {
-                $text = '以下為您整理' . $displayLabel . '精選行程。';
-                if ($bbcshopsLink !== null && trim($bbcshopsLink['url']) !== '') {
-                    $text .= "\n更多" . $displayLabel . "行程：\n" . trim($bbcshopsLink['url']);
-                }
-
-                return $text;
-            }
-
-            $text = '以下為您整理精選行程。';
-            if ($bbcshopsLink !== null && trim($bbcshopsLink['url']) !== '') {
-                $text .= "\n更多行程：\n" . trim($bbcshopsLink['url']);
-            }
-
-            return $text;
+        if ($publishedCount <= 0) {
+            return self::noResultsText();
         }
+
+        $destination = $displayLabel !== null ? trim($displayLabel) : '';
+        if ($destination !== '') {
+            return "您好，我是您的旅遊客服，已瞭解您的需求。\n以下為{$destination}行程精選圖卡，歡迎參考。";
+        }
+
+        return "您好，我是您的旅遊客服，已瞭解您的需求。\n以下為行程精選圖卡，歡迎參考。";
+    }
+
+    /**
+     * Message Object 3: Bonusmee listing short URL then other-source 一/二/三館.
+     *
+     * @param array{url: string, role: string}|null $bbcshopsLink
+     * @param list<array<string, mixed>> $linkFacts
+     * @return array{text: string, fact_ids: list<string>}|null
+     */
+    private static function buildMergedListingLinksText(
+        ?array $bbcshopsLink,
+        array $linkFacts,
+        ?string $displayLabel
+    ): ?array {
+        $parts = [];
+        $factIds = [];
+        $destination = $displayLabel !== null ? trim($displayLabel) : '';
 
         if ($bbcshopsLink !== null && trim($bbcshopsLink['url']) !== '') {
-            return "目前沒有符合條件的商品。\n可先參考更多行程：\n" . trim($bbcshopsLink['url']);
+            $url = trim($bbcshopsLink['url']);
+            if ($destination !== '') {
+                $parts[] = "🎁 更多{$destination}精選促銷行程，可點選如下網址：\n{$url}";
+            } else {
+                $parts[] = "🎁 更多精選促銷行程，可點選如下網址：\n{$url}";
+            }
+            $factIds[] = $bbcshopsLink['role'] === 'listing'
+                ? 'link:bbcshops:listing'
+                : 'link:bbcshops:search';
         }
 
-        return self::noResultsText();
+        $otherFacts = self::filterOtherSourceLinkFacts($linkFacts);
+        if ($otherFacts !== []) {
+            $otherResult = (new OtherSourceListingLinksMessageBuilder())->build($otherFacts, $displayLabel);
+            (new OtherSourceListingLinksIntegrityValidator())->validate($otherResult, $otherFacts);
+            $otherText = trim((string) ($otherResult->getWireMessage()['text'] ?? ''));
+            if ($otherText !== '') {
+                $parts[] = $otherText;
+            }
+            foreach ($otherResult->getLinkFactIds() as $id) {
+                $factIds[] = $id;
+            }
+        }
+
+        if ($parts === []) {
+            return null;
+        }
+
+        return [
+            'text' => implode("\n\n", $parts),
+            'fact_ids' => $factIds,
+        ];
     }
 
     private static function noResultsText(): string
