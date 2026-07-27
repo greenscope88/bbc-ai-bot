@@ -6,7 +6,8 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'SearchConditionCanonicalizer.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'SourceQueryMapper.php';
 
 /**
- * Builds cloud_store_tourdate.php URL from SearchCondition (same canonical params as API).
+ * Builds cloud_store_tourdate.php URL from SearchCondition.
+ * Listing date wire uses Storefront keys departureDateS/E (YYYY/MM/DD), not Host B API keys.
  */
 final class SearchUrlBuilder
 {
@@ -35,27 +36,29 @@ final class SearchUrlBuilder
 
         $query = [
             'openExternalBrowser' => '1',
-            'UnCarousel' => '1',
-            'fromDMDetailFlag' => '1',
-            'clearParam' => 'Y',
-            'mode' => '1',
             'sno' => $sno,
             'keyword' => $wireKeyword,
+            'mode' => '0',
         ];
 
-        if ($canonical['dateFrom'] !== null && $canonical['dateFrom'] !== '') {
-            $query['dateFrom'] = $canonical['dateFrom'];
+        $departureDateS = self::toStorefrontDepartureDate($canonical['dateFrom'] ?? null);
+        if ($departureDateS !== null) {
+            $query['departureDateS'] = $departureDateS;
         }
 
-        if ($canonical['dateTo'] !== null && $canonical['dateTo'] !== '') {
-            $query['dateTo'] = $canonical['dateTo'];
+        $departureDateE = self::toStorefrontDepartureDate($canonical['dateTo'] ?? null);
+        if ($departureDateE !== null) {
+            $query['departureDateE'] = $departureDateE;
         }
 
         if ($condition->getDepartureCity() !== null && $condition->getDepartureCity() !== '') {
             $query['departureCity'] = $condition->getDepartureCity();
         }
 
-        $qs = http_build_query($query, '', '&', PHP_QUERY_RFC3986);
+        $query['UnCarousel'] = '1';
+        $query['mcno'] = '0';
+
+        $qs = self::buildStorefrontQueryString($query);
         $longUrl = self::SEARCH_URL_BASE . '?' . $qs;
 
         $useShort = $this->applyShortUrl;
@@ -76,6 +79,7 @@ final class SearchUrlBuilder
 
         return (new \ShortUrlService())->toPublicShortUrl($longUrl);
     }
+
 
     /**
      * Storefront listing URL without search keyword (zero-result fallback).
@@ -114,7 +118,7 @@ final class SearchUrlBuilder
     }
 
     /**
-     * Search params only (for parity checks vs ApiQueryMapper).
+     * Bonusmee listing search params only (same date contract as build()).
      *
      * @return array<string, string>
      */
@@ -128,13 +132,56 @@ final class SearchUrlBuilder
 
         $out = ['keyword' => $wireKeyword];
 
-        if ($canonical['dateFrom'] !== null) {
-            $out['dateFrom'] = $canonical['dateFrom'];
+        $departureDateS = self::toStorefrontDepartureDate($canonical['dateFrom'] ?? null);
+        if ($departureDateS !== null) {
+            $out['departureDateS'] = $departureDateS;
         }
-        if ($canonical['dateTo'] !== null) {
-            $out['dateTo'] = $canonical['dateTo'];
+        $departureDateE = self::toStorefrontDepartureDate($canonical['dateTo'] ?? null);
+        if ($departureDateE !== null) {
+            $out['departureDateE'] = $departureDateE;
         }
 
         return $out;
+    }
+
+    /**
+     * Canonical YYYY-MM-DD → Storefront departure date YYYY/MM/DD. Empty/null → omit.
+     */
+    private static function toStorefrontDepartureDate(?string $canonicalDate): ?string
+    {
+        if ($canonicalDate === null) {
+            return null;
+        }
+        $trimmed = trim($canonicalDate);
+        if ($trimmed === '') {
+            return null;
+        }
+
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $trimmed, $m) === 1) {
+            return $m[1] . '/' . $m[2] . '/' . $m[3];
+        }
+
+        return $trimmed;
+    }
+
+    /**
+     * RFC3986-encode query values, but keep literal "/" only on departureDateS/E.
+     *
+     * @param array<string, scalar> $query
+     */
+    private static function buildStorefrontQueryString(array $query): string
+    {
+        $parts = [];
+        foreach ($query as $key => $value) {
+            $name = rawurlencode((string) $key);
+            $raw = (string) $value;
+            if ($key === 'departureDateS' || $key === 'departureDateE') {
+                $parts[] = $name . '=' . $raw;
+                continue;
+            }
+            $parts[] = $name . '=' . rawurlencode($raw);
+        }
+
+        return implode('&', $parts);
     }
 }
