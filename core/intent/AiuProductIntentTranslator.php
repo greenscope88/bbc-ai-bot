@@ -4,6 +4,8 @@ declare(strict_types=1);
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiIntentUnderstandingResult.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiIntentCategory.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuClarificationReasonContract.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuSearchKeywordTokenException.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuSearchKeywordProjectionResult.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'BatsSearchIntent.php';
 
 /**
@@ -39,6 +41,20 @@ final class AiuProductIntentTranslator
 
         $budgetAmount = $this->nullableNumber($entities['budget_amount'] ?? null);
 
+        $projection = $result->getSearchKeywordProjection();
+        $searchKeywordTokens = [];
+        $projectedKeyword = null;
+        if ($result->getIntent() === AiIntentCategory::PRODUCT_SEARCH && !$clarificationRequired) {
+            if (!$projection instanceof AiuSearchKeywordProjectionResult) {
+                throw new AiuSearchKeywordTokenException(AiuSearchKeywordTokenException::TOKEN_PROJECTION_EMPTY);
+            }
+            $searchKeywordTokens = $projection->getTokens();
+            $projectedKeyword = $projection->getKeyword();
+        } elseif ($projection instanceof AiuSearchKeywordProjectionResult) {
+            $searchKeywordTokens = $projection->getTokens();
+            $projectedKeyword = $projection->getKeyword();
+        }
+
         return new BatsSearchIntent(
             '',
             BatsSearchIntent::INTENT_TOUR_SEARCH,
@@ -60,7 +76,10 @@ final class AiuProductIntentTranslator
             $clarificationReason,
             $result->getConfidence(),
             $this->nullableString($entities['destination_relation'] ?? null) ?? '',
-            is_array($entities['destination_semantics'] ?? null) ? $entities['destination_semantics'] : []
+            is_array($entities['destination_semantics'] ?? null) ? $entities['destination_semantics'] : [],
+            $searchKeywordTokens,
+            $projectedKeyword,
+            $this->nullableString($entities['travel_area'] ?? null)
         );
     }
 

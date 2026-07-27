@@ -11,7 +11,13 @@ final class BatsSearchIntentMapper
 {
     public function canMap(BatsSearchIntent $intent): bool
     {
-        return !$intent->isClarificationRequired() && $intent->getDestination() !== [];
+        if ($intent->isClarificationRequired() || $intent->getDestination() === []) {
+            return false;
+        }
+
+        $projectedKeyword = $intent->getProjectedKeyword();
+
+        return $projectedKeyword !== null && trim($projectedKeyword) !== '';
     }
 
     public function toSearchCondition(BatsSearchIntent $intent): ?SearchCondition
@@ -22,11 +28,21 @@ final class BatsSearchIntentMapper
 
         $destination = $intent->getDestination();
         $productType = $intent->getProductType();
+        $projectedKeyword = $intent->getProjectedKeyword();
+        $searchKeywordTokens = $intent->getSearchKeywordTokens();
+        if ($projectedKeyword === null || trim($projectedKeyword) === '') {
+            return null;
+        }
+
+        $keyword = trim($projectedKeyword);
+        self::assertAuthoritativeInvariant($searchKeywordTokens, $keyword);
 
         return SearchCondition::empty($intent->getFreeText())->with([
             'intent' => $intent->getIntent(),
             'destination' => $destination,
-            'keyword' => $this->resolveSearchKeyword($intent),
+            'area' => $intent->getTravelArea(),
+            'keyword' => $keyword,
+            'search_keyword_tokens' => $searchKeywordTokens,
             'departure_city' => $intent->getDepartureCity(),
             'date_from' => $intent->getDateFrom(),
             'date_to' => $intent->getDateTo(),
@@ -41,24 +57,17 @@ final class BatsSearchIntentMapper
         ])->flag('bats_intent_mapped');
     }
 
-    private function resolveSearchKeyword(BatsSearchIntent $intent): ?string
+    /**
+     * @param list<string> $searchKeywordTokens
+     */
+    private static function assertAuthoritativeInvariant(array $searchKeywordTokens, string $keyword): void
     {
-        $parts = [];
-        foreach ($intent->getMustHave() as $term) {
-            $t = trim($term);
-            if ($t !== '') {
-                $parts[] = $t;
-            }
-        }
-        if ($parts === []) {
-            $landmark = $intent->getLandmark();
-            if ($landmark !== null && trim($landmark) !== '') {
-                return trim($landmark);
-            }
-
-            return null;
+        if ($searchKeywordTokens === [] || $keyword === '') {
+            throw new \InvalidArgumentException('authoritative search keyword token invariant violated');
         }
 
-        return implode(' ', array_values(array_unique($parts)));
+        if ($keyword !== implode(' ', $searchKeywordTokens)) {
+            throw new \InvalidArgumentException('authoritative search keyword token invariant violated');
+        }
     }
 }

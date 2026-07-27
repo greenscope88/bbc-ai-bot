@@ -20,6 +20,9 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'StructuredSearchResumeLoadResult.p
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'StructuredSearchResumeMutationResult.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'StructuredSearchResumeDispositionContract.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuClarificationReasonContract.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuSearchKeywordTokenProjector.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuSearchKeywordProjectionResult.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuSearchKeywordTokenException.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'conversation' . DIRECTORY_SEPARATOR . 'ConversationOwner.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'logger.php';
 
@@ -197,6 +200,15 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
         $clarificationReason = (string) $normalized['clarification_reason'];
         $confidence = (float) $normalized['confidence'];
 
+        $projectionGate = $this->applySearchKeywordProjectionGate(
+            $detected,
+            $clarificationRequired,
+            $entities
+        );
+        $entities = $projectionGate['entities'];
+        $searchKeywordProjection = $projectionGate['projection'];
+        $projectionObservability = $projectionGate['observability'];
+
         $result = new AiIntentUnderstandingResult($detected);
         $result
             ->setEntities($entities)
@@ -208,6 +220,9 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
             ->setConfidence($confidence)
             ->setResumeDisposition($resumeDisposition)
             ->attachDatePipelineRawPresence($rawDatePresence);
+        if ($searchKeywordProjection instanceof AiuSearchKeywordProjectionResult) {
+            $result->attachSearchKeywordProjection($searchKeywordProjection);
+        }
 
         $mutationOp = null;
         $mutationStatus = null;
@@ -260,6 +275,7 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
             'clear_before_search_result' => $clearBeforeSearch,
             'trace_id' => $traceId,
         ];
+        $obs = array_merge($obs, $projectionObservability);
         $result->attachStructuredSearchResumeObservability($obs);
         $this->logResumeEvent('structured_search_resume_lifecycle', $obs);
 
@@ -416,6 +432,97 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
         }
 
         return $out;
+    }
+
+    /**
+     * @param array<string, mixed> $entities
+     * @return array{
+     *   entities: array<string, mixed>,
+     *   projection: AiuSearchKeywordProjectionResult|null,
+     *   observability: array<string, mixed>
+     * }
+     */
+    private function applySearchKeywordProjectionGate(
+        string $intent,
+        bool $clarificationRequired,
+        array $entities
+    ): array {
+        $observability = [
+            'aiu_search_token_projection_status' => 'skipped',
+            'aiu_search_token_projection_reason' => '',
+            'aiu_search_token_count' => 0,
+            'aiu_search_token_duplicate_removed_count' => 0,
+            'aiu_search_keyword_projection_length' => 0,
+            'aiu_search_keyword_hash8' => '',
+            'capability_resume_tokens_present' => false,
+            'capability_resume_token_count' => 0,
+        ];
+
+        if ($intent !== AiIntentCategory::PRODUCT_SEARCH) {
+            return [
+                'entities' => $entities,
+                'projection' => null,
+                'observability' => $observability,
+            ];
+        }
+
+        $hasKey = array_key_exists('search_keyword_tokens', $entities);
+        $projector = new AiuSearchKeywordTokenProjector();
+
+        if ($clarificationRequired) {
+            if (!$hasKey) {
+                return [
+                    'entities' => $entities,
+                    'projection' => null,
+                    'observability' => $observability,
+                ];
+            }
+
+            $projection = $projector->project(
+                $entities['search_keyword_tokens'],
+                AiuSearchKeywordTokenProjector::MODE_OPTIONAL_PRESENT
+            );
+            $entities['search_keyword_tokens'] = $projection->getTokens();
+
+            return [
+                'entities' => $entities,
+                'projection' => $projection,
+                'observability' => $this->projectionObservability($projection, true),
+            ];
+        }
+
+        $projection = $projector->project(
+            $hasKey ? $entities['search_keyword_tokens'] : null,
+            AiuSearchKeywordTokenProjector::MODE_REQUIRED
+        );
+        $entities['search_keyword_tokens'] = $projection->getTokens();
+
+        return [
+            'entities' => $entities,
+            'projection' => $projection,
+            'observability' => $this->projectionObservability($projection, true),
+        ];
+    }
+
+  /**
+     * @return array<string, mixed>
+     */
+    private function projectionObservability(AiuSearchKeywordProjectionResult $projection, bool $present): array
+    {
+        $keyword = $projection->getKeyword();
+
+        return [
+            'aiu_search_token_projection_status' => 'ok',
+            'aiu_search_token_projection_reason' => $projection->getDuplicateRemovedCount() > 0
+                ? AiuSearchKeywordTokenException::TOKEN_DUPLICATE_REMOVED
+                : '',
+            'aiu_search_token_count' => count($projection->getTokens()),
+            'aiu_search_token_duplicate_removed_count' => $projection->getDuplicateRemovedCount(),
+            'aiu_search_keyword_projection_length' => $projection->getProjectionLength(),
+            'aiu_search_keyword_hash8' => substr(hash('crc32b', $keyword), 0, 8),
+            'capability_resume_tokens_present' => $present,
+            'capability_resume_token_count' => count($projection->getTokens()),
+        ];
     }
 
     /**

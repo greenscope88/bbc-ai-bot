@@ -34,6 +34,11 @@ final class SearchConditionCanonicalizer
      */
     public static function canonicalize(SearchCondition $condition): array
     {
+        $flags = $condition->getParserFlags();
+        if (!empty($flags['bats_intent_mapped'])) {
+            return self::canonicalizeAuthoritative($condition);
+        }
+
         $destination = $condition->getDestination();
         $area = $condition->getArea();
         $keyword = $condition->getKeyword();
@@ -77,6 +82,82 @@ final class SearchConditionCanonicalizer
             'budget_max' => $condition->getBudgetMax(),
             'area_fallback' => $areaFallback,
         ];
+    }
+
+    /**
+     * Authoritative AIU-mapped SearchCondition keyword canonicalization (B0-LINE-01D-3).
+     *
+     * @return array{
+     *   keyword: string,
+     *   destination: list<string>,
+     *   country: ?string,
+     *   city: ?string,
+     *   dateFrom: ?string,
+     *   dateTo: ?string,
+     *   budget_min: ?int,
+     *   budget_max: ?int,
+     *   area_fallback: bool
+     * }
+     */
+    public static function canonicalizeAuthoritative(SearchCondition $condition): array
+    {
+        self::assertAuthoritativeTokenInvariant($condition);
+
+        $keyword = $condition->getKeyword();
+        $resolvedKeyword = $keyword !== null ? trim($keyword) : '';
+        if ($resolvedKeyword === '') {
+            throw new \InvalidArgumentException('authoritative search keyword is empty');
+        }
+
+        $destination = $condition->getDestination();
+        $area = $condition->getArea();
+
+        $country = null;
+        $city = null;
+        if ($destination !== []) {
+            $city = count($destination) === 1 ? $destination[0] : implode(' ', $destination);
+            if ($area !== null && isset(self::AREA_AS_COUNTRY[$area])) {
+                $country = self::AREA_AS_COUNTRY[$area];
+            }
+        } elseif ($area !== null && $area !== '') {
+            if (isset(self::AREA_AS_COUNTRY[$area])) {
+                $country = $area;
+            }
+        }
+
+        $areaFallback = $area !== null && $area !== '' && $country === null;
+
+        return [
+            'keyword' => $resolvedKeyword,
+            'destination' => $destination,
+            'country' => $country,
+            'city' => $city,
+            'dateFrom' => $condition->getDateFrom(),
+            'dateTo' => $condition->getDateTo(),
+            'budget_min' => $condition->getBudgetMin(),
+            'budget_max' => $condition->getBudgetMax(),
+            'area_fallback' => $areaFallback,
+        ];
+    }
+
+    public static function assertAuthoritativeTokenInvariant(SearchCondition $condition): void
+    {
+        $flags = $condition->getParserFlags();
+        if (empty($flags['bats_intent_mapped'])) {
+            return;
+        }
+
+        $tokens = $condition->getSearchKeywordTokens();
+        $keyword = $condition->getKeyword();
+        $resolvedKeyword = $keyword !== null ? trim($keyword) : '';
+
+        if ($tokens === [] || $resolvedKeyword === '') {
+            throw new \InvalidArgumentException('authoritative search keyword token invariant violated');
+        }
+
+        if ($resolvedKeyword !== implode(' ', $tokens)) {
+            throw new \InvalidArgumentException('authoritative search keyword token invariant violated');
+        }
     }
 
     /**

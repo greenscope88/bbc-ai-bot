@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'SearchCondition.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'SearchConditionCanonicalizer.php';
 
 /**
  * Adapter-layer source query mapping (AIU v2 P1 Patch 2 / Product Type).
@@ -14,6 +15,10 @@ require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPAR
  */
 final class SourceQueryMapper
 {
+    public const PROVIDER_WIRE_MODE_HOSTB_DESTINATION_EXCLUDE = 'hostb_destination_exclude';
+    public const PROVIDER_WIRE_MODE_HOSTB_DESTINATION_ONLY = 'hostb_destination_only';
+    public const PROVIDER_WIRE_MODE_KEYWORD_ONLY_FULL = 'keyword_only_full';
+
     /** Platforms with a native destination search field (wire may send both). */
     private const PLATFORMS_WITH_DESTINATION_FIELD = [
         'hostb',
@@ -83,6 +88,12 @@ final class SourceQueryMapper
      */
     public static function buildSourceKeywordQueryFromSearchCondition(SearchCondition $condition): string
     {
+        if (self::isAuthoritativeMapped($condition)) {
+            $keyword = self::trimNonEmpty($condition->getKeyword());
+
+            return $keyword !== null ? $keyword : '';
+        }
+
         $candidates = [];
 
         $area = self::trimNonEmpty($condition->getArea());
@@ -130,11 +141,11 @@ final class SourceQueryMapper
      */
     public static function buildHostBKeywordFromSearchCondition(SearchCondition $condition): string
     {
-        $exclude = [];
-        $area = self::trimNonEmpty($condition->getArea());
-        if ($area !== null) {
-            $exclude[$area] = true;
+        if (self::isAuthoritativeMapped($condition)) {
+            return self::buildHostBKeywordFromCanonicalTokens($condition);
         }
+
+        $exclude = [];
         foreach ($condition->getDestination() as $destToken) {
             $part = self::trimNonEmpty($destToken);
             if ($part !== null) {
@@ -176,6 +187,139 @@ final class SourceQueryMapper
         }
 
         return self::joinUniqueTokens($candidates);
+    }
+
+    /**
+     * @return array{
+     *   provider_wire_keyword_length: int,
+     *   provider_wire_keyword_mode: string
+     * }
+     */
+    public static function resolveAuthoritativeWireKeywordObservability(SearchCondition $condition): array
+    {
+        if (!self::isAuthoritativeMapped($condition)) {
+            return [
+                'provider_wire_keyword_length' => 0,
+                'provider_wire_keyword_mode' => '',
+            ];
+        }
+
+        $event = self::buildProviderWireObservabilityEvent($condition, '', 'hostb');
+
+        return [
+            'provider_wire_keyword_length' => $event['provider_wire_keyword_length'],
+            'provider_wire_keyword_mode' => $event['provider_wire_keyword_mode'],
+        ];
+    }
+
+    /**
+     * Production trace event for provider wire keyword mapping (no raw keyword/tokens).
+     *
+     * @return array{
+     *   trace_id: ?string,
+     *   source_id: string,
+     *   provider_wire_keyword_mode: string,
+     *   provider_wire_keyword_length: int,
+     *   search_keyword_token_count: int,
+     *   destination_count: int,
+     *   keyword_present: bool,
+     *   destination_present: bool,
+     *   mapping_status: string,
+     *   failure_code: string
+     * }
+     */
+    public static function buildProviderWireObservabilityEvent(
+        SearchCondition $condition,
+        string $traceId,
+        string $sourceId
+    ): array {
+        $destinations = $condition->getDestination();
+        $destinationCount = count($destinations);
+        $hasDestination = $destinationCount > 0;
+
+        if (!self::isAuthoritativeMapped($condition)) {
+            return [
+                'trace_id' => $traceId !== '' ? $traceId : null,
+                'source_id' => $sourceId,
+                'provider_wire_keyword_mode' => '',
+                'provider_wire_keyword_length' => 0,
+                'search_keyword_token_count' => 0,
+                'destination_count' => $destinationCount,
+                'keyword_present' => false,
+                'destination_present' => $hasDestination,
+                'mapping_status' => 'skipped_non_authoritative',
+                'failure_code' => '',
+            ];
+        }
+
+        try {
+            $wireKeyword = $hasDestination
+                ? self::buildHostBKeywordFromSearchCondition($condition)
+                : self::buildSourceKeywordQueryFromSearchCondition($condition);
+        } catch (\InvalidArgumentException $e) {
+            return [
+                'trace_id' => $traceId !== '' ? $traceId : null,
+                'source_id' => $sourceId,
+                'provider_wire_keyword_mode' => '',
+                'provider_wire_keyword_length' => 0,
+                'search_keyword_token_count' => count($condition->getSearchKeywordTokens()),
+                'destination_count' => $destinationCount,
+                'keyword_present' => false,
+                'destination_present' => $hasDestination,
+                'mapping_status' => 'fail_closed',
+                'failure_code' => 'authoritative_wire_keyword_invariant',
+            ];
+        }
+
+        $mode = self::PROVIDER_WIRE_MODE_KEYWORD_ONLY_FULL;
+        if ($hasDestination) {
+            $mode = $wireKeyword === ''
+                ? self::PROVIDER_WIRE_MODE_HOSTB_DESTINATION_ONLY
+                : self::PROVIDER_WIRE_MODE_HOSTB_DESTINATION_EXCLUDE;
+        }
+
+        return [
+            'trace_id' => $traceId !== '' ? $traceId : null,
+            'source_id' => $sourceId,
+            'provider_wire_keyword_mode' => $mode,
+            'provider_wire_keyword_length' => $wireKeyword !== '' ? mb_strlen($wireKeyword, 'UTF-8') : 0,
+            'search_keyword_token_count' => count($condition->getSearchKeywordTokens()),
+            'destination_count' => $destinationCount,
+            'keyword_present' => $wireKeyword !== '',
+            'destination_present' => $hasDestination,
+            'mapping_status' => 'ok',
+            'failure_code' => '',
+        ];
+    }
+
+    /**
+     * @throws \InvalidArgumentException
+     */
+    private static function buildHostBKeywordFromCanonicalTokens(SearchCondition $condition): string
+    {
+        SearchConditionCanonicalizer::assertAuthoritativeTokenInvariant($condition);
+
+        $tokens = $condition->getSearchKeywordTokens();
+        if ($tokens === []) {
+            throw new \InvalidArgumentException('authoritative search_keyword_tokens empty');
+        }
+
+        $exclude = [];
+        foreach ($condition->getDestination() as $destToken) {
+            $part = self::trimNonEmpty($destToken);
+            if ($part !== null) {
+                $exclude[$part] = true;
+            }
+        }
+
+        $remaining = [];
+        foreach ($tokens as $token) {
+            if (!isset($exclude[$token])) {
+                $remaining[] = $token;
+            }
+        }
+
+        return implode(' ', $remaining);
     }
     public static function buildSourceKeywordQueryFromDocument(array $document): string
     {
@@ -340,5 +484,12 @@ final class SourceQueryMapper
         $trimmed = trim($value);
 
         return $trimmed !== '' ? $trimmed : null;
+    }
+
+    private static function isAuthoritativeMapped(SearchCondition $condition): bool
+    {
+        $flags = $condition->getParserFlags();
+
+        return !empty($flags['bats_intent_mapped']);
     }
 }
