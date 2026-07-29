@@ -56,6 +56,9 @@ final class SearchCondition
     /** @var list<string> */
     private $special_tags;
 
+    /** @var list<string> */
+    private $search_keyword_tokens;
+
     /** @var string|null */
     private $free_text;
 
@@ -75,6 +78,7 @@ final class SearchCondition
      * @param list<string> $must_have
      * @param list<string> $travel_style
      * @param list<string> $special_tags
+     * @param list<string> $search_keyword_tokens
      * @param array<string, bool> $parser_flags
      */
     public function __construct(
@@ -94,6 +98,7 @@ final class SearchCondition
         array $must_have = [],
         array $travel_style = [],
         array $special_tags = [],
+        array $search_keyword_tokens = [],
         ?string $free_text = null,
         float $confidence = 0.0,
         array $parser_flags = [],
@@ -116,6 +121,7 @@ final class SearchCondition
         $this->must_have = $must_have;
         $this->travel_style = $travel_style;
         $this->special_tags = $special_tags;
+        $this->search_keyword_tokens = self::tokenListCopy($search_keyword_tokens);
         $this->free_text = $free_text;
         $this->confidence = $confidence;
         $this->parser_flags = $parser_flags;
@@ -130,7 +136,7 @@ final class SearchCondition
             $text = null;
         }
 
-        return new self(self::INTENT_TOUR_SEARCH, null, null, [], null, null, null, null, null, null, null, null, null, [], [], [], $text);
+        return new self(self::INTENT_TOUR_SEARCH, null, null, [], null, null, null, null, null, null, null, null, null, [], [], [], [], $text);
     }
 
     public function getIntent(): string
@@ -217,6 +223,12 @@ final class SearchCondition
         return $this->special_tags;
     }
 
+    /** @return list<string> */
+    public function getSearchKeywordTokens(): array
+    {
+        return $this->search_keyword_tokens;
+    }
+
     public function getFreeText(): ?string
     {
         return $this->free_text;
@@ -273,6 +285,9 @@ final class SearchCondition
             array_key_exists('must_have', $patch) ? self::stringList($patch['must_have']) : $this->must_have,
             array_key_exists('travel_style', $patch) ? self::stringList($patch['travel_style']) : $this->travel_style,
             array_key_exists('special_tags', $patch) ? self::stringList($patch['special_tags']) : $this->special_tags,
+            array_key_exists('search_keyword_tokens', $patch)
+                ? self::tokenListCopy($patch['search_keyword_tokens'])
+                : $this->search_keyword_tokens,
             array_key_exists('free_text', $patch) ? self::nullableString($patch['free_text']) : $this->free_text,
             isset($patch['confidence']) ? (float) $patch['confidence'] : $this->confidence,
             array_key_exists('parser_flags', $patch)
@@ -320,6 +335,7 @@ final class SearchCondition
             'must_have' => $this->must_have,
             'travel_style' => $this->travel_style,
             'special_tags' => $this->special_tags,
+            'search_keyword_tokens' => $this->search_keyword_tokens,
             'free_text' => $this->free_text,
             'confidence' => round($this->confidence, 2),
             'parser_flags' => $this->parser_flags,
@@ -354,6 +370,28 @@ final class SearchCondition
         }
 
         return array_values(array_unique($out));
+    }
+
+    /**
+     * Transport copy only — no trim, dedup, or normalization.
+     *
+     * @param mixed $value
+     * @return list<string>
+     */
+    private static function tokenListCopy($value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($value as $item) {
+            if (is_string($item)) {
+                $out[] = $item;
+            }
+        }
+
+        return $out;
     }
 
     /**
