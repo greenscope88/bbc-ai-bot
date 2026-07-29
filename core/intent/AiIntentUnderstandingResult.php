@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiIntentCategory.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuSearchKeywordProjectionResult.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'conversation' . DIRECTORY_SEPARATOR . 'ConversationOwner.php';
 
 /**
@@ -54,6 +55,8 @@ final class AiIntentUnderstandingResult
      * }|null
      */
     private ?array $datePipelineRawPresence = null;
+
+    private ?AiuSearchKeywordProjectionResult $searchKeywordProjection = null;
 
     public function __construct(string $intent)
     {
@@ -259,6 +262,21 @@ final class AiIntentUnderstandingResult
     public function getDatePipelineRawPresence(): ?array
     {
         return $this->datePipelineRawPresence;
+    }
+
+    public function getSearchKeywordProjection(): ?AiuSearchKeywordProjectionResult
+    {
+        return $this->searchKeywordProjection;
+    }
+
+    public function attachSearchKeywordProjection(AiuSearchKeywordProjectionResult $projection): self
+    {
+        if ($this->searchKeywordProjection !== null) {
+            return $this;
+        }
+        $this->searchKeywordProjection = $projection;
+
+        return $this;
     }
 
     /**
