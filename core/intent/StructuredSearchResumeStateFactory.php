@@ -286,6 +286,10 @@ final class StructuredSearchResumeStateFactory
         $out['product_type'] = self::nullableString($aiuEntities['product_type'] ?? null);
         $out['must_have'] = self::stringList($aiuEntities['must_have'] ?? []);
         $out['avoid'] = self::stringList($aiuEntities['avoid'] ?? []);
+        if (array_key_exists('search_keyword_tokens', $aiuEntities)) {
+            $out['search_keyword_tokens'] = self::tokenListCanonical($aiuEntities['search_keyword_tokens']);
+        }
+        $out['travel_area'] = self::nullableString($aiuEntities['travel_area'] ?? null);
 
         return $out;
     }
@@ -322,6 +326,14 @@ final class StructuredSearchResumeStateFactory
         $out['avoid'] = $avoid !== []
             ? $avoid
             : self::stringList($aiuEntities['avoid'] ?? []);
+        if (array_key_exists('search_keyword_tokens', $aiuEntities)) {
+            $out['search_keyword_tokens'] = self::tokenListCanonical($aiuEntities['search_keyword_tokens']);
+        } elseif ($intent->getSearchKeywordTokens() !== []) {
+            $out['search_keyword_tokens'] = $intent->getSearchKeywordTokens();
+        }
+        $out['travel_area'] = $intent->getTravelArea() !== null
+            ? $intent->getTravelArea()
+            : self::nullableString($aiuEntities['travel_area'] ?? null);
 
         return $out;
     }
@@ -345,6 +357,7 @@ final class StructuredSearchResumeStateFactory
             'product_type' => null,
             'must_have' => [],
             'avoid' => [],
+            'travel_area' => null,
         ];
     }
 
@@ -483,6 +496,34 @@ final class StructuredSearchResumeStateFactory
         $out['product_type'] = self::nullableString($raw['product_type'] ?? null);
         $out['must_have'] = self::stringList($raw['must_have'] ?? []);
         $out['avoid'] = self::stringList($raw['avoid'] ?? []);
+        if (array_key_exists('search_keyword_tokens', $raw)) {
+            $out['search_keyword_tokens'] = self::tokenListCanonical($raw['search_keyword_tokens']);
+        }
+        $out['travel_area'] = self::nullableString($raw['travel_area'] ?? null);
+
+        return $out;
+    }
+
+    /**
+     * @param mixed $value
+     * @return list<string>
+     */
+    private static function tokenListCanonical($value): array
+    {
+        if (!is_array($value)) {
+            throw new \InvalidArgumentException('resume state search_keyword_tokens must be array');
+        }
+        if ($value !== [] && array_keys($value) !== range(0, count($value) - 1)) {
+            throw new \InvalidArgumentException('resume state search_keyword_tokens must be list');
+        }
+
+        $out = [];
+        foreach ($value as $item) {
+            if (!is_string($item)) {
+                throw new \InvalidArgumentException('resume state search_keyword_tokens invalid element');
+            }
+            $out[] = $item;
+        }
 
         return $out;
     }

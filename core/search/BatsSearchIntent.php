@@ -71,12 +71,22 @@ final class BatsSearchIntent
     /** @var list<array<string, mixed>> */
     private $destination_semantics;
 
+    /** @var list<string> */
+    private $search_keyword_tokens;
+
+    /** @var string|null */
+    private $projected_keyword;
+
+    /** @var string|null */
+    private $travel_area;
+
     /**
      * @param list<string> $destination
      * @param list<string> $destination_alias
      * @param list<string> $must_have
      * @param list<string> $avoid
      * @param list<array<string, mixed>> $destination_semantics
+     * @param list<string> $search_keyword_tokens
      */
     public function __construct(
         string $free_text,
@@ -99,7 +109,10 @@ final class BatsSearchIntent
         ?string $clarification_reason = null,
         float $confidence = 0.0,
         string $destination_relation = '',
-        array $destination_semantics = []
+        array $destination_semantics = [],
+        array $search_keyword_tokens = [],
+        ?string $projected_keyword = null,
+        ?string $travel_area = null
     ) {
         $this->free_text = trim($free_text);
         $this->intent = $intent;
@@ -122,6 +135,9 @@ final class BatsSearchIntent
         $this->confidence = max(0.0, min(1.0, $confidence));
         $this->destination_relation = trim($destination_relation);
         $this->destination_semantics = self::semanticsList($destination_semantics);
+        $this->search_keyword_tokens = self::stringList($search_keyword_tokens);
+        $this->projected_keyword = self::nullableString($projected_keyword);
+        $this->travel_area = self::nullableString($travel_area);
     }
 
     public static function empty(string $freeText): self
@@ -239,6 +255,22 @@ final class BatsSearchIntent
         return $this->destination_semantics;
     }
 
+    /** @return list<string> */
+    public function getSearchKeywordTokens(): array
+    {
+        return $this->search_keyword_tokens;
+    }
+
+    public function getProjectedKeyword(): ?string
+    {
+        return $this->projected_keyword;
+    }
+
+    public function getTravelArea(): ?string
+    {
+        return $this->travel_area;
+    }
+
     /**
      * @param array<string, mixed> $patch
      */
@@ -283,7 +315,16 @@ final class BatsSearchIntent
                 : $this->destination_relation,
             array_key_exists('destination_semantics', $patch)
                 ? self::semanticsList($patch['destination_semantics'])
-                : $this->destination_semantics
+                : $this->destination_semantics,
+            array_key_exists('search_keyword_tokens', $patch)
+                ? self::stringList($patch['search_keyword_tokens'])
+                : $this->search_keyword_tokens,
+            array_key_exists('projected_keyword', $patch)
+                ? self::nullableString($patch['projected_keyword'])
+                : $this->projected_keyword,
+            array_key_exists('travel_area', $patch)
+                ? self::nullableString($patch['travel_area'])
+                : $this->travel_area
         );
     }
 
@@ -314,6 +355,9 @@ final class BatsSearchIntent
             'free_text' => $this->free_text,
             'destination_relation' => $this->destination_relation,
             'destination_semantics' => $this->destination_semantics,
+            'search_keyword_tokens' => $this->search_keyword_tokens,
+            'projected_keyword' => $this->projected_keyword,
+            'travel_area' => $this->travel_area,
         ];
     }
 

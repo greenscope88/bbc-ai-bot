@@ -40,6 +40,8 @@ final class StructuredSearchResumeState
         'product_type',
         'must_have',
         'avoid',
+        'search_keyword_tokens',
+        'travel_area',
     ];
 
     private int $schemaVersion;

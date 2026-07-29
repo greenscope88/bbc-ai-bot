@@ -38,7 +38,8 @@ $dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'bbc_cap_resume_' . getmypid()
 $store = new StructuredSearchResumeStateStore($dir);
 $service = new StructuredSearchCapabilityResumeService($store);
 $identity = StructuredSearchResumeIdentity::fromParts('tCap', 'OAcap', 'Ucap');
-$ref = new DateTimeImmutable('2026-07-22 12:00:00', new DateTimeZone('Asia/Taipei'));
+// Use near-now reference so store clear (wall-clock expiry under lock) still sees WAITING.
+$ref = new DateTimeImmutable('now', new DateTimeZone('Asia/Taipei'));
 
 $destPatch = AiuDestinationSemanticsTestFixtures::productSearchDestinationPatch(['東京', '大阪'], 'or');
 $intentOr = new BatsSearchIntent(
@@ -175,7 +176,9 @@ $intentSingle = new BatsSearchIntent(
     null,
     0.95,
     $destSingle['destination_relation'],
-    $destSingle['destination_semantics']
+    $destSingle['destination_semantics'],
+    ['東京'],
+    '東京'
 );
 $mapper = new BatsSearchIntentMapper();
 $sc = $mapper->toSearchCondition($intentSingle);
@@ -352,6 +355,16 @@ assert_true($round->getAskedEntity() === 'date', '16 round-trip');
 $doc = $aiuState->toArray();
 assert_true(!array_key_exists('missing_entity', $doc), '17 no missing_entity key');
 assert_true(array_key_exists('asked_entity', $doc), '17 asked_entity present');
+
+// 18: Schema v2 known entity keys include search_keyword_tokens and travel_area
+assert_true(
+    in_array('search_keyword_tokens', StructuredSearchResumeState::KNOWN_ENTITY_KEYS, true),
+    '18 search_keyword_tokens key'
+);
+assert_true(
+    in_array('travel_area', StructuredSearchResumeState::KNOWN_ENTITY_KEYS, true),
+    '18 travel_area key'
+);
 
 foreach (glob($dir . DIRECTORY_SEPARATOR . '*') ?: [] as $f) {
     @unlink($f);
