@@ -6,6 +6,7 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'BbcshopsProductImageUrlBuilder.php
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'tour_detail_url_builder.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'ShortUrlProviderInterface.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'ShortUrlServiceShortUrlProvider.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'ProductLineageObservation.php';
 
 /**
  * Unique publication-cap owner for BBCShops Flex.
@@ -25,6 +26,9 @@ final class PublishedProductSetSelector
 
     private BbcshopsProductImageUrlBuilder $imageUrlBuilder;
 
+    /** @var array<string, mixed>|null */
+    private ?array $lastLineageTrace = null;
+
     public function __construct(
         ?TourDetailUrlBuilder $detailUrlBuilder = null,
         ?ShortUrlProviderInterface $shortUrlProvider = null,
@@ -43,6 +47,8 @@ final class PublishedProductSetSelector
     {
         $storeToken = self::positiveToken($storeNo);
         if ($storeToken === null) {
+            $this->lastLineageTrace = $this->buildEmptyStoreTrace($eligibleOrderedProducts);
+
             return new PublishedProductSet([]);
         }
 
@@ -50,26 +56,60 @@ final class PublishedProductSetSelector
         $identityOrder = [];
         /** @var array<string, list<array<string, mixed>>> $rowsByIdentity */
         $rowsByIdentity = [];
+        /** @var array<int, array<string, mixed>> $pendingDecisions keyed by input index */
+        $pendingDecisions = [];
+        /** @var array<string, list<int>> $inputIndexesByIdentity */
+        $inputIndexesByIdentity = [];
 
-        foreach ($eligibleOrderedProducts as $row) {
+        foreach (array_values($eligibleOrderedProducts) as $inputIndex => $row) {
             if (!is_array($row)) {
+                $pendingDecisions[$inputIndex] = [
+                    'input_index' => $inputIndex,
+                    'stable_key' => 'not_observable',
+                    'outcome' => 'drop',
+                    'target_key' => null,
+                    'reason_code' => 'invalid_input_shape',
+                    'aggregated_dates' => [],
+                ];
                 continue;
             }
+
             $couponNo = self::positiveToken($row['couponNo'] ?? null);
             if ($couponNo === null) {
+                $pendingDecisions[$inputIndex] = [
+                    'input_index' => $inputIndex,
+                    'stable_key' => 'not_observable',
+                    'outcome' => 'drop',
+                    'target_key' => null,
+                    'reason_code' => 'missing_coupon_no',
+                    'aggregated_dates' => [],
+                ];
                 continue;
             }
+
             $factId = self::SOURCE_ID . ':' . $storeToken . ':' . $couponNo;
-            if (!isset($rowsByIdentity[$factId])) {
+            $isFirstForIdentity = !isset($rowsByIdentity[$factId]);
+            if ($isFirstForIdentity) {
                 $identityOrder[] = $factId;
                 $rowsByIdentity[$factId] = [];
+                $inputIndexesByIdentity[$factId] = [];
             }
             $rowsByIdentity[$factId][] = $row;
+            $inputIndexesByIdentity[$factId][] = $inputIndex;
+            $pendingDecisions[$inputIndex] = [
+                'input_index' => $inputIndex,
+                'stable_key' => $factId,
+                'outcome' => $isFirstForIdentity ? 'pending' : 'aggregate',
+                'target_key' => $factId,
+                'reason_code' => $isFirstForIdentity ? 'pending' : 'aggregated_into_identity',
+                'aggregated_dates' => [],
+            ];
         }
 
         $published = [];
         /** @var array<string, string> $shortUrlByLong */
         $shortUrlByLong = [];
+        $processedIdentities = [];
 
         foreach ($identityOrder as $factId) {
             if (count($published) >= self::MAX_PUBLISHED_PRODUCTS) {
@@ -77,12 +117,118 @@ final class PublishedProductSetSelector
             }
             $rows = $rowsByIdentity[$factId];
             $item = $this->buildPublishedIdentity($factId, $storeToken, $rows, $shortUrlByLong);
+            $processedIdentities[$factId] = true;
+            $indexes = $inputIndexesByIdentity[$factId] ?? [];
             if ($item !== null) {
+                $dates = isset($item['departure_dates']) && is_array($item['departure_dates'])
+                    ? array_values($item['departure_dates'])
+                    : [];
+                foreach ($indexes as $position => $inputIndex) {
+                    $pendingDecisions[$inputIndex] = [
+                        'input_index' => $inputIndex,
+                        'stable_key' => $factId,
+                        'outcome' => $position === 0 ? 'keep' : 'aggregate',
+                        'target_key' => $factId,
+                        'reason_code' => $position === 0 ? 'kept' : 'aggregated_into_identity',
+                        'aggregated_dates' => $dates,
+                    ];
+                }
                 $published[] = $item;
+                continue;
+            }
+
+            foreach ($indexes as $inputIndex) {
+                $pendingDecisions[$inputIndex] = [
+                    'input_index' => $inputIndex,
+                    'stable_key' => $factId,
+                    'outcome' => 'drop',
+                    'target_key' => null,
+                    'reason_code' => 'publish_validation_failed',
+                    'aggregated_dates' => [],
+                ];
             }
         }
 
+        foreach ($identityOrder as $factId) {
+            if (isset($processedIdentities[$factId])) {
+                continue;
+            }
+            foreach ($inputIndexesByIdentity[$factId] ?? [] as $inputIndex) {
+                $pendingDecisions[$inputIndex] = [
+                    'input_index' => $inputIndex,
+                    'stable_key' => $factId,
+                    'outcome' => 'drop',
+                    'target_key' => null,
+                    'reason_code' => 'cap_exceeded',
+                    'aggregated_dates' => [],
+                ];
+            }
+        }
+
+        ksort($pendingDecisions);
+        $decisions = array_values($pendingDecisions);
+        $inputKeys = [];
+        foreach ($decisions as $decision) {
+            $key = (string) ($decision['stable_key'] ?? 'not_observable');
+            if ($key !== 'not_observable' && !in_array($key, $inputKeys, true)) {
+                $inputKeys[] = $key;
+            }
+        }
+
+        $outputKeys = [];
+        foreach ($published as $product) {
+            $factId = trim((string) ($product['fact_id'] ?? ''));
+            if ($factId !== '') {
+                $outputKeys[] = $factId;
+            }
+        }
+
+        $this->lastLineageTrace = [
+            'input_count' => count($decisions),
+            'output_count' => count($outputKeys),
+            'input_keys' => $inputKeys,
+            'output_keys' => $outputKeys,
+            'decisions' => $decisions,
+        ];
+
         return new PublishedProductSet($published);
+    }
+
+    /**
+     * Diagnostic-only trace from the most recent select() call.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function getLastLineageTrace(): ?array
+    {
+        return $this->lastLineageTrace;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $eligibleOrderedProducts
+     * @return array<string, mixed>
+     */
+    private function buildEmptyStoreTrace(array $eligibleOrderedProducts): array
+    {
+        $decisions = [];
+        foreach (array_values($eligibleOrderedProducts) as $inputIndex => $row) {
+            $decisions[] = [
+                'input_index' => $inputIndex,
+                'stable_key' => 'not_observable',
+                'outcome' => 'drop',
+                'target_key' => null,
+                'reason_code' => 'invalid_store_no',
+                'aggregated_dates' => [],
+            ];
+        }
+
+        return [
+            'input_count' => count($decisions),
+            'output_count' => 0,
+            'input_keys' => [],
+            'output_keys' => [],
+            'decisions' => $decisions,
+        ];
     }
 
     /**

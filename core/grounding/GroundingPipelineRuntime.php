@@ -20,6 +20,7 @@ require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'response' . DIRECTORY_SEP
     . DIRECTORY_SEPARATOR . 'ClarificationContractFactory.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'published'
     . DIRECTORY_SEPARATOR . 'PublishedProductSetSelector.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'ProductLineageObservation.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'published'
     . DIRECTORY_SEPARATOR . 'PublicationIntegrityValidator.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'renderer'
@@ -196,6 +197,11 @@ final class GroundingPipelineRuntime
                 throw new \RuntimeException('published_product_set_selector_invalid');
             }
             $publishedSet = $selector->select($searchResults, $storeNo);
+            $traceId = trim((string) ($params['trace_id'] ?? ''));
+            $lineageTrace = $selector->getLastLineageTrace();
+            if (is_array($lineageTrace)) {
+                ProductLineageObservation::emitPublishedProductSet($traceId, $lineageTrace);
+            }
             if ($searchResults !== [] && $publishedSet->getCount() === 0) {
                 throw new \RuntimeException('bbcshops_published_set_empty_despite_eligible');
             }
@@ -221,6 +227,11 @@ final class GroundingPipelineRuntime
 
             if ($publishedSet->getCount() > 0) {
                 $renderResult = (new BbcshopsFlexCarouselRenderer())->render($publishedSet);
+                ProductLineageObservation::emitFlexCarousel(
+                    $traceId,
+                    $publishedSet->getProducts(),
+                    $renderResult->getBubbleFactIds()
+                );
                 (new LineFlexCarouselPayloadValidator())->validate($renderResult->getWireFlexMessage());
                 (new PublicationIntegrityValidator())->validate($publishedSet, $productFacts, $renderResult, $productFactIds);
                 $messages[] = $renderResult->getWireFlexMessage();

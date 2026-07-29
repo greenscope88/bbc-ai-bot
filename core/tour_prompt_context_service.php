@@ -17,6 +17,8 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'A
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'SearchUrlBuilder.php';
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'HybridSearchApiDebugLogger.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'ProductLineageObservation.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'logger.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'TravelBMultiSourceLinkBuilder.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'product_source' . DIRECTORY_SEPARATOR . 'ShortUrlProviderInterface.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'BatsSearchIntent.php';
@@ -485,6 +487,8 @@ final class TourPromptContextService
                 $items[$index] = $item;
             }
         }
+
+        ProductLineageObservation::emitHostBResponse($traceId, array_values($items), $storeNo);
 
         $policyRuntime = isset($params['productSearchPolicyRuntime']) && $params['productSearchPolicyRuntime'] instanceof ProductSearchPolicyRuntime
             ? $params['productSearchPolicyRuntime']
