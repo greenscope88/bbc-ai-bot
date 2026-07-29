@@ -23,6 +23,7 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuClarificationReasonContract.php
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuSearchKeywordTokenProjector.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuSearchKeywordProjectionResult.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuSearchKeywordTokenException.php';
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'BatsSearchIntent.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'conversation' . DIRECTORY_SEPARATOR . 'ConversationOwner.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'logger.php';
 
@@ -219,7 +220,11 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
             ->setClarification($clarificationRequired, $clarificationReason)
             ->setConfidence($confidence)
             ->setResumeDisposition($resumeDisposition)
-            ->attachDatePipelineRawPresence($rawDatePresence);
+            ->attachDatePipelineRawPresence($rawDatePresence)
+            ->attachDatePipelineReferenceContext(
+                $promptRequest->getReferenceCalendarDate(),
+                $promptRequest->getReferenceTimezone()
+            );
         if ($searchKeywordProjection instanceof AiuSearchKeywordProjectionResult) {
             $result->attachSearchKeywordProjection($searchKeywordProjection);
         }
@@ -551,7 +556,13 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
             : [];
 
         $dateRange = $entities['date_range'] ?? null;
+        $dateRangePresent = array_key_exists('date_range', $entities);
         $hasDateRange = is_array($dateRange);
+
+        $fromKeyPresent = array_key_exists('date_from', $entities)
+            || ($hasDateRange && array_key_exists('from', $dateRange));
+        $toKeyPresent = array_key_exists('date_to', $entities)
+            || ($hasDateRange && array_key_exists('to', $dateRange));
 
         $rawFrom = $entities['date_from'] ?? null;
         if (!self::rawScalarPresent($rawFrom) && $hasDateRange) {
@@ -568,7 +579,90 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
             'raw_has_date_from' => self::rawScalarPresent($rawFrom),
             'raw_has_date_to' => self::rawScalarPresent($rawTo),
             'raw_has_date_expression' => self::rawScalarPresent($entities['date_expression'] ?? null),
+            'raw_date_range_present' => $dateRangePresent,
+            'raw_date_from_present' => $fromKeyPresent,
+            'raw_date_to_present' => $toKeyPresent,
+            'raw_date_from' => self::safeIsoDateLogValue($rawFrom),
+            'raw_date_to' => self::safeIsoDateLogValue($rawTo),
         ];
+    }
+
+    /**
+     * Diagnostic-only payload for aiu_date_pipeline_observation.
+     * Never feeds routing, clarification, search, API, Grounding, Composer, or LINE reply.
+     *
+     * @return array<string, mixed>
+     */
+    public static function buildDatePipelineLogEvent(
+        string $traceId,
+        AiIntentUnderstandingResult $result,
+        BatsSearchIntent $translatedIntent
+    ): array {
+        $raw = $result->getDatePipelineRawPresence() ?? [
+            'raw_has_date_range' => false,
+            'raw_has_date_from' => false,
+            'raw_has_date_to' => false,
+            'raw_has_date_expression' => false,
+            'raw_date_range_present' => false,
+            'raw_date_from_present' => false,
+            'raw_date_to_present' => false,
+            'raw_date_from' => null,
+            'raw_date_to' => null,
+        ];
+        $reference = $result->getDatePipelineReferenceContext() ?? [
+            'reference_calendar_date' => null,
+            'reference_timezone' => null,
+        ];
+        $entities = $result->getEntities();
+        $normalizedFrom = isset($entities['date_from']) ? trim((string) $entities['date_from']) : '';
+        $normalizedTo = isset($entities['date_to']) ? trim((string) $entities['date_to']) : '';
+        $normalizedExpression = isset($entities['date_expression'])
+            ? trim((string) $entities['date_expression'])
+            : '';
+
+        return [
+            'trace_id' => $traceId,
+            'intent_category' => $result->getIntent(),
+            'reference_calendar_date' => $reference['reference_calendar_date'] ?? null,
+            'reference_timezone' => $reference['reference_timezone'] ?? null,
+            'raw_has_date_range' => (bool) ($raw['raw_has_date_range'] ?? false),
+            'raw_has_date_from' => (bool) ($raw['raw_has_date_from'] ?? false),
+            'raw_has_date_to' => (bool) ($raw['raw_has_date_to'] ?? false),
+            'raw_has_date_expression' => (bool) ($raw['raw_has_date_expression'] ?? false),
+            'raw_date_range_present' => (bool) ($raw['raw_date_range_present'] ?? false),
+            'raw_date_from_present' => (bool) ($raw['raw_date_from_present'] ?? false),
+            'raw_date_to_present' => (bool) ($raw['raw_date_to_present'] ?? false),
+            'raw_date_from' => $raw['raw_date_from'] ?? null,
+            'raw_date_to' => $raw['raw_date_to'] ?? null,
+            'normalized_date_from' => $normalizedFrom !== '' ? $normalizedFrom : null,
+            'normalized_date_to' => $normalizedTo !== '' ? $normalizedTo : null,
+            'normalized_has_date_expression' => $normalizedExpression !== '',
+            'clarification_required' => $result->isClarificationRequired(),
+            'clarification_reason' => $result->getClarificationReason(),
+            'translated_date_from' => $translatedIntent->getDateFrom(),
+            'translated_date_to' => $translatedIntent->getDateTo(),
+        ];
+    }
+
+    /**
+     * @param mixed $value
+     */
+    private static function safeIsoDateLogValue($value): ?string
+    {
+        if (!is_string($value)) {
+            return null;
+        }
+
+        $trimmed = trim($value);
+        if ($trimmed === '') {
+            return null;
+        }
+
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $trimmed) !== 1) {
+            return null;
+        }
+
+        return $trimmed;
     }
 
     /**

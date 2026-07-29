@@ -44,17 +44,22 @@ final class AiIntentUnderstandingResult
     private ?array $structuredSearchResumeObservability = null;
 
     /**
-     * Observability-only: raw Gemini date-field presence booleans.
+     * Observability-only: raw Gemini date-field presence and safe scalar values.
      * Not part of the semantic contract; never consumed by routing / search / compose.
      *
-     * @var array{
-     *   raw_has_date_range: bool,
-     *   raw_has_date_from: bool,
-     *   raw_has_date_to: bool,
-     *   raw_has_date_expression: bool
-     * }|null
+     * @var array<string, mixed>|null
      */
     private ?array $datePipelineRawPresence = null;
+
+    /**
+     * Observability-only: reference datetime injected into the Gemini request.
+     *
+     * @var array{
+     *   reference_calendar_date: string,
+     *   reference_timezone: string
+     * }|null
+     */
+    private ?array $datePipelineReferenceContext = null;
 
     private ?AiuSearchKeywordProjectionResult $searchKeywordProjection = null;
 
@@ -226,14 +231,9 @@ final class AiIntentUnderstandingResult
     }
 
     /**
-     * Attach raw Gemini date-field presence flags once (immutable thereafter).
+     * Attach raw Gemini date observability once (immutable thereafter).
      *
-     * @param array{
-     *   raw_has_date_range?: bool,
-     *   raw_has_date_from?: bool,
-     *   raw_has_date_to?: bool,
-     *   raw_has_date_expression?: bool
-     * } $presence
+     * @param array<string, mixed> $presence
      */
     public function attachDatePipelineRawPresence(array $presence): self
     {
@@ -246,6 +246,37 @@ final class AiIntentUnderstandingResult
             'raw_has_date_from' => (bool) ($presence['raw_has_date_from'] ?? false),
             'raw_has_date_to' => (bool) ($presence['raw_has_date_to'] ?? false),
             'raw_has_date_expression' => (bool) ($presence['raw_has_date_expression'] ?? false),
+            'raw_date_range_present' => (bool) ($presence['raw_date_range_present'] ?? false),
+            'raw_date_from_present' => (bool) ($presence['raw_date_from_present'] ?? false),
+            'raw_date_to_present' => (bool) ($presence['raw_date_to_present'] ?? false),
+            'raw_date_from' => array_key_exists('raw_date_from', $presence)
+                ? $presence['raw_date_from']
+                : null,
+            'raw_date_to' => array_key_exists('raw_date_to', $presence)
+                ? $presence['raw_date_to']
+                : null,
+        ];
+
+        return $this;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function getDatePipelineRawPresence(): ?array
+    {
+        return $this->datePipelineRawPresence;
+    }
+
+    public function attachDatePipelineReferenceContext(string $referenceCalendarDate, string $referenceTimezone): self
+    {
+        if ($this->datePipelineReferenceContext !== null) {
+            return $this;
+        }
+
+        $this->datePipelineReferenceContext = [
+            'reference_calendar_date' => $referenceCalendarDate,
+            'reference_timezone' => $referenceTimezone,
         ];
 
         return $this;
@@ -253,15 +284,13 @@ final class AiIntentUnderstandingResult
 
     /**
      * @return array{
-     *   raw_has_date_range: bool,
-     *   raw_has_date_from: bool,
-     *   raw_has_date_to: bool,
-     *   raw_has_date_expression: bool
+     *   reference_calendar_date: string,
+     *   reference_timezone: string
      * }|null
      */
-    public function getDatePipelineRawPresence(): ?array
+    public function getDatePipelineReferenceContext(): ?array
     {
-        return $this->datePipelineRawPresence;
+        return $this->datePipelineReferenceContext;
     }
 
     public function getSearchKeywordProjection(): ?AiuSearchKeywordProjectionResult
