@@ -186,7 +186,7 @@ function assertHostBAndKeywordOnly(
     etm_assert($hostB === $expectedHostBKeyword, "{$label}: hostB keyword");
     etm_assert($src === $expectedFullKeyword, "{$label}: keyword-only full projection");
     etm_assert(
-        ($obs['provider_wire_keyword_mode'] ?? '') === SourceQueryMapper::PROVIDER_WIRE_MODE_HOSTB_DESTINATION_EXCLUDE,
+        ($obs['provider_wire_keyword_mode'] ?? '') === SourceQueryMapper::PROVIDER_WIRE_MODE_HOSTB_KEYWORD_FULL_PROJECTION,
         "{$label}: hostb observability mode"
     );
     etm_assert(
@@ -202,7 +202,7 @@ $case1aCond = $mapper->toSearchCondition($case1aIntent);
 etm_assert($case1aCond !== null, 'ssot case1A: SearchCondition');
 etm_assert($case1aCond->getKeyword() === '日本 賞花', 'ssot case1A: canonical keyword');
 etm_assert($case1aCond->getSearchKeywordTokens() === ['日本', '賞花'], 'ssot case1A: tokens');
-assertHostBAndKeywordOnly($case1aCond, '賞花', '日本 賞花', '日本', 'ssot case1A');
+assertHostBAndKeywordOnly($case1aCond, '日本 賞花', '日本 賞花', '日本', 'ssot case1A');
 assertThreeHallFullProjection($case1aCond, '日本 賞花', 'ssot case1A');
 
 $case1Intent = buildAuthoritativeIntent(['日本'], ['日本', '花季'], '日本 花季');
@@ -211,13 +211,13 @@ etm_assert($case1Cond !== null, 'ssot case1B: SearchCondition');
 etm_assert($case1Cond->getKeyword() === '日本 花季', 'ssot case1B: canonical keyword');
 etm_assert($case1Cond->getSearchKeywordTokens() === ['日本', '花季'], 'ssot case1B: tokens');
 etm_assert($case1aCond->getKeyword() !== $case1Cond->getKeyword(), 'ssot case1A/1B not interchangeable');
-assertHostBAndKeywordOnly($case1Cond, '花季', '日本 花季', '日本', 'ssot case1B');
+assertHostBAndKeywordOnly($case1Cond, '日本 花季', '日本 花季', '日本', 'ssot case1B');
 assertThreeHallFullProjection($case1Cond, '日本 花季', 'ssot case1B');
 
 $case2Intent = buildAuthoritativeIntent(['北海道'], ['北海道', '母親節', '溫泉'], '北海道 母親節 溫泉');
 $case2Cond = $mapper->toSearchCondition($case2Intent);
 etm_assert($case2Cond !== null, 'ssot case2: SearchCondition');
-assertHostBAndKeywordOnly($case2Cond, '母親節 溫泉', '北海道 母親節 溫泉', '北海道', 'ssot case2');
+assertHostBAndKeywordOnly($case2Cond, '北海道 母親節 溫泉', '北海道 母親節 溫泉', '北海道', 'ssot case2');
 assertThreeHallFullProjection($case2Cond, '北海道 母親節 溫泉', 'ssot case2');
 
 $case3Intent = buildAuthoritativeIntent(
@@ -229,19 +229,19 @@ $case3Intent = buildAuthoritativeIntent(
 $case3Cond = $mapper->toSearchCondition($case3Intent);
 etm_assert($case3Cond !== null, 'ssot case3: SearchCondition');
 etm_assert($case3Cond->getArea() === '歐洲', 'ssot case3: area');
-assertHostBAndKeywordOnly($case3Cond, '歐洲 賞花 鬱金香', '歐洲 荷蘭 賞花 鬱金香', '荷蘭', 'ssot case3');
+assertHostBAndKeywordOnly($case3Cond, '歐洲 荷蘭 賞花 鬱金香', '歐洲 荷蘭 賞花 鬱金香', '荷蘭', 'ssot case3');
 assertThreeHallFullProjection($case3Cond, '歐洲 荷蘭 賞花 鬱金香', 'ssot case3');
 
 // --- Multi-word boundary cases ---
 $caseA = buildAuthoritativeIntent(['New York'], ['美國', 'New York', '百老匯'], '美國 New York 百老匯');
 $condA = $mapper->toSearchCondition($caseA);
 etm_assert($condA !== null, 'caseA: SearchCondition');
-assertHostBAndKeywordOnly($condA, '美國 百老匯', '美國 New York 百老匯', 'New York', 'caseA');
+assertHostBAndKeywordOnly($condA, '美國 New York 百老匯', '美國 New York 百老匯', 'New York', 'caseA');
 
 $caseB = buildAuthoritativeIntent(['日本'], ['日本', '親子 同遊', '溫泉'], '日本 親子 同遊 溫泉');
 $condB = $mapper->toSearchCondition($caseB);
 etm_assert($condB !== null, 'caseB: SearchCondition');
-assertHostBAndKeywordOnly($condB, '親子 同遊 溫泉', '日本 親子 同遊 溫泉', '日本', 'caseB');
+assertHostBAndKeywordOnly($condB, '日本 親子 同遊 溫泉', '日本 親子 同遊 溫泉', '日本', 'caseB');
 
 $caseC = SearchCondition::empty('')->with([
     'destination' => ['日本'],
@@ -284,7 +284,7 @@ $restored1Cond = $mapper->toSearchCondition($restored1Intent);
 etm_assert($restored1Cond !== null, 'restored case1: SearchCondition');
 etm_assert($restored1Cond->getDestination() === ['首爾'], 'restored case1: destination');
 etm_assert($restored1Cond->getProductType() === '自由行', 'restored case1: product_type');
-assertTokenQuery($restored1Cond, '首爾 自由行', 'restored case1', '自由行');
+assertTokenQuery($restored1Cond, '首爾 自由行', 'restored case1');
 $mockSearchClient = new TourSearchApiClient('https://example.test/tour/search', 5, static function (): array {
     $body = json_encode(['success' => true, 'pagination' => ['total' => 2], 'items' => [['title' => '首爾7月自由行']], 'search_url' => 'https://example.test/search', 'error' => null], JSON_UNESCAPED_UNICODE);
     return ['ok' => true, 'http_status' => 200, 'body' => $body !== false ? $body : '', 'transport_error' => null];
@@ -299,7 +299,7 @@ $case1Exec = (new TourPromptContextService())->buildTourContextResult([
 ]);
 etm_assert(count($case1Exec->getSearchResults()) > 0, 'restored case1: product search > 0');
 $trace1 = ProductSearchVerificationTrace::build($case1Exec->getIntent(), $restored1Cond, $pilotSno, count($case1Exec->getSearchResults()), $case1Exec->getSearchPolicyMeta());
-etm_assert(($trace1['api_keyword'] ?? '') === '自由行', 'restored case1: trace api_keyword');
+etm_assert(($trace1['api_keyword'] ?? '') === '首爾 自由行', 'restored case1: trace api_keyword');
 
 $builder = new ProductRecommendationBuilder();
 $case2Summary = $builder->build([], ['destination' => '北海道', 'product_type' => '自由行', 'date_from' => '2026-11-01', 'date_to' => '2026-11-30'], '北海道自由行，11月出發', ['raw_count' => 0]);
@@ -327,7 +327,7 @@ etm_assert($noCond === null, 'no projection no SearchCondition');
 
 $kwOnlyObs = $apiMapper->providerWireObservability($case1Cond);
 etm_assert(
-    ($kwOnlyObs['provider_wire_keyword_mode'] ?? '') === SourceQueryMapper::PROVIDER_WIRE_MODE_HOSTB_DESTINATION_EXCLUDE,
+    ($kwOnlyObs['provider_wire_keyword_mode'] ?? '') === SourceQueryMapper::PROVIDER_WIRE_MODE_HOSTB_KEYWORD_FULL_PROJECTION,
     'observability hostb mode on authoritative with destination'
 );
 

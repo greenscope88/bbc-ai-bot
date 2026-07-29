@@ -96,6 +96,50 @@ final class ApiQueryMapper
     }
 
     /**
+     * Provider wire observability aligned to final Host B client params from toClientParams().
+     *
+     * @return array{
+     *   trace_id: ?string,
+     *   source_id: string,
+     *   provider_wire_keyword_mode: string,
+     *   provider_wire_keyword_length: int,
+     *   search_keyword_token_count: int,
+     *   destination_count: int,
+     *   keyword_present: bool,
+     *   destination_present: bool,
+     *   mapping_status: string,
+     *   failure_code: string
+     * }
+     */
+    public function providerWireObservability(SearchCondition $condition, string $traceId = '', string $sourceId = 'hostb'): array
+    {
+        $event = SourceQueryMapper::buildProviderWireObservabilityEvent($condition, $traceId, $sourceId);
+        if (($event['mapping_status'] ?? '') !== 'ok') {
+            return $event;
+        }
+
+        // Single authority: final wire keyword／destination from toClientParams() (no second projection).
+        $params = $this->toClientParams($condition);
+        $finalKeyword = isset($params['keyword']) ? trim((string) $params['keyword']) : '';
+        $destinationOnWire = (isset($params['destination']) && trim((string) $params['destination']) !== '')
+            || (isset($params['city']) && trim((string) $params['city']) !== '');
+
+        $event['keyword_present'] = $finalKeyword !== '';
+        $event['provider_wire_keyword_length'] = $finalKeyword !== ''
+            ? mb_strlen($finalKeyword, 'UTF-8')
+            : 0;
+        $event['destination_present'] = $destinationOnWire || !empty($event['destination_present']);
+
+        if ($event['destination_present']) {
+            $event['provider_wire_keyword_mode'] = SourceQueryMapper::PROVIDER_WIRE_MODE_HOSTB_KEYWORD_FULL_PROJECTION;
+        } else {
+            $event['provider_wire_keyword_mode'] = SourceQueryMapper::PROVIDER_WIRE_MODE_KEYWORD_ONLY_FULL;
+        }
+
+        return $event;
+    }
+
+    /**
      * Host B wire params (TourDateS, AmountMax, Departure, …). Phase 2-C.4.
      *
      * @param array<string, mixed> $options same as toClientParams()

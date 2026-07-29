@@ -15,8 +15,7 @@ require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPAR
  */
 final class SourceQueryMapper
 {
-    public const PROVIDER_WIRE_MODE_HOSTB_DESTINATION_EXCLUDE = 'hostb_destination_exclude';
-    public const PROVIDER_WIRE_MODE_HOSTB_DESTINATION_ONLY = 'hostb_destination_only';
+    public const PROVIDER_WIRE_MODE_HOSTB_KEYWORD_FULL_PROJECTION = 'hostb_keyword_full_projection';
     public const PROVIDER_WIRE_MODE_KEYWORD_ONLY_FULL = 'keyword_only_full';
 
     /** Platforms with a native destination search field (wire may send both). */
@@ -136,8 +135,7 @@ final class SourceQueryMapper
      */
 
     /**
-     * Host B wire keyword when destination is sent as a separate API param.
-     * Excludes destination/area tokens; folds product_type and preferences into keyword.
+     * Host B wire keyword from Gemini projected tokens (full projection; destination stays a separate param).
      */
     public static function buildHostBKeywordFromSearchCondition(SearchCondition $condition): string
     {
@@ -145,39 +143,31 @@ final class SourceQueryMapper
             return self::buildHostBKeywordFromCanonicalTokens($condition);
         }
 
-        $exclude = [];
-        foreach ($condition->getDestination() as $destToken) {
-            $part = self::trimNonEmpty($destToken);
-            if ($part !== null) {
-                $exclude[$part] = true;
-            }
-        }
-
         $candidates = [];
         $keyword = self::trimNonEmpty($condition->getKeyword());
         if ($keyword !== null) {
             foreach (preg_split('/\s+/u', $keyword) ?: [] as $token) {
                 $part = self::trimNonEmpty($token);
-                if ($part !== null && !isset($exclude[$part])) {
+                if ($part !== null) {
                     $candidates[] = $part;
                 }
             }
         }
         foreach ($condition->getTravelStyle() as $token) {
             $part = self::trimNonEmpty($token);
-            if ($part !== null && !isset($exclude[$part])) {
+            if ($part !== null) {
                 $candidates[] = $part;
             }
         }
         foreach ($condition->getMustHave() as $token) {
             $part = self::trimNonEmpty($token);
-            if ($part !== null && !isset($exclude[$part])) {
+            if ($part !== null) {
                 $candidates[] = $part;
             }
         }
         foreach ($condition->getSpecialTags() as $token) {
             $part = self::trimNonEmpty($token);
-            if ($part !== null && !isset($exclude[$part])) {
+            if ($part !== null) {
                 $candidates[] = $part;
             }
         }
@@ -271,12 +261,9 @@ final class SourceQueryMapper
             ];
         }
 
-        $mode = self::PROVIDER_WIRE_MODE_KEYWORD_ONLY_FULL;
-        if ($hasDestination) {
-            $mode = $wireKeyword === ''
-                ? self::PROVIDER_WIRE_MODE_HOSTB_DESTINATION_ONLY
-                : self::PROVIDER_WIRE_MODE_HOSTB_DESTINATION_EXCLUDE;
-        }
+        $mode = $hasDestination
+            ? self::PROVIDER_WIRE_MODE_HOSTB_KEYWORD_FULL_PROJECTION
+            : self::PROVIDER_WIRE_MODE_KEYWORD_ONLY_FULL;
 
         return [
             'trace_id' => $traceId !== '' ? $traceId : null,
@@ -304,22 +291,7 @@ final class SourceQueryMapper
             throw new \InvalidArgumentException('authoritative search_keyword_tokens empty');
         }
 
-        $exclude = [];
-        foreach ($condition->getDestination() as $destToken) {
-            $part = self::trimNonEmpty($destToken);
-            if ($part !== null) {
-                $exclude[$part] = true;
-            }
-        }
-
-        $remaining = [];
-        foreach ($tokens as $token) {
-            if (!isset($exclude[$token])) {
-                $remaining[] = $token;
-            }
-        }
-
-        return implode(' ', $remaining);
+        return implode(' ', $tokens);
     }
     public static function buildSourceKeywordQueryFromDocument(array $document): string
     {

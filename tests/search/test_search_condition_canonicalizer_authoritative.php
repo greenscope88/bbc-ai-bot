@@ -75,7 +75,7 @@ $multi = SearchCondition::empty('')->with([
     'search_keyword_tokens' => ['美國', 'New York', '百老匯'],
 ])->flag('bats_intent_mapped');
 $hostB = SourceQueryMapper::buildHostBKeywordFromSearchCondition($multi);
-auth_assert($hostB === '美國 百老匯', 'caseA hostB keyword');
+auth_assert($hostB === '美國 New York 百老匯', 'caseA hostB keyword full projection');
 
 $internalSpace = SearchCondition::empty('')->with([
     'destination' => ['日本'],
@@ -83,7 +83,7 @@ $internalSpace = SearchCondition::empty('')->with([
     'search_keyword_tokens' => ['日本', '親子 同遊', '溫泉'],
 ])->flag('bats_intent_mapped');
 $hostB2 = SourceQueryMapper::buildHostBKeywordFromSearchCondition($internalSpace);
-auth_assert($hostB2 === '親子 同遊 溫泉', 'caseB hostB keyword');
+auth_assert($hostB2 === '日本 親子 同遊 溫泉', 'caseB hostB keyword full projection');
 
 $noKw = SearchCondition::empty('')->with([
     'destination' => ['東京'],
@@ -132,32 +132,47 @@ auth_assert(
     'dest-only: obs keyword length matches final wire'
 );
 auth_assert(
-    ($destOnlyObs['provider_wire_keyword_mode'] ?? '') !== SourceQueryMapper::PROVIDER_WIRE_MODE_HOSTB_DESTINATION_ONLY,
-    'dest-only: mode must not claim Host B keyword missing'
+    ($destOnlyObs['provider_wire_keyword_mode'] ?? '') === SourceQueryMapper::PROVIDER_WIRE_MODE_HOSTB_KEYWORD_FULL_PROJECTION,
+    'dest-only: mode is hostb_keyword_full_projection'
 );
 auth_assert(
-    ($destOnlyObs['provider_wire_keyword_mode'] ?? '') === SourceQueryMapper::PROVIDER_WIRE_MODE_HOSTB_DESTINATION_EXCLUDE,
-    'dest-only: mode reflects destination+keyword on final wire'
+    ($destOnlyObs['provider_wire_keyword_mode'] ?? '') !== 'hostb_destination_exclude',
+    'dest-only: old destination_exclude mode removed'
 );
 
-$excludeCase = SearchCondition::empty('')->with([
+$fullProjCase = SearchCondition::empty('')->with([
     'destination' => ['日本'],
     'keyword' => '日本 花季',
     'search_keyword_tokens' => ['日本', '花季'],
 ])->flag('bats_intent_mapped');
-$excludeApi = $apiMapper->toClientParams($excludeCase, ['include_sno' => $pilotSno]);
-auth_assert(($excludeApi['keyword'] ?? '') === '花季', 'exclude: hostB residual theme keyword');
-auth_assert(($excludeApi['keyword'] ?? '') !== '日本 花季', 'exclude: must not restore full destination+theme');
-auth_assert(($excludeApi['keyword'] ?? '') !== '', 'exclude: keyword must not be empty');
-$excludeObs = $apiMapper->providerWireObservability($excludeCase);
-auth_assert(($excludeObs['keyword_present'] ?? false) === true, 'exclude: obs keyword_present true');
+$fullProjApi = $apiMapper->toClientParams($fullProjCase, ['include_sno' => $pilotSno]);
+auth_assert(($fullProjApi['keyword'] ?? '') === '日本 花季', 'full-proj: Host B keeps destination surface token');
+auth_assert(($fullProjApi['destination'] ?? '') === '日本', 'full-proj: destination mapping unchanged');
+auth_assert(($fullProjApi['city'] ?? '') === '日本', 'full-proj: city mapping unchanged');
+auth_assert(($fullProjApi['keyword'] ?? '') !== '', 'full-proj: keyword must not be empty');
+$fullProjObs = $apiMapper->providerWireObservability($fullProjCase);
+auth_assert(($fullProjObs['keyword_present'] ?? false) === true, 'full-proj: obs keyword_present true');
 auth_assert(
-    ($excludeObs['provider_wire_keyword_length'] ?? 0) === mb_strlen((string) $excludeApi['keyword'], 'UTF-8'),
-    'exclude: obs keyword length matches final wire'
+    ($fullProjObs['provider_wire_keyword_length'] ?? 0) === mb_strlen((string) $fullProjApi['keyword'], 'UTF-8'),
+    'full-proj: obs keyword length matches final wire'
 );
 auth_assert(
-    ($excludeObs['provider_wire_keyword_mode'] ?? '') === SourceQueryMapper::PROVIDER_WIRE_MODE_HOSTB_DESTINATION_EXCLUDE,
-    'exclude: hostb_destination_exclude mode'
+    ($fullProjObs['provider_wire_keyword_mode'] ?? '') === SourceQueryMapper::PROVIDER_WIRE_MODE_HOSTB_KEYWORD_FULL_PROJECTION,
+    'full-proj: hostb_keyword_full_projection mode'
+);
+
+$koreaSurface = SearchCondition::empty('')->with([
+    'destination' => ['韓國'],
+    'keyword' => '韓國 賞花',
+    'search_keyword_tokens' => ['韓國', '賞花'],
+])->flag('bats_intent_mapped');
+$koreaApi = $apiMapper->toClientParams($koreaSurface, ['include_sno' => $pilotSno]);
+auth_assert(($koreaApi['keyword'] ?? '') === '韓國 賞花', '3J-2: Host B keyword keeps 韓國 surface token');
+auth_assert(($koreaApi['destination'] ?? '') === '韓國', '3J-2: destination mapping unchanged');
+auth_assert(($koreaApi['city'] ?? '') === '韓國', '3J-2: city mapping unchanged');
+auth_assert(
+    SourceQueryMapper::buildHostBKeywordFromSearchCondition($koreaSurface) === '韓國 賞花',
+    '3J-2: SourceQueryMapper full projection'
 );
 
 $kwOnlyCase = SearchCondition::empty('')->with([
@@ -171,7 +186,7 @@ auth_assert(
     ($kwOnlyObs['provider_wire_keyword_mode'] ?? '') === SourceQueryMapper::PROVIDER_WIRE_MODE_KEYWORD_ONLY_FULL,
     'keyword-only: keyword_only_full mode'
 );
-auth_assert(!array_key_exists('provider_wire_keyword_mode', $excludeApi), 'observability not in outgoing params');
+auth_assert(!array_key_exists('provider_wire_keyword_mode', $fullProjApi), 'observability not in outgoing params');
 
 if ($failures === 0) {
     echo "ALL PASS test_search_condition_canonicalizer_authoritative\n";
