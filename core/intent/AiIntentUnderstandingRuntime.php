@@ -201,10 +201,26 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
         $clarificationReason = (string) $normalized['clarification_reason'];
         $confidence = (float) $normalized['confidence'];
 
+        // Pending clarification completion: keep prior keyword tokens; only asked_entity slots
+        // come from this turn structured result. new_request keeps Gemini token authority.
+        $priorKeywordTokens = null;
+        if ($priorState !== null
+            && $resumeDisposition !== StructuredSearchResumeDispositionContract::NEW_REQUEST
+        ) {
+            $priorKnown = $priorState->getKnownEntities();
+            if (isset($priorKnown['search_keyword_tokens'])
+                && is_array($priorKnown['search_keyword_tokens'])
+                && $priorKnown['search_keyword_tokens'] !== []
+            ) {
+                $priorKeywordTokens = $priorKnown['search_keyword_tokens'];
+            }
+        }
+
         $projectionGate = $this->applySearchKeywordProjectionGate(
             $detected,
             $clarificationRequired,
-            $entities
+            $entities,
+            $priorKeywordTokens
         );
         $entities = $projectionGate['entities'];
         $searchKeywordProjection = $projectionGate['projection'];
@@ -441,6 +457,7 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
 
     /**
      * @param array<string, mixed> $entities
+     * @param list<string>|null $priorKeywordTokens When pending resume owns keywords, Gemini turn tokens are ignored
      * @return array{
      *   entities: array<string, mixed>,
      *   projection: AiuSearchKeywordProjectionResult|null,
@@ -450,7 +467,8 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
     private function applySearchKeywordProjectionGate(
         string $intent,
         bool $clarificationRequired,
-        array $entities
+        array $entities,
+        ?array $priorKeywordTokens = null
     ): array {
         $observability = [
             'aiu_search_token_projection_status' => 'skipped',
@@ -469,6 +487,11 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
                 'projection' => null,
                 'observability' => $observability,
             ];
+        }
+
+        // Slot ownership: pending resume keywords are authoritative; do not overwrite/append.
+        if ($priorKeywordTokens !== null) {
+            $entities['search_keyword_tokens'] = $priorKeywordTokens;
         }
 
         $hasKey = array_key_exists('search_keyword_tokens', $entities);
