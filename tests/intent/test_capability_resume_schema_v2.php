@@ -13,6 +13,9 @@ require_once dirname(__DIR__, 2) . '/core/intent/AiIntentContextLoader.php';
 require_once dirname(__DIR__, 2) . '/core/intent/AiuGeminiUnderstandingClientStub.php';
 require_once dirname(__DIR__, 2) . '/core/intent/AiuPromptRequest.php';
 require_once dirname(__DIR__, 2) . '/core/intent/AiuPromptBuilder.php';
+require_once dirname(__DIR__, 2) . '/core/intent/AiuProductSetContext.php';
+require_once dirname(__DIR__, 2) . '/core/intent/AiuProductSetContextResolver.php';
+require_once dirname(__DIR__, 2) . '/core/product_source/ProductSourceRegistry.php';
 require_once dirname(__DIR__, 2) . '/core/intent/AiIntentCategory.php';
 require_once dirname(__DIR__, 2) . '/core/intent/AiuClarificationReasonContract.php';
 require_once dirname(__DIR__, 2) . '/core/search/BatsSearchIntent.php';
@@ -137,6 +140,14 @@ assert_true(($injection['resume_reason'] ?? '') === 'relation_capability_unavail
 assert_true(($injection['asked_entity'] ?? '') === 'destination', '4 inject asked');
 assert_true(($injection['known_entities']['date_from'] ?? '') === '2026-08-01', '4 inject dates');
 
+$tCapRegistry = ProductSourceRegistry::fromLocalFiles(
+    null,
+    dirname(__DIR__) . DIRECTORY_SEPARATOR . 'intent' . DIRECTORY_SEPARATOR . 'fixtures'
+        . DIRECTORY_SEPARATOR . 'tcap_tenant_product_sources.json'
+);
+$tCapProductSetContextResolver = new AiuProductSetContextResolver($tCapRegistry);
+$tCapProductSetContext = $tCapProductSetContextResolver->resolve('tCap');
+
 $builder = new AiuPromptBuilder();
 $prompt = $builder->build(new AiuPromptRequest(
     'tCap',
@@ -148,7 +159,8 @@ $prompt = $builder->build(new AiuPromptRequest(
     null,
     $ref,
     null,
-    $injection
+    $injection,
+    $tCapProductSetContext
 ));
 assert_true(strpos($prompt, 'relation_capability_unavailable') !== false, '4 prompt reason');
 assert_true(strpos($prompt, 'Retain known date_from') !== false, '4 prompt retain dates');
@@ -287,7 +299,9 @@ $runtime = new AiIntentUnderstandingRuntime(
     null,
     null,
     AiIntentContextLoader::createForTesting(),
-    $store
+    $store,
+    null,
+    $tCapProductSetContextResolver
 );
 $threw = false;
 try {

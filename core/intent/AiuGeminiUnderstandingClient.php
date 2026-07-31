@@ -162,5 +162,116 @@ final class AiuGeminiUnderstandingClient implements AiuGeminiUnderstandingClient
         if ($entities !== [] && array_keys($entities) === range(0, count($entities) - 1)) {
             throw new \RuntimeException('Gemini output contract invalid: entities must be an object');
         }
+
+        $this->assertSearchKeywordRoleContract($entities);
+    }
+
+    /**
+     * B0-LINE-01D-3J-9: structured keyword role contract gate.
+     *
+     * Validates only structure and cross-field equality between
+     * entities.search_keyword_components and entities.search_keyword_tokens.
+     * No semantic parsing, literal checks, or classification is performed here;
+     * component metadata is non-execution metadata for downstream execution.
+     *
+     * @param array<string, mixed> $entities
+     */
+    private function assertSearchKeywordRoleContract(array $entities): void
+    {
+        if (!array_key_exists('search_keyword_components', $entities) || !is_array($entities['search_keyword_components'])) {
+            throw new \RuntimeException(
+                'Gemini output contract invalid: search_keyword_components must be present as an array'
+            );
+        }
+
+        if (!array_key_exists('search_keyword_tokens', $entities) || !is_array($entities['search_keyword_tokens'])) {
+            throw new \RuntimeException(
+                'Gemini output contract invalid: search_keyword_tokens must be present as an array'
+            );
+        }
+
+        $components = $entities['search_keyword_components'];
+        if ($components !== [] && array_keys($components) !== range(0, count($components) - 1)) {
+            throw new \RuntimeException(
+                'Gemini output contract invalid: search_keyword_components must be a list'
+            );
+        }
+
+        $tokens = $entities['search_keyword_tokens'];
+        if ($tokens !== [] && array_keys($tokens) !== range(0, count($tokens) - 1)) {
+            throw new \RuntimeException(
+                'Gemini output contract invalid: search_keyword_tokens must be a list'
+            );
+        }
+
+        $keepSurfaces = [];
+        $seenKeepSurfaces = [];
+        foreach ($components as $component) {
+            if (!is_array($component)) {
+                throw new \RuntimeException(
+                    'Gemini output contract invalid: search_keyword_components element must be an object'
+                );
+            }
+
+            $surface = $component['surface'] ?? null;
+            if (!is_string($surface) || trim($surface) === '') {
+                throw new \RuntimeException(
+                    'Gemini output contract invalid: search_keyword_components.surface must be a non-empty string'
+                );
+            }
+
+            $semanticRole = $component['semantic_role'] ?? null;
+            if ($semanticRole !== 'product_constraint' && $semanticRole !== 'catalog_object_restatement') {
+                throw new \RuntimeException(
+                    'Gemini output contract invalid: search_keyword_components.semantic_role must be '
+                    . 'exactly product_constraint or catalog_object_restatement'
+                );
+            }
+
+            $decision = $component['decision'] ?? null;
+            if ($decision !== 'keep' && $decision !== 'omit') {
+                throw new \RuntimeException(
+                    'Gemini output contract invalid: search_keyword_components.decision must be exactly keep or omit'
+                );
+            }
+
+            $decisionReason = $component['decision_reason'] ?? null;
+            if (!is_string($decisionReason) || trim($decisionReason) === '') {
+                throw new \RuntimeException(
+                    'Gemini output contract invalid: search_keyword_components.decision_reason must be a non-empty string'
+                );
+            }
+
+            if ($semanticRole === 'catalog_object_restatement' && $decision === 'keep') {
+                throw new \RuntimeException(
+                    'Gemini output contract invalid: a catalog_object_restatement component must not be decision=keep'
+                );
+            }
+
+            if ($decision === 'keep') {
+                if (isset($seenKeepSurfaces[$surface])) {
+                    throw new \RuntimeException(
+                        'Gemini output contract invalid: decision=keep component surfaces must be unique'
+                    );
+                }
+                $seenKeepSurfaces[$surface] = true;
+                $keepSurfaces[] = $surface;
+            }
+        }
+
+        foreach ($tokens as $token) {
+            if (!is_string($token)) {
+                throw new \RuntimeException(
+                    'Gemini output contract invalid: search_keyword_tokens element must be a string'
+                );
+            }
+        }
+
+        if ($tokens !== $keepSurfaces) {
+            throw new \RuntimeException(
+                'Gemini output contract invalid: search_keyword_tokens must exactly equal, in order and count, '
+                . 'the surface of every decision=keep search_keyword_components entry'
+            );
+        }
     }
 }

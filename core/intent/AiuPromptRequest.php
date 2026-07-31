@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuProductSetContext.php';
+
 /**
  * Phase 2-D Step 2-D-4 — AIU Prompt Request（§16.3 邏輯輸入形狀）.
  *
@@ -28,6 +30,11 @@ final class AiuPromptRequest
     private ?array $structuredSearchResumeState;
 
     /**
+     * Authoritative tenant-scoped Product-Set Context for THIS request (null when absent).
+     */
+    private ?AiuProductSetContext $productSetContext;
+
+    /**
      * @param array<string, mixed>      $contextSnapshot
      * @param array<string, mixed>|null $resumeContext
      * @param array<string, mixed>|null $structuredSearchResumeState
@@ -42,7 +49,8 @@ final class AiuPromptRequest
         ?array $resumeContext,
         \DateTimeImmutable $referenceDateTime,
         ?string $requestId = null,
-        ?array $structuredSearchResumeState = null
+        ?array $structuredSearchResumeState = null,
+        ?AiuProductSetContext $productSetContext = null
     ) {
         $this->tenantId = trim($tenantId);
         $this->channel = trim($channel) !== '' ? trim($channel) : 'line';
@@ -54,6 +62,7 @@ final class AiuPromptRequest
         $this->referenceDateTime = $referenceDateTime;
         $this->requestId = $requestId !== null && trim($requestId) !== '' ? trim($requestId) : null;
         $this->structuredSearchResumeState = $structuredSearchResumeState;
+        $this->productSetContext = $productSetContext;
     }
 
     public function getTenantId(): string
@@ -108,6 +117,26 @@ final class AiuPromptRequest
     public function hasStructuredSearchResumeState(): bool
     {
         return $this->structuredSearchResumeState !== null;
+    }
+
+    public function hasProductSetContext(): bool
+    {
+        return $this->productSetContext !== null;
+    }
+
+    /**
+     * Strict transport accessor — throws when no authoritative Product-Set Context
+     * was supplied. No default context; no fallback.
+     */
+    public function getProductSetContext(): AiuProductSetContext
+    {
+        if ($this->productSetContext === null) {
+            throw new \RuntimeException(
+                'AiuPromptRequest: productSetContext is required but absent for this request'
+            );
+        }
+
+        return $this->productSetContext;
     }
 
     public function getRequestId(): ?string

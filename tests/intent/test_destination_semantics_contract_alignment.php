@@ -7,10 +7,15 @@ $searchDir = $root . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'searc
 
 require_once $intentDir . DIRECTORY_SEPARATOR . 'AiuPromptBuilder.php';
 require_once $intentDir . DIRECTORY_SEPARATOR . 'AiuPromptRequest.php';
+require_once $intentDir . DIRECTORY_SEPARATOR . 'AiuProductSetContext.php';
+require_once $intentDir . DIRECTORY_SEPARATOR . 'AiuProductSetContextResolver.php';
 require_once $intentDir . DIRECTORY_SEPARATOR . 'AiuDestinationSemanticsNormalizer.php';
 require_once $intentDir . DIRECTORY_SEPARATOR . 'AiuProductIntentTranslator.php';
 require_once $intentDir . DIRECTORY_SEPARATOR . 'AiIntentUnderstandingResult.php';
 require_once $intentDir . DIRECTORY_SEPARATOR . 'AiIntentCategory.php';
+require_once $intentDir . DIRECTORY_SEPARATOR . 'AiuSearchKeywordTokenProjector.php';
+require_once $intentDir . DIRECTORY_SEPARATOR . 'AiuSearchKeywordProjectionResult.php';
+require_once $intentDir . DIRECTORY_SEPARATOR . 'AiuSearchKeywordTokenException.php';
 require_once $searchDir . DIRECTORY_SEPARATOR . 'BatsSearchIntent.php';
 require_once $searchDir . DIRECTORY_SEPARATOR . 'DestinationExecutionGate.php';
 require_once $searchDir . DIRECTORY_SEPARATOR . 'DestinationSemanticGate.php';
@@ -58,7 +63,10 @@ $prompt = (new AiuPromptBuilder())->build(new AiuPromptRequest(
     'AI',
     'active',
     null,
-    new \DateTimeImmutable('2026-07-22', new \DateTimeZone('Asia/Taipei'))
+    new \DateTimeImmutable('2026-07-22', new \DateTimeZone('Asia/Taipei')),
+    null,
+    null,
+    (new AiuProductSetContextResolver())->resolve('5f99b8d665e8444d')
 ));
 
 // E1–E3 Prompt alignment
@@ -67,6 +75,17 @@ c_assert(strpos($prompt, 'destination_semantics') !== false, 'E1: B-03 has desti
 c_assert(strpos($prompt, '"travel_feasibility"') !== false || strpos($prompt, 'travel_feasibility:') !== false, 'E2: B-10 nested feasibility');
 c_assert(strpos($prompt, '"destination_semantics"') !== false, 'E2: B-10 nested destination_semantics key');
 c_assert(strpos($prompt, '"entities": {}') === false, 'E2: B-10 not empty entities');
+c_assert(strpos($prompt, 'feasibility_reason') !== false, 'E2: B-03/B-10 feasibility_reason key');
+c_assert(
+    strpos($prompt, 'feasibility_reason is MANDATORY') !== false
+    || strpos($prompt, 'non-empty travel_feasibility.feasibility_reason') !== false,
+    'E2: Prompt requires non-empty feasibility_reason'
+);
+c_assert(
+    strpos($prompt, 'status=executable, status=non_executable, AND status=uncertain') !== false
+    || strpos($prompt, 'Required for status=executable') !== false,
+    'E2: Prompt requires reason for all feasibility statuses'
+);
 c_assert(stripos($prompt, 'blacklist') === false, 'E3: no blacklist');
 c_assert(strpos($prompt, '火星') === false && strpos($prompt, '天堂') === false, 'E3: no place special cases');
 c_assert(strpos($prompt, 'non_executable') !== false, 'E3: general non_executable policy present');
@@ -77,6 +96,11 @@ c_assert(
 );
 c_assert(strpos($prompt, 'destination_relation = uncertain') !== false
     || strpos($prompt, 'destination_relation=uncertain') !== false, 'E7 prompt missing-destination uncertain');
+c_assert(
+    strpos($prompt, 'Runtime defaults') !== false
+    || strpos($prompt, 'Runtime will fill') !== false,
+    'E2: Prompt forbids Runtime auto-fill of reason'
+);
 
 // E4 single product_search normalize
 $single = AiuDestinationSemanticsNormalizer::apply([], [
@@ -195,6 +219,45 @@ expect_reason(static function (): void {
 
 expect_reason(static function (): void {
     AiuDestinationSemanticsNormalizer::apply([], [
+        'destination' => ['日本'],
+        'destination_relation' => 'single',
+        'destination_semantics' => [
+            ['label' => '日本', 'semantic_role' => 'travel_destination', 'travel_feasibility' => ['status' => 'executable']],
+        ],
+    ]);
+}, AiuDestinationSemanticsNormalizer::REASON_MISSING_FEASIBILITY_REASON, 'E12 reason key missing');
+
+foreach (['executable', 'non_executable', 'uncertain'] as $statusNeedReason) {
+    expect_reason(static function () use ($statusNeedReason): void {
+        AiuDestinationSemanticsNormalizer::apply([], [
+            'destination' => ['日本'],
+            'destination_relation' => 'single',
+            'destination_semantics' => [
+                [
+                    'label' => '日本',
+                    'semantic_role' => 'travel_destination',
+                    'travel_feasibility' => ['status' => $statusNeedReason, 'feasibility_reason' => '   '],
+                ],
+            ],
+        ]);
+    }, AiuDestinationSemanticsNormalizer::REASON_MISSING_FEASIBILITY_REASON, "E12 blank reason status={$statusNeedReason}");
+}
+
+// Nested complete reason → PASS (no Runtime auto-fill / alias)
+$passEntities = AiuDestinationSemanticsNormalizer::apply([], [
+    'destination' => ['日本'],
+    'destination_relation' => 'single',
+    'destination_semantics' => [
+        candidate('日本', 'travel_destination', 'executable', 'bookable_market_destination'),
+    ],
+]);
+c_assert(
+    ($passEntities['destination_semantics'][0]['travel_feasibility']['feasibility_reason'] ?? '') === 'bookable_market_destination',
+    'E12 complete nested reason PASS'
+);
+
+expect_reason(static function (): void {
+    AiuDestinationSemanticsNormalizer::apply([], [
         'destination' => ['日本', '花季'],
         'destination_relation' => 'single',
         'destination_semantics' => [
@@ -215,11 +278,21 @@ $translator = new AiuProductIntentTranslator();
 function to_intent(array $entities): BatsSearchIntent
 {
     global $translator;
-    return $translator->translate(
-        AiIntentUnderstandingResult::create(AiIntentCategory::PRODUCT_SEARCH)
-            ->setEntities($entities)
-            ->setConfidence(0.9)
-    );
+    $result = AiIntentUnderstandingResult::create(AiIntentCategory::PRODUCT_SEARCH)
+        ->setEntities($entities)
+        ->setConfidence(0.9);
+    $tokens = $entities['search_keyword_tokens'] ?? null;
+    if (is_array($tokens)) {
+        $projection = (new AiuSearchKeywordTokenProjector())->project(
+            $tokens,
+            AiuSearchKeywordTokenProjector::MODE_REQUIRED
+        );
+        if ($projection instanceof AiuSearchKeywordProjectionResult) {
+            $result->attachSearchKeywordProjection($projection);
+        }
+    }
+
+    return $translator->translate($result);
 }
 
 function assert_zero_call(BatsSearchIntent $intent, string $label): void
@@ -245,6 +318,7 @@ $allowEntities = AiuDestinationSemanticsNormalizer::apply([], [
     'destination_relation' => 'single',
     'destination_semantics' => [candidate('東京')],
 ]);
+$allowEntities['search_keyword_tokens'] = ['東京'];
 $allowGate = DestinationExecutionGate::evaluate(to_intent($allowEntities));
 c_assert($allowGate['execution_decision'] === DestinationFeasibilityContracts::EXECUTION_ALLOW_SINGLE_SEARCH, 'E15 allow_single_search');
 
@@ -253,6 +327,7 @@ $denyEntities = AiuDestinationSemanticsNormalizer::apply([], [
     'destination_relation' => 'single',
     'destination_semantics' => [candidate('火星', 'travel_destination', 'non_executable', 'x')],
 ]);
+$denyEntities['search_keyword_tokens'] = ['火星'];
 $denyIntent = to_intent($denyEntities);
 $denyGate = DestinationExecutionGate::evaluate($denyIntent);
 c_assert($denyGate['execution_decision'] === DestinationFeasibilityContracts::EXECUTION_DENY_NON_EXECUTABLE, 'E15 deny_non_executable');
@@ -266,6 +341,7 @@ $mixedEntities = AiuDestinationSemanticsNormalizer::apply([], [
         candidate('火星', 'travel_destination', 'non_executable', 'x'),
     ],
 ]);
+$mixedEntities['search_keyword_tokens'] = ['東京', '火星'];
 $mixedIntent = to_intent($mixedEntities);
 c_assert(
     DestinationExecutionGate::evaluate($mixedIntent)['execution_decision']
@@ -279,6 +355,7 @@ $orEntities = AiuDestinationSemanticsNormalizer::apply([], [
     'destination_relation' => 'or',
     'destination_semantics' => [candidate('東京'), candidate('大阪')],
 ]);
+$orEntities['search_keyword_tokens'] = ['東京', '大阪'];
 $orIntent = to_intent($orEntities);
 c_assert(
     DestinationExecutionGate::evaluate($orIntent)['execution_decision']

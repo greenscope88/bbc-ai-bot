@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "tenant_sno": "tCap",
+  "tenant_key": "test_tcap",
+  "default_category": "group_tour",
+  "enabled_sources": [
+    {
+      "source_id": "bbcshops",
+      "priority": 5,
+      "product_categories": ["group_tour"]
+    },
+    {
+      "source_id": "grp",
+      "priority": 10,
+      "product_categories": ["group_tour"]
+    },
+    {
+      "source_id": "tourcenter",
+      "priority": 30,
+      "product_categories": ["group_tour"]
+    }
+  ],
+  "updated_at": "2026-07-30T00:00:00+08:00"
+}

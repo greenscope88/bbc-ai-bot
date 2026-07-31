@@ -10,6 +10,8 @@ $root = dirname(__DIR__, 2);
 require_once $root . '/core/intent/AiuClarificationReasonContract.php';
 require_once $root . '/core/intent/AiuPromptBuilder.php';
 require_once $root . '/core/intent/AiuPromptRequest.php';
+require_once $root . '/core/intent/AiuProductSetContext.php';
+require_once $root . '/core/intent/AiuProductSetContextResolver.php';
 require_once $root . '/core/intent/AiuSemanticJsonNormalizer.php';
 require_once $root . '/core/intent/AiuProductIntentTranslator.php';
 require_once $root . '/core/intent/AiIntentUnderstandingResult.php';
@@ -184,7 +186,9 @@ $req = new AiuPromptRequest(
     'active',
     null,
     new DateTimeImmutable('2026-07-14', new DateTimeZone('Asia/Taipei')),
-    null
+    null,
+    null,
+    (new AiuProductSetContextResolver())->resolve('5f99b8d665e8444d')
 );
 $prompt = $builder->build($req);
 crc_assert(strpos($prompt, 'missing_destination') !== false, 'prompt contains missing_destination');

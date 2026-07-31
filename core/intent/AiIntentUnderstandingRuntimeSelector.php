@@ -247,27 +247,50 @@ final class AiIntentUnderstandingRuntimeSelector
                 $failureReason = self::FAILURE_REASON_CONTEXT_RETENTION;
             }
 
-            Logger::log('saas_router.log', 'aiu_selector_fail_closed', [
+            Logger::log(
+                'saas_router.log',
+                'aiu_selector_fail_closed',
+                self::buildFailClosedObservation($params, $failureReason)
+            );
 
-                'tenant_sno' => trim((string) ($params['tenant_sno'] ?? '')),
 
-                'conversation_id' => trim((string) ($params['conversation_id'] ?? '')),
+
+            return [
+
+                'runtime_source' => self::SOURCE_FAIL_CLOSED,
 
                 'failure_reason' => $failureReason,
 
                 'error' => $errorMessage,
 
-            ]);
-
-
-
-            return self::failClosedResult($failureReason);
+            ];
 
         }
 
     }
 
 
+
+    /**
+     * B0-LINE-01D-3J-11O1: pure builder for the aiu_selector_fail_closed LOG payload
+     * only — the returned array{runtime_source,failure_reason,error} fail-closed
+     * contract for callers is unchanged and does not use this builder.
+     *
+     * Safe fields only: trace_id, request_id, failure_stage, error_code. Never
+     * tenant_sno, conversation_id, or the full exception message/error.
+     *
+     * @param array<string, mixed> $params
+     * @return array{trace_id: string, request_id: string, failure_stage: string, error_code: string}
+     */
+    public static function buildFailClosedObservation(array $params, string $failureReason): array
+    {
+        return [
+            'trace_id' => isset($params['trace_id']) ? trim((string) $params['trace_id']) : '',
+            'request_id' => isset($params['request_id']) ? trim((string) $params['request_id']) : '',
+            'failure_stage' => 'aiu_runtime',
+            'error_code' => $failureReason,
+        ];
+    }
 
     /**
 

@@ -23,6 +23,8 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuClarificationReasonContract.php
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuSearchKeywordTokenProjector.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuSearchKeywordProjectionResult.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuSearchKeywordTokenException.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuProductSetContext.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'AiuProductSetContextResolver.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'search' . DIRECTORY_SEPARATOR . 'BatsSearchIntent.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'conversation' . DIRECTORY_SEPARATOR . 'ConversationOwner.php';
 require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'logger.php';
@@ -43,6 +45,7 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
     private AiuSemanticJsonNormalizer $semanticNormalizer;
     private AiIntentContextLoader $contextLoader;
     private StructuredSearchResumeStateStore $resumeStore;
+    private AiuProductSetContextResolver $productSetContextResolver;
 
     public function __construct(
         ?AiuGeminiUnderstandingClientInterface $geminiClient = null,
@@ -50,14 +53,20 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
         ?AiuSemanticJsonNormalizer $semanticNormalizer = null,
         ?AiIntentContextLoader $contextLoader = null,
         ?StructuredSearchResumeStateStore $resumeStore = null,
-        ?AiuOutputContractValidator $outputContractValidator = null
+        ?AiuOutputContractValidator $outputContractValidator = null,
+        ?AiuProductSetContextResolver $productSetContextResolver = null
     ) {
-        $this->geminiClient = $geminiClient ?? new AiuGeminiUnderstandingClient();
+        // B0-LINE-01D-3J-11O1: resolve promptBuilder first so the default production
+        // Gemini client shares the exact same Runtime promptBuilder instance used for
+        // the Product-Set Context authorization fingerprint check below. Wiring only —
+        // no change to injected client behavior.
         $this->promptBuilder = $promptBuilder ?? new AiuPromptBuilder();
+        $this->geminiClient = $geminiClient ?? new AiuGeminiUnderstandingClient($this->promptBuilder);
         $this->outputContractValidator = $outputContractValidator ?? new AiuOutputContractValidator();
         $this->semanticNormalizer = $semanticNormalizer ?? new AiuSemanticJsonNormalizer();
         $this->contextLoader = $contextLoader ?? new AiIntentContextLoader();
         $this->resumeStore = $resumeStore ?? new StructuredSearchResumeStateStore();
+        $this->productSetContextResolver = $productSetContextResolver ?? new AiuProductSetContextResolver();
     }
 
     public static function createForTesting(
@@ -171,6 +180,11 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
             'trace_id' => $traceId,
         ]);
 
+        // Resolve the authoritative tenant-scoped Product-Set Context before building the
+        // Prompt Request. Unresolvable tenant scope fails closed here, ahead of any Gemini
+        // call, via the existing AIU safe failure path — never a context-less prompt.
+        $productSetContext = $this->productSetContextResolver->resolve($tenantSno);
+
         $promptRequest = new AiuPromptRequest(
             $tenantSno,
             $channel,
@@ -181,7 +195,26 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
             $snapshot['resume_context'],
             $promptReference,
             isset($context['request_id']) ? (string) $context['request_id'] : null,
-            $stateInjected && $priorState !== null ? $priorState->toPromptInjectionArray() : null
+            $stateInjected && $priorState !== null ? $priorState->toPromptInjectionArray() : null,
+            $productSetContext
+        );
+
+        // B0-LINE-01D-3J-11O1: single safe observability checkpoint, authorized before
+        // (and never after) the one Gemini call below. No fallback, no second context
+        // read, no second Gemini call — mismatch fails closed.
+        $contextObservation = $productSetContext->toSafeObservationFacts();
+        $promptContextFingerprint = $this->promptBuilder->productSetContextFingerprint($promptRequest);
+        if (!hash_equals($contextObservation['resolved_context_fingerprint'], $promptContextFingerprint)) {
+            throw new \RuntimeException('aiu_product_set_context_fingerprint_mismatch');
+        }
+        $this->logResumeEvent(
+            'aiu_product_set_context_authorized',
+            self::buildProductSetContextAuthorizedObservation(
+                $traceId,
+                $promptRequest->getRequestId(),
+                $contextObservation,
+                $promptContextFingerprint
+            )
         );
 
         $semanticRaw = $this->geminiClient->understand($promptRequest);
@@ -202,7 +235,7 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
         $confidence = (float) $normalized['confidence'];
 
         // Pending clarification completion: keep prior keyword tokens; only asked_entity slots
-        // come from this turn structured result. new_request keeps Gemini token authority.
+        // come from this turn's structured result. new_request keeps Gemini token authority.
         $priorKeywordTokens = null;
         if ($priorState !== null
             && $resumeDisposition !== StructuredSearchResumeDispositionContract::NEW_REQUEST
@@ -562,15 +595,53 @@ final class AiIntentUnderstandingRuntime implements AiIntentUnderstandingRuntime
     }
 
     /**
-     * Observability-only: boolean presence of Gemini raw date fields.
+     * B0-LINE-01D-3J-11O1: pure builder for the aiu_product_set_context_authorized
+     * event payload — Runtime uses this exact builder for logging, and tests may call
+     * it directly to assert the stable key/value contract without reading log files.
+     *
+     * Safe fields only: trace_id, request_id, the SAFE observation facts, the prompt
+     * fingerprint used for the match check, and the authorization outcome. Never
+     * tenant_sno, utterance, prompt, full context, categories/dimensions, search
+     * domain, response, token, or secret. Reports authorized only — never "attempted".
+     *
+     * @param array{
+     *   context_version: int,
+     *   resolution_status: string,
+     *   category_count: int,
+     *   category_fingerprint: string,
+     *   executable_dimension_count: int,
+     *   executable_dimension_fingerprint: string,
+     *   resolved_context_fingerprint: string
+     * } $contextObservation
+     * @return array<string, mixed>
+     */
+    public static function buildProductSetContextAuthorizedObservation(
+        string $traceId,
+        ?string $requestId,
+        array $contextObservation,
+        string $promptContextFingerprint
+    ): array {
+        return [
+            'trace_id' => $traceId,
+            'request_id' => $requestId,
+            'context_version' => $contextObservation['context_version'],
+            'resolution_status' => $contextObservation['resolution_status'],
+            'category_count' => $contextObservation['category_count'],
+            'category_fingerprint' => $contextObservation['category_fingerprint'],
+            'executable_dimension_count' => $contextObservation['executable_dimension_count'],
+            'executable_dimension_fingerprint' => $contextObservation['executable_dimension_fingerprint'],
+            'resolved_context_fingerprint' => $contextObservation['resolved_context_fingerprint'],
+            'prompt_context_fingerprint' => $promptContextFingerprint,
+            'context_fingerprint_match' => true,
+            'gemini_call_authorized' => true,
+        ];
+    }
+
+    /**
+     * Observability-only: Gemini raw date fields before normalize.
      *
      * @param array<string, mixed> $semanticRaw
-     * @return array{
-     *   raw_has_date_range: bool,
-     *   raw_has_date_from: bool,
-     *   raw_has_date_to: bool,
-     *   raw_has_date_expression: bool
-     * }
+     * @return array<string, mixed>
      */
     public static function observeRawDateFieldPresence(array $semanticRaw): array
     {

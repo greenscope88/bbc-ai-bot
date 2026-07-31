@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . '/core/intent/AiuPromptRequest.php';
 require_once dirname(__DIR__, 2) . '/core/intent/AiuPromptBuilder.php';
+require_once dirname(__DIR__, 2) . '/core/intent/AiuProductSetContext.php';
+require_once dirname(__DIR__, 2) . '/core/intent/AiuProductSetContextResolver.php';
 require_once dirname(__DIR__, 2) . '/core/conversation/ConversationOwner.php';
 
 $failures = 0;
@@ -48,6 +50,7 @@ $pending = [
     'provenance_reference_calendar_date' => '2026-07-15',
 ];
 
+$productSetContext = (new AiuProductSetContextResolver())->resolve('5f99b8d665e8444d');
 $builder = new AiuPromptBuilder();
 $with = new AiuPromptRequest(
     't',
@@ -59,7 +62,8 @@ $with = new AiuPromptRequest(
     null,
     $ref,
     null,
-    $pending
+    $pending,
+    $productSetContext
 );
 $prompt = $builder->build($with);
 assert_true(strpos($prompt, '[B-08b Structured Search Resume State') !== false, 'resume block present');
@@ -81,7 +85,8 @@ $without = new AiuPromptRequest(
     null,
     $ref,
     null,
-    null
+    null,
+    $productSetContext
 );
 $cold = $builder->build($without);
 assert_true(strpos($cold, 'No prior pending Product Search clarification state') !== false, 'cold null resume');

@@ -60,6 +60,7 @@ $fixedClient->payload = [
     'clarification' => ['required' => true, 'reason' => 'missing_travel_dates'],
 ];
 $case1 = $runtime->understand('10月', [
+    'tenant_sno' => $sno,
     'conversation_id' => $cid,
     'reference_date' => $reference,
     'now' => $reference,
@@ -90,6 +91,7 @@ $fixedClient->payload = [
     'clarification' => ['required' => false, 'reason' => ''],
 ];
 $case2a = $runtime->understand('10月', [
+    'tenant_sno' => $sno,
     'conversation_id' => $cid . '-2a',
     'reference_date' => $reference,
 ]);
@@ -105,6 +107,7 @@ dpo_assert(($case2a->getEntities()['date_to'] ?? '') === '2026-10-31', 'case2a: 
 // Case 2 — Raw Date Passthrough (2027)
 $fixedClient->payload['entities']['date_range'] = ['from' => '2027-10-01', 'to' => '2027-10-31'];
 $case2b = $runtime->understand('10月', [
+    'tenant_sno' => $sno,
     'conversation_id' => $cid . '-2b',
     'reference_date' => $reference,
 ]);
