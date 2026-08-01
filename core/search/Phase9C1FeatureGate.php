@@ -38,6 +38,8 @@ final class Phase9C1FeatureGate
 
         self::TRAVEL_B_SNO,
 
+        '5fecdf66e9224bee', // travel_d
+
     ];
 
 

@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'ProductSourceCatalogLoader.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'TenantProductSourceLoader.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'TenantProductSourcesProviderFactory.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'LocalTenantProductSourcesProvider.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'ProductSourceDefinition.php';
 
 /**
@@ -60,10 +62,48 @@ final class ProductSourceRegistry
     public static function fromLocalFiles(?string $catalogPath = null, ?string $tenantSourcesPath = null): self
     {
         $catalogLoader = new ProductSourceCatalogLoader();
-        $tenantLoader = new TenantProductSourceLoader();
+
+        // Only construct the (fail-closed) default-provider loader when no explicit
+        // tenant document path is supplied; an explicit path must never trigger the
+        // no-fixed-tenant default lookup.
+        $tenantProvider = ($tenantSourcesPath !== null && trim($tenantSourcesPath) !== '')
+            ? new LocalTenantProductSourcesProvider($tenantSourcesPath)
+            : null;
+        $tenantLoader = new TenantProductSourceLoader($tenantProvider);
 
         $catalog = $catalogLoader->load($catalogPath);
-        $tenant = $tenantLoader->load($tenantSourcesPath);
+        $tenant = $tenantLoader->load();
+
+        return new self(
+            $catalog['sources'],
+            $catalog['schema_version'],
+            $catalog['catalog_id'],
+            $tenant['tenant_sno'],
+            $tenant['tenant_key'],
+            $tenant['default_category'],
+            $tenant['enabled_sources']
+        );
+    }
+
+    /**
+     * Single Authority load: resolves the platform catalog plus the canonical
+     * tenant document selected solely by tenant_sno via
+     * TenantProductSourcesProviderFactory::createForTenant(). No tenant-specific
+     * mapping, no fallback to any other tenant's document.
+     */
+    public static function forTenant(string $tenantSno): self
+    {
+        $trimmed = trim($tenantSno);
+        if ($trimmed === '') {
+            throw new \InvalidArgumentException('ProductSourceRegistry::forTenant: tenant_sno must not be blank');
+        }
+
+        $catalogLoader = new ProductSourceCatalogLoader();
+        $provider = TenantProductSourcesProviderFactory::createForTenant($trimmed);
+        $tenantLoader = new TenantProductSourceLoader($provider);
+
+        $catalog = $catalogLoader->load();
+        $tenant = $tenantLoader->load();
 
         return new self(
             $catalog['sources'],

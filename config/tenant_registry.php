@@ -123,6 +123,45 @@ return [
         ],
 
         // ---------------------------------------------------------------------
+        // travel_d — third tenant golden clone from travel_b (家樂福旅行社 總公司)
+        // ---------------------------------------------------------------------
+        'travel_d' => [
+            'credential_env_prefix' => 'travel_d',
+            'display_name' => '家樂福旅行社 總公司',
+            'line_channel_id' => 'Uf76e61279fd9fd5f8e0274bbd59f7f7c',
+            'sno' => '5fecdf66e9224bee',
+            'depID' => 888,
+            'storeNo' => 6355,
+            'store_uid' => 6355,
+            'provider_id_no' => 0,
+            'status' => 'enabled',
+
+            'profile' => [
+                'company_name' => '家樂福旅行社 總公司',
+                'ai_tone' => '親切',
+                'travel_specialties' => '綜合旅遊',
+                'price_catalog_json' => '{}',
+            ],
+
+            'features' => [
+                'tour_prompt' => true,
+                'hybrid_search' => true,
+                'fixed_formatter' => true,
+            ],
+
+            'gemini_policy' => [
+                'tone' => 'travel_assistant',
+                'allow_fixed_formatter' => true,
+                'allow_gemini_rewrite' => false,
+            ],
+
+            'source_policy' => [
+                'host_b_enabled' => true,
+                'search_client' => 'gateway_php',
+            ],
+        ],
+
+        // ---------------------------------------------------------------------
         // travel_c — disabled placeholder (onboarding template; no traffic)
         // ---------------------------------------------------------------------
         'travel_c' => [

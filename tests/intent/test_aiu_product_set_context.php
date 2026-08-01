@@ -43,9 +43,10 @@ function apsc_expect_throw(callable $fn, string $label, string $exceptionClass =
 }
 
 const APSC_REAL_TENANT_SNO = '5f99b8d665e8444d';
+const APSC_TRAVEL_D_TENANT_SNO = '5fecdf66e9224bee';
 
 // --- Resolver resolves categories/dimensions from the existing registry authority ---
-$registry = ProductSourceRegistry::fromLocalFiles();
+$registry = ProductSourceRegistry::forTenant(APSC_REAL_TENANT_SNO);
 $expectedCategories = [];
 foreach ($registry->getEnabledSources() as $source) {
     foreach ($source->getProductCategories() as $category) {
@@ -76,6 +77,27 @@ apsc_assert(
 );
 apsc_assert($context->getTenantSno() === APSC_REAL_TENANT_SNO, 'resolver context carries requested tenant_sno');
 
+// --- Tenant-Scoped Product-Set Registry: travel_d resolves via its own canonical
+// config (tenant_sno is the sole authority); source capability clone does not imply
+// cross-tenant product borrowing.
+$travelDRegistry = ProductSourceRegistry::forTenant(APSC_TRAVEL_D_TENANT_SNO);
+apsc_assert($travelDRegistry->getTenantSno() === APSC_TRAVEL_D_TENANT_SNO, 'travel_d registry carries travel_d tenant_sno');
+apsc_assert($travelDRegistry->getTenantKey() === 'travel_d', 'travel_d registry carries travel_d tenant_key');
+$travelDContext = (new AiuProductSetContextResolver())->resolve(APSC_TRAVEL_D_TENANT_SNO);
+apsc_assert(
+    $travelDContext->getResolutionStatus() === AiuProductSetContext::RESOLUTION_STATUS_RESOLVED,
+    'travel_d resolver resolution_status is resolved (no tenant scope mismatch)'
+);
+apsc_assert($travelDContext->getTenantSno() === APSC_TRAVEL_D_TENANT_SNO, 'travel_d context carries travel_d tenant_sno');
+apsc_assert(
+    $travelDContext->getSearchableProductCategories() === $context->getSearchableProductCategories(),
+    'travel_d searchable categories mirror travel_b golden config (source capability clone)'
+);
+apsc_assert(
+    $travelDContext->getSearchDomain() !== $context->getSearchDomain(),
+    'travel_d search_domain is tenant-scoped, distinct from travel_b (no cross-tenant identity bleed)'
+);
+
 // --- Tenant scope: unknown/different tenant must not borrow another tenant's context ---
 apsc_expect_throw(
     static function () use ($resolver): void {
@@ -83,6 +105,36 @@ apsc_expect_throw(
     },
     'resolve() with unknown tenant_sno throws (no borrowing)',
     \RuntimeException::class
+);
+
+// --- ProductSourceRegistry::forTenant() fail-closed contract (unknown/blank sno) ---
+apsc_expect_throw(
+    static function (): void {
+        ProductSourceRegistry::forTenant('unknown-tenant-sno-not-registered');
+    },
+    'ProductSourceRegistry::forTenant() with unknown tenant_sno fails closed (missing config file)',
+    \RuntimeException::class
+);
+apsc_expect_throw(
+    static function (): void {
+        ProductSourceRegistry::forTenant('');
+    },
+    'ProductSourceRegistry::forTenant() with blank tenant_sno throws',
+    \InvalidArgumentException::class
+);
+apsc_expect_throw(
+    static function (): void {
+        ProductSourceRegistry::forTenant('   ');
+    },
+    'ProductSourceRegistry::forTenant() with whitespace-only tenant_sno throws',
+    \InvalidArgumentException::class
+);
+apsc_expect_throw(
+    static function (): void {
+        ProductSourceRegistry::forTenant('../etc/passwd');
+    },
+    'ProductSourceRegistry::forTenant() rejects path traversal in tenant_sno',
+    \InvalidArgumentException::class
 );
 
 // --- Blank tenant_sno throws ---
@@ -634,7 +686,7 @@ apsc_expect_throw(
 );
 apsc_assert($runtimeRegistryLoadCalls === 0, 'runtime registry load failure: Gemini stub never invoked');
 
-$emptyUnionRegistry = ProductSourceRegistry::fromLocalFiles();
+$emptyUnionRegistry = ProductSourceRegistry::forTenant(APSC_REAL_TENANT_SNO);
 $tenantRowsProp = new ReflectionProperty(ProductSourceRegistry::class, 'tenantEnabledRows');
 $tenantRowsProp->setAccessible(true);
 $tenantRowsProp->setValue($emptyUnionRegistry, []);

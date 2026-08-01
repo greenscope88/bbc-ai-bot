@@ -8,6 +8,11 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'TenantProductSourcesProviderInterf
  */
 final class LocalTenantProductSourcesProvider implements TenantProductSourcesProviderInterface
 {
+    /**
+     * @deprecated No longer used as a fallback path. Kept only because
+     * TenantProductSourceLoader::DEFAULT_TRAVEL_B_SAMPLE_PATH still references this
+     * constant. The constructor now requires an explicit config_path (fail-closed).
+     */
     public const DEFAULT_TRAVEL_B_SAMPLE_PATH = 'docs/sample/travel_b_product_sources.sample.json';
 
     /** @var string */
@@ -49,16 +54,18 @@ final class LocalTenantProductSourcesProvider implements TenantProductSourcesPro
 
     private function resolvePath(?string $path): string
     {
-        if ($path !== null && trim($path) !== '') {
-            $trimmed = trim($path);
-            if ($this->isAbsolutePath($trimmed)) {
-                return $trimmed;
-            }
-
-            return $this->projectRoot() . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $trimmed);
+        $trimmed = $path !== null ? trim($path) : '';
+        if ($trimmed === '') {
+            throw new \InvalidArgumentException(
+                'LocalTenantProductSourcesProvider: config_path is required (no default tenant fallback).'
+            );
         }
 
-        return $this->projectRoot() . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, self::DEFAULT_TRAVEL_B_SAMPLE_PATH);
+        if ($this->isAbsolutePath($trimmed)) {
+            return $trimmed;
+        }
+
+        return $this->projectRoot() . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $trimmed);
     }
 
     private function projectRoot(): string

@@ -60,19 +60,38 @@ test_assert($travelB !== null && $travelB->isFeatureEnabled('tour_prompt') === t
 test_assert($travelB !== null && $travelB->isFeatureEnabled('hybrid_search') === true, 'travel_b hybrid_search on');
 test_assert($travelB !== null && $travelB->isFeatureEnabled('fixed_formatter') === true, 'travel_b fixed_formatter on');
 
-// 5. travel_c disabled
+// 5. travel_d third tenant golden clone
+$travelDChannel = 'Uf76e61279fd9fd5f8e0274bbd59f7f7c';
+$travelDSno = '5fecdf66e9224bee';
+$travelDByChannel = $registry->resolveByChannel($travelDChannel);
+$travelDBySno = $registry->resolveBySno($travelDSno);
+test_assert($travelDByChannel !== null && $travelDByChannel->getTenantKey() === 'travel_d', 'travel_d resolves by channel');
+test_assert($travelDBySno !== null && $travelDBySno->getTenantKey() === 'travel_d', 'travel_d resolves by sno');
+test_assert($travelDByChannel !== null && $travelDBySno !== null && $travelDByChannel->getTenantKey() === $travelDBySno->getTenantKey(), 'travel_d channel and sno same tenant');
+test_assert($travelDByChannel !== null && $travelDByChannel->getSno() === $travelDSno, 'travel_d sno');
+test_assert($travelDByChannel !== null && $travelDByChannel->getDepId() === 888, 'travel_d depID');
+test_assert($travelDByChannel !== null && $travelDByChannel->getStoreNo() === 6355, 'travel_d storeNo');
+test_assert($travelDByChannel !== null && $travelDByChannel->getStoreUid() === 6355, 'travel_d store_uid');
+test_assert($travelDByChannel !== null && $travelDByChannel->getProviderIdNo() === 0, 'travel_d provider_id_no');
+test_assert($travelDByChannel !== null && $travelDByChannel->getCredentialEnvPrefix() === 'travel_d', 'travel_d credential_env_prefix');
+test_assert($travelDByChannel !== null && $travelDByChannel->getStatus() === 'enabled', 'travel_d status enabled');
+test_assert($travelDByChannel !== null && $travelDByChannel->isFeatureEnabled('tour_prompt') === true, 'travel_d tour_prompt on');
+test_assert($travelDByChannel !== null && $travelDByChannel->isFeatureEnabled('hybrid_search') === true, 'travel_d hybrid_search on');
+test_assert($travelDByChannel !== null && $travelDByChannel->isFeatureEnabled('fixed_formatter') === true, 'travel_d fixed_formatter on');
+
+// 6. travel_c disabled
 $travelC = $registry->resolveBySno('00000000-0000-4000-8000-0000000000c1');
 test_assert($travelC !== null && $travelC->getTenantKey() === 'travel_c', 'travel_c resolves by sno');
 test_assert($travelC !== null && $travelC->getStatus() === 'disabled', 'travel_c status disabled');
 test_assert($travelC !== null && $travelC->isEnabled() === false, 'travel_c isEnabled false');
 
-// 6–7. unknown
+// 7–8. unknown
 test_assert($registry->resolveByChannel('U_UNKNOWN_CHANNEL_XYZ') === null, 'unknown channel → null');
 test_assert($registry->resolveBySno('unknown-sno-not-in-registry') === null, 'unknown sno → null');
 
 // getAllTenants
 $all = $registry->getAllTenants();
-test_assert(count($all) === 3, 'getAllTenants returns 3 tenants');
+test_assert(count($all) === 4, 'getAllTenants returns 4 tenants');
 
 // toArray smoke
 test_assert($byChannel !== null && isset($byChannel->toArray()['tenant_key']), 'toArray has tenant_key');

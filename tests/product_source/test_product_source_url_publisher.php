@@ -23,7 +23,7 @@ function test_assert(bool $cond, string $message): void
 }
 
 $root = dirname(__DIR__, 2);
-$registry = ProductSourceRegistry::fromLocalFiles();
+$registry = ProductSourceRegistry::forTenant('5f99b8d665e8444d');
 $builder = new MultiSourceSearchUrlBuilder();
 $publisher = new ProductSourceUrlPublisher(new MockShortUrlProvider());
 $sno = '5f99b8d665e8444d';

@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "tenant_sno": "5fecdf66e9224bee",
+  "tenant_key": "travel_d",
+  "default_category": "group_tour",
+  "enabled_sources": [
+    {
+      "source_id": "bbcshops",
+      "priority": 5,
+      "product_categories": ["group_tour"]
+    },
+    {
+      "source_id": "grp",
+      "priority": 10,
+      "product_categories": ["group_tour"]
+    },
+    {
+      "source_id": "tourcenter",
+      "priority": 30,
+      "product_categories": ["group_tour"]
+    }
+  ],
+  "updated_at": "2026-08-01T00:00:00+08:00"
+}

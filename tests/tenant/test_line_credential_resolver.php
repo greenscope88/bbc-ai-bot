@@ -42,6 +42,8 @@ putenv('LINE_CHANNEL_SECRET__travel_a');
 putenv('LINE_CHANNEL_ACCESS_TOKEN__travel_a');
 putenv('LINE_CHANNEL_SECRET__travel_b');
 putenv('LINE_CHANNEL_ACCESS_TOKEN__travel_b');
+putenv('LINE_CHANNEL_SECRET__travel_d');
+putenv('LINE_CHANNEL_ACCESS_TOKEN__travel_d');
 
 // 1) travel_a resolve OK (using dummy env vars)
 putenv('LINE_CHANNEL_SECRET__travel_a=dummy_secret_a');
@@ -81,6 +83,30 @@ $missing = $b['missing_keys'] ?? [];
 if (is_array($missing)) {
     $joined = implode(',', $missing);
     test_assert(strpos($joined, 'LINE_CHANNEL_SECRET__travel_b') !== false || strpos($joined, 'LINE_CHANNEL_ACCESS_TOKEN__travel_b') !== false, 'missing_keys uses __{prefix} naming');
+}
+
+// 6) travel_d fail-closed when credentials missing; no cross-tenant fallback
+$travelDChannel = 'Uf76e61279fd9fd5f8e0274bbd59f7f7c';
+test_assert($registry->resolveByChannel($travelDChannel) !== null, 'travel_d channel resolves in registry');
+putenv('LINE_CHANNEL_SECRET__travel_d');
+putenv('LINE_CHANNEL_ACCESS_TOKEN__travel_d');
+$d = LineCredentialResolver::resolveByChannelId($travelDChannel);
+test_assert(($d['ok'] ?? true) === false, 'travel_d ok=false when missing');
+test_assert(($d['tenant_key'] ?? '') === 'travel_d', 'travel_d tenant_key');
+test_assert(($d['registry_hit'] ?? false) === true, 'travel_d registry_hit');
+test_assert(($d['errorCode'] ?? '') === 'MISSING_CREDENTIALS', 'travel_d errorCode MISSING_CREDENTIALS');
+test_assert(($d['channel_secret'] ?? null) === null, 'travel_d secret not returned');
+test_assert(($d['channel_access_token'] ?? null) === null, 'travel_d token not returned');
+test_assert(($d['channel_secret'] ?? '') !== 'dummy_secret_a', 'travel_d no cross-tenant secret fallback');
+test_assert(($d['channel_access_token'] ?? '') !== 'dummy_token_a', 'travel_d no cross-tenant token fallback');
+$dMissing = $d['missing_keys'] ?? [];
+if (is_array($dMissing)) {
+    $dJoined = implode(',', $dMissing);
+    test_assert(
+        strpos($dJoined, 'LINE_CHANNEL_SECRET__travel_d') !== false
+        || strpos($dJoined, 'LINE_CHANNEL_ACCESS_TOKEN__travel_d') !== false,
+        'travel_d missing_keys uses __travel_d naming'
+    );
 }
 
 if ($failures === 0) {

@@ -38,10 +38,45 @@ final class TenantProductSourcesProviderFactory
     }
 
     /**
-     * Default for Host A development: local travel_b sample JSON.
+     * @deprecated No fixed default tenant. Kept only because TenantProductSourceLoader's
+     * constructor default still references this method; it now fails closed (no
+     * fallback to any tenant's document). Use createForTenant() instead.
      */
     public static function createDefault(): TenantProductSourcesProviderInterface
     {
         return self::create(self::MODE_LOCAL);
+    }
+
+    /**
+     * Single Selection Owner: resolves the canonical local tenant product-sources
+     * provider for the authoritative tenant_sno. No tenant-specific mapping, no
+     * fallback to any other tenant's document.
+     */
+    public static function createForTenant(string $tenantSno): TenantProductSourcesProviderInterface
+    {
+        $trimmed = trim($tenantSno);
+        if ($trimmed === '') {
+            throw new \InvalidArgumentException('tenant_sno is required for createForTenant().');
+        }
+
+        if (self::containsPathTraversal($trimmed)) {
+            throw new \InvalidArgumentException('tenant_sno contains invalid path characters: ' . $tenantSno);
+        }
+
+        return new LocalTenantProductSourcesProvider(self::canonicalConfigPath($trimmed));
+    }
+
+    private static function canonicalConfigPath(string $tenantSno): string
+    {
+        return dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR
+            . 'product_source' . DIRECTORY_SEPARATOR . 'tenants' . DIRECTORY_SEPARATOR
+            . $tenantSno . DIRECTORY_SEPARATOR . 'product_sources.json';
+    }
+
+    private static function containsPathTraversal(string $value): bool
+    {
+        return strpos($value, '/') !== false
+            || strpos($value, '\\') !== false
+            || strpos($value, '..') !== false;
     }
 }

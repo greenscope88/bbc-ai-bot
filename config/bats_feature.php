@@ -84,6 +84,7 @@ return [
     'intent_understanding_authoritative_enabled' => true,
     'intent_understanding_authoritative_tenant_snos' => [
         '5f99b8d665e8444d', // travel_b pilot
+        '5fecdf66e9224bee', // travel_d
     ],
     // Phase 2-F Step 2-F-2a Grounding Layer shadow probe (safe default OFF).
     // Shadow-only: assembles GroundedInput in parallel and logs structure / reply

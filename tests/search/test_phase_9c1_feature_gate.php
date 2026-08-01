@@ -122,6 +122,28 @@ test_assert(Phase9C1FeatureGate::isBatsEnabledTenant($otherSno) === false, 'case
 
 
 
+// Case F: travel_d third tenant allowlisted (product path gate)
+
+$travelDSno = '5fecdf66e9224bee';
+
+$caseF = Phase9C1FeatureGate::evaluate([
+
+    'sno' => $travelDSno,
+
+    'userMessage' => '北海道7月',
+
+]);
+
+test_assert(($caseF['enabled'] ?? false) === true, 'caseF: travel_d enabled');
+
+test_assert(($caseF['reason'] ?? '') === 'all_conditions_met', 'caseF: travel_d reason');
+
+test_assert(Phase9C1FeatureGate::isBatsEnabledTenant($travelDSno) === true, 'caseF: isBatsEnabledTenant travel_d');
+
+test_assert(Phase9C1FeatureGate::isBatsEnabledTenant($travelBSno) === true, 'caseF: travel_b still enabled');
+
+
+
 if ($failures > 0) {
 
     fwrite(STDERR, "\n{$failures} test failure(s)\n");

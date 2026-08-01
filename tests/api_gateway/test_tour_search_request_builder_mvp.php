@@ -220,6 +220,42 @@ t($threwSno, 'missing sno in client and tenantContext must throw');
 
 
 
+// travel_d: Host B wire uses third-tenant sno only; provider_id_no must not be sent
+
+$travelDSno = '5fecdf66e9224bee';
+
+$travelDTenant = [
+
+    'sno' => $travelDSno,
+
+    'depID' => 888,
+
+    'storeNo' => 6355,
+
+    'store_uid' => 6355,
+
+    'provider_id_no' => 0,
+
+];
+
+$builtD = TourSearchRequestBuilder::build(
+
+    ['keyword' => '北海道', 'page' => 1, 'pageSize' => 20],
+
+    $travelDTenant
+
+);
+
+$qD = $builtD['query'];
+
+t(isset($qD['sno']) && $qD['sno'] === $travelDSno, 'travel_d Host B query sno');
+
+assertHostBQueryShape($qD);
+
+t(!array_key_exists('provider_id_no', $qD), 'travel_d query must omit provider_id_no');
+
+
+
 if ($failures > 0) {
 
     fwrite(STDERR, "test_tour_search_request_builder_mvp failed ({$failures}).\n");

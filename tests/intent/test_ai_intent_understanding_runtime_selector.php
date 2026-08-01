@@ -34,7 +34,9 @@ function test_assert(bool $cond, string $message): void
 $tz = new \DateTimeZone('Asia/Taipei');
 $now = new \DateTimeImmutable('2026-06-30 10:00:00', $tz);
 $pilotSno = '5f99b8d665e8444d';
+$travelDSno = '5fecdf66e9224bee';
 $cid = $pilotSno . ':line:Uaiu-auth';
+$dCid = $travelDSno . ':line:Uaiu-auth-d';
 
 $flagOff = [
     AiIntentUnderstandingRuntimeSelector::FLAG_ENABLED => false,
@@ -43,6 +45,11 @@ $flagOff = [
 $flagOn = [
     AiIntentUnderstandingRuntimeSelector::FLAG_ENABLED => true,
     AiIntentUnderstandingRuntimeSelector::FLAG_TENANTS => [$pilotSno],
+];
+// Golden allowlist mirrors config/bats_feature.php: travel_b pilot + travel_d.
+$flagOnWithTravelD = [
+    AiIntentUnderstandingRuntimeSelector::FLAG_ENABLED => true,
+    AiIntentUnderstandingRuntimeSelector::FLAG_TENANTS => [$pilotSno, $travelDSno],
 ];
 
 $runtimeFactory = static function () {
@@ -198,6 +205,55 @@ $resHumanService = AiIntentUnderstandingRuntimeSelector::resolve(
 test_assert(
     $resHumanService['intent_type'] === AiRuntimeIntent::HUMAN_SERVICE_REQUEST,
     'flag on human service: mapped human_service_request'
+);
+
+// THIRD-TENANT-V8: travel_d added to intent_understanding_authoritative_tenant_snos
+// alongside travel_b (golden multi-tenant allowlist, mirrors config/bats_feature.php).
+// Appended last so it cannot perturb the shared runtime/registry state relied on by
+// the pre-existing $cid-based assertions above.
+test_assert(
+    AiIntentUnderstandingRuntimeSelector::isAuthoritativeEnabled($flagOnWithTravelD, $travelDSno) === true,
+    'travel_d allowlisted: isAuthoritativeEnabled true'
+);
+test_assert(
+    AiIntentUnderstandingRuntimeSelector::isAuthoritativeEnabled($flagOnWithTravelD, $pilotSno) === true,
+    'travel_b regression under multi-tenant allowlist: isAuthoritativeEnabled true'
+);
+test_assert(
+    AiIntentUnderstandingRuntimeSelector::isAuthoritativeEnabled($flagOnWithTravelD, 'other-tenant-sno') === false,
+    'non-allowlisted sno under multi-tenant allowlist: isAuthoritativeEnabled false'
+);
+
+// resolve() for travel_d must pass the Authority gate (never AIU_AUTHORITY_DISABLED),
+// even if the downstream runtime pipeline outcome depends on out-of-scope per-tenant
+// product-source wiring not covered by this task.
+$resTravelD = AiIntentUnderstandingRuntimeSelector::resolve([
+    'tenant_sno' => $travelDSno,
+    'conversation_id' => $dCid,
+    'message' => '我想3月去東京自由行',
+    'now' => $now,
+    'reference_date' => $now,
+    'config' => $flagOnWithTravelD,
+], $runtimeFactory());
+test_assert(
+    ($resTravelD['failure_reason'] ?? null) !== AiIntentUnderstandingRuntimeSelector::FAILURE_REASON_AUTHORITY_DISABLED,
+    'travel_d allowlisted: resolve() not authority disabled'
+);
+
+// Non-allowlisted sno remains fail-closed with AUTHORITY_DISABLED under the golden
+// multi-tenant allowlist (resolve() short-circuits before touching the runtime).
+$resOtherWithTravelD = AiIntentUnderstandingRuntimeSelector::resolve([
+    'tenant_sno' => 'other-tenant-sno',
+    'conversation_id' => 'other-tenant-sno:line:Uaiu-other',
+    'message' => '我想3月去東京自由行',
+    'now' => $now,
+    'reference_date' => $now,
+    'config' => $flagOnWithTravelD,
+], $runtimeFactory());
+test_assert($resOtherWithTravelD['runtime_source'] === AiIntentUnderstandingRuntimeSelector::SOURCE_FAIL_CLOSED, 'non-allowlisted sno: fail_closed');
+test_assert(
+    ($resOtherWithTravelD['failure_reason'] ?? '') === AiIntentUnderstandingRuntimeSelector::FAILURE_REASON_AUTHORITY_DISABLED,
+    'non-allowlisted sno: authority disabled'
 );
 
 if ($failures > 0) {

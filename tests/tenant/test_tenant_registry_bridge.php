@@ -86,6 +86,23 @@ $bCtx = $resolverInjected->resolve($bSno);
 test_assert(($bCtx['ok'] ?? false) === true, 'travel_b registry context ok');
 test_assert(($bCtx['tenantContext']['sno'] ?? '') === $bSno, 'travel_b sno');
 test_assert(array_key_exists('depID', $bCtx['tenantContext'] ?? []), 'travel_b depID key present');
+test_assert(($bCtx['tenantContext']['provider_id_no'] ?? null) === 101, 'travel_b provider_id_no unchanged');
+
+// 7. travel_d sno — Host A context shape (provider_id_no=0 allowed)
+$dSno = '5fecdf66e9224bee';
+$dChannel = 'Uf76e61279fd9fd5f8e0274bbd59f7f7c';
+$dTenant = TenantResolver::resolve($pdo, ['destination' => $dChannel], $config);
+assert_tenant_shape($dTenant);
+test_assert($dTenant['sno'] === $dSno, 'travel_d sno via TenantResolver');
+test_assert($dTenant['channel_id'] === $dChannel, 'travel_d channel_id');
+test_assert($dTenant['company_name'] === '家樂福旅行社 總公司', 'travel_d company_name');
+$dCtx = $resolverInjected->resolve($dSno);
+test_assert(($dCtx['ok'] ?? false) === true, 'travel_d registry context ok');
+test_assert(($dCtx['tenantContext']['sno'] ?? '') === $dSno, 'travel_d context sno');
+test_assert(($dCtx['tenantContext']['depID'] ?? null) === 888, 'travel_d depID');
+test_assert(($dCtx['tenantContext']['storeNo'] ?? null) === 6355, 'travel_d storeNo');
+test_assert(($dCtx['tenantContext']['store_uid'] ?? null) === 6355, 'travel_d store_uid');
+test_assert(($dCtx['tenantContext']['provider_id_no'] ?? null) === 0, 'travel_d provider_id_no=0');
 
 if ($failures === 0) {
     echo "OK: tenant registry bridge tests passed.\n";

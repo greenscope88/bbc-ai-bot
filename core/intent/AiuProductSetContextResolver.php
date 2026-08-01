@@ -36,7 +36,7 @@ final class AiuProductSetContextResolver
             throw new \InvalidArgumentException('AiuProductSetContextResolver: tenant_sno must not be blank');
         }
 
-        $registry = $this->obtainRegistry();
+        $registry = $this->obtainRegistry($trimmedTenantSno);
         if ($registry->getTenantSno() !== $trimmedTenantSno) {
             throw new \RuntimeException(
                 'AiuProductSetContextResolver: tenant scope mismatch — requested tenant_sno does not match '
@@ -80,7 +80,7 @@ final class AiuProductSetContextResolver
         return $categories;
     }
 
-    private function obtainRegistry(): ProductSourceRegistry
+    private function obtainRegistry(string $tenantSno): ProductSourceRegistry
     {
         if ($this->registry !== null) {
             return $this->registry;
@@ -97,6 +97,6 @@ final class AiuProductSetContextResolver
             return $registry;
         }
 
-        return ProductSourceRegistry::fromLocalFiles();
+        return ProductSourceRegistry::forTenant($tenantSno);
     }
 }
