@@ -405,7 +405,13 @@ putenv('BDS_DRY_RUN=false');
 putenv('BDS_GCS_WRITE_ENABLED=true');
 putenv('BDS_TARGET_SNO=' . $tenantSno);
 
-$gate = BdsGcsUploader::evaluateWriteGate();
+$resolvedContext = [
+    'tenant_key' => $tenantKey,
+    'sno' => $tenantSno,
+    'gcs_prefix' => (string) ($entry['gcs_prefix'] ?? ''),
+];
+
+$gate = BdsGcsUploader::evaluateResolvedIdentityGate($resolvedContext);
 if ($gate['open'] !== true) {
     print_step('GCS Upload', 'FAIL');
     print_step('Read-back Verification', 'SKIP');
@@ -432,7 +438,7 @@ if ($isUploadMode) {
     );
 }
 
-$uploadResult = $uploader->uploadKnowledge($tenantSno, $knowledgeJson, $validation, $sourceSheetId);
+$uploadResult = $uploader->uploadKnowledge($tenantSno, $knowledgeJson, $validation, $resolvedContext, $sourceSheetId);
 
 if (($uploadResult['ok'] ?? false) !== true) {
     print_step('GCS Upload', 'FAIL');

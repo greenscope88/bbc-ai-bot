@@ -4,15 +4,15 @@ declare(strict_types=1);
 /**
  * BDS Phase 5C — Controlled Real GCS Write integration test.
  *
- * Reader -> Parser -> Validator -> GCS Upload (pilot tenant only).
+ * Reader -> Parser -> Validator -> GCS Upload (BDS Authority resolved tenant).
  *
  * Required env for live write:
  * - BDS_DRY_RUN=false
  * - BDS_GCS_WRITE_ENABLED=true
- * - BDS_TARGET_SNO=5f99b8d665e8444d
+ * - BDS_TARGET_SNO=<resolved tenant sno from bds_source_registry.php>
  * - BDS_GCS_BUCKET=bbc-ai-saas-data (optional; defaults to bbc-ai-saas-data)
  * - BDS_TEST_PRIVATE_KNOWLEDGE_SHEET_ID
- * - BDS_TEST_TENANT_SNO=5f99b8d665e8444d
+ * - BDS_TEST_TENANT_SNO=<same resolved tenant sno as BDS_TARGET_SNO>
  * - BDS_GOOGLE_APPLICATION_CREDENTIALS (optional; falls back to secrets/)
  */
 
@@ -22,6 +22,7 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPA
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR . 'BdsKnowledgeDocumentBuilder.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR . 'BdsGcsUploader.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR . 'BdsJsonWriter.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR . 'BdsSourceRegistryLoader.php';
 
 $failures = 0;
 
@@ -40,14 +41,6 @@ function env_string(string $name): string
   return is_string($value) ? trim($value) : '';
 }
 
-$gate = BdsGcsUploader::evaluateWriteGate();
-fwrite(STDOUT, 'GATE_OPEN|' . ($gate['open'] ? 'yes' : 'no') . '|' . $gate['reason'] . PHP_EOL);
-
-if ($gate['open'] !== true) {
-  fwrite(STDERR, "SKIP: write gate not open ({$gate['reason']}); set BDS_DRY_RUN=false, BDS_GCS_WRITE_ENABLED=true, BDS_TARGET_SNO=5f99b8d665e8444d\n");
-  exit(0);
-}
-
 $sheetId = env_string('BDS_TEST_PRIVATE_KNOWLEDGE_SHEET_ID');
 $tenantSno = env_string('BDS_TEST_TENANT_SNO');
 $credentialsPath = env_string('BDS_GOOGLE_APPLICATION_CREDENTIALS');
@@ -57,7 +50,24 @@ if ($sheetId === '' || $tenantSno === '') {
   exit(0);
 }
 
-test_assert($tenantSno === BdsGcsUploader::PILOT_TENANT_SNO, 'tenant is pilot only');
+$resolvedEntry = BdsSourceRegistryLoader::loadBySno($tenantSno);
+if ($resolvedEntry === null) {
+  fwrite(STDERR, "SKIP: BDS_TEST_TENANT_SNO does not resolve to a BDS Authority tenant\n");
+  exit(0);
+}
+$resolvedContext = [
+  'tenant_key' => (string) ($resolvedEntry['tenant_key'] ?? ''),
+  'sno' => (string) ($resolvedEntry['sno'] ?? ''),
+  'gcs_prefix' => (string) ($resolvedEntry['gcs_prefix'] ?? ''),
+];
+
+$gate = BdsGcsUploader::evaluateResolvedIdentityGate($resolvedContext);
+fwrite(STDOUT, 'GATE_OPEN|' . ($gate['open'] ? 'yes' : 'no') . '|' . $gate['reason'] . PHP_EOL);
+
+if ($gate['open'] !== true) {
+  fwrite(STDERR, "SKIP: write gate not open ({$gate['reason']}); set BDS_DRY_RUN=false, BDS_GCS_WRITE_ENABLED=true, BDS_TARGET_SNO=<resolved tenant sno>\n");
+  exit(0);
+}
 
 try {
   $reader = new BdsGoogleSheetReader($credentialsPath !== '' ? $credentialsPath : null);
@@ -82,7 +92,7 @@ $knowledgeJson = BdsKnowledgeDocumentBuilder::fromNormalized($tenantSno, $normal
 $outputRoot = dirname(__FILE__) . DIRECTORY_SEPARATOR . 'output';
 $uploader = new BdsGcsUploader(null, $credentialsPath !== '' ? $credentialsPath : null, $outputRoot);
 
-$result = $uploader->uploadKnowledge($tenantSno, $knowledgeJson, $validation, $sheetId);
+$result = $uploader->uploadKnowledge($tenantSno, $knowledgeJson, $validation, $resolvedContext, $sheetId);
 test_assert(($result['ok'] ?? false) === true, 'upload result ok');
 test_assert(($result['status'] ?? '') === 'gcs_write_success', 'upload status gcs_write_success');
 test_assert(isset($result['uploaded_objects']) && is_array($result['uploaded_objects']) && count($result['uploaded_objects']) === 5, 'five objects uploaded');

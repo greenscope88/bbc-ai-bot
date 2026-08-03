@@ -18,6 +18,7 @@ return [
      */
     'tenants' => [
         'travel_b' => [
+            'store_no' => 6180,
             'sno' => '5f99b8d665e8444d',
             'tenant_name' => 'travel_b',
             'tenant_key' => 'travel_b',
@@ -27,6 +28,17 @@ return [
             // industries/travel/tenants/travel_b/01_Private_Layer/ (§6.5 SSOT)
             'private_knowledge_folder_id' => '17wrq-rrvc7ezclhWlbvdTKxHSf_Hw8pi',
             'gcs_prefix' => 'tenants/5f99b8d665e8444d/',
+        ],
+        'travel_d' => [
+            'store_no' => 6355,
+            'sno' => '5fecdf66e9224bee',
+            'tenant_name' => '家樂福旅行社 總公司',
+            'tenant_key' => 'travel_d',
+            'industry_code' => 'travel',
+            'enabled' => true,
+            // Upload-mode tenant; no Google Sheet pipeline configured (BDS v1 upload mode only).
+            'private_knowledge_sheet_id' => '',
+            'gcs_prefix' => 'tenants/5fecdf66e9224bee/',
         ],
     ],
 ];

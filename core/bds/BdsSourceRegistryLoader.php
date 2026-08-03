@@ -64,6 +64,80 @@ final class BdsSourceRegistryLoader
     }
 
     /**
+     * Resolves the single authoritative BdsTenantContext for an authenticated store login.
+     *
+     * Fail-closed on unknown, disabled, incomplete, duplicate-bound, or identity-mismatched
+     * registry data; callers must treat a null return as a uniform deny with no further
+     * tenant-specific branching.
+     *
+     * @return array<string, mixed>|null Normalized BdsTenantContext (includes store_no), or null.
+     */
+    public static function resolveByStoreNo(int $storeNo): ?array
+    {
+        if ($storeNo <= 0) {
+            return null;
+        }
+
+        $registry = self::readRegistry();
+        $tenants = $registry['tenants'] ?? null;
+        if (!is_array($tenants)) {
+            return null;
+        }
+
+        return self::resolveStoreNoFromTenants($tenants, $storeNo);
+    }
+
+    /**
+     * Pure fail-closed matching logic, separated from {@see readRegistry()} so it can be
+     * exercised against fixture tenant arrays without mutating the production registry file.
+     *
+     * @param array<string, mixed> $tenants
+     * @return array<string, mixed>|null
+     */
+    private static function resolveStoreNoFromTenants(array $tenants, int $storeNo): ?array
+    {
+        $matchKey = null;
+        $matchEntry = null;
+        $matchCount = 0;
+
+        foreach ($tenants as $tenantKey => $entry) {
+            if (!is_array($entry) || !array_key_exists('store_no', $entry)) {
+                continue;
+            }
+            if ((int) $entry['store_no'] !== $storeNo) {
+                continue;
+            }
+
+            ++$matchCount;
+            $matchKey = is_string($tenantKey) ? $tenantKey : (string) ($entry['tenant_key'] ?? $entry['tenant_name'] ?? '');
+            $matchEntry = $entry;
+        }
+
+        if ($matchCount !== 1 || $matchEntry === null || $matchKey === null || $matchKey === '') {
+            // unknown (0 matches) or duplicate store_no binding (>1 matches)
+            return null;
+        }
+
+        if (isset($matchEntry['tenant_key']) && (string) $matchEntry['tenant_key'] !== $matchKey) {
+            // registry key vs declared tenant_key identity mismatch
+            return null;
+        }
+
+        $context = self::normalizeEntry($matchEntry, $matchKey);
+        $context['store_no'] = $storeNo;
+
+        if ($context['enabled'] !== true) {
+            return null;
+        }
+
+        if ($context['sno'] === '' || $context['tenant_key'] === '' || $context['tenant_name'] === '') {
+            return null;
+        }
+
+        return $context;
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
     public static function resolve(?string $tenantKey, ?string $sno): ?array

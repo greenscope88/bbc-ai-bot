@@ -13,7 +13,6 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'BdsGcsWriter.php';
  */
 final class BdsGcsUploader
 {
-  public const PILOT_TENANT_SNO = '5f99b8d665e8444d';
   public const DEFAULT_BUCKET = 'bbc-ai-saas-data';
   public const STORAGE_SCOPE = 'https://www.googleapis.com/auth/devstorage.read_write';
 
@@ -38,6 +37,10 @@ final class BdsGcsUploader
   }
 
   /**
+   * Operational readiness only: dry-run / gcs-write-enabled / target sno presence.
+   * Carries no Tenant identity opinion (no fixed sno, no allowlist). Kept zero-argument
+   * for existing non-Tenant-identity consumers of this operational status.
+   *
    * @return array{open: bool, dry_run: bool, gcs_write_enabled: bool, target_sno: string, reason: string}
    */
   public static function evaluateWriteGate(): array
@@ -79,16 +82,6 @@ final class BdsGcsUploader
       ];
     }
 
-    if ($targetSno !== self::PILOT_TENANT_SNO) {
-      return [
-        'open' => false,
-        'dry_run' => false,
-        'gcs_write_enabled' => true,
-        'target_sno' => $targetSno,
-        'reason' => 'target_sno_not_pilot',
-      ];
-    }
-
     return [
       'open' => true,
       'dry_run' => false,
@@ -99,20 +92,68 @@ final class BdsGcsUploader
   }
 
   /**
+   * BDS Authority resolved Tenant Context (V21 BdsSourceRegistryLoader) is the sole source
+   * of Tenant identity for this Gate. No fixed sno, no Tenant allowlist, no second Authority
+   * is consulted. Layers identity validation on top of the operational gate above so callers
+   * get one fail-closed decision before any GCS API call.
+   *
+   * @param array{tenant_key?: string, sno?: string, gcs_prefix?: string} $resolvedContext
+   * @return array{open: bool, dry_run: bool, gcs_write_enabled: bool, target_sno: string, resolved_sno: string, resolved_tenant_key: string, reason: string}
+   */
+  public static function evaluateResolvedIdentityGate(array $resolvedContext): array
+  {
+    $operational = self::evaluateWriteGate();
+
+    $resolvedTenantKey = isset($resolvedContext['tenant_key']) ? trim((string) $resolvedContext['tenant_key']) : '';
+    $resolvedSno = isset($resolvedContext['sno']) ? trim((string) $resolvedContext['sno']) : '';
+    $resolvedGcsPrefix = isset($resolvedContext['gcs_prefix']) ? trim((string) $resolvedContext['gcs_prefix']) : '';
+
+    $result = $operational + [
+      'resolved_sno' => $resolvedSno,
+      'resolved_tenant_key' => $resolvedTenantKey,
+    ];
+
+    if ($operational['open'] !== true) {
+      return $result;
+    }
+
+    if ($resolvedTenantKey === '' || $resolvedSno === '' || $resolvedGcsPrefix === '') {
+      $result['open'] = false;
+      $result['reason'] = 'resolved_context_incomplete';
+      return $result;
+    }
+
+    if ($operational['target_sno'] !== $resolvedSno) {
+      $result['open'] = false;
+      $result['reason'] = 'target_sno_mismatch';
+      return $result;
+    }
+
+    $canonicalPrefix = 'tenants/' . $resolvedSno . '/';
+    if ($resolvedGcsPrefix !== $canonicalPrefix) {
+      $result['open'] = false;
+      $result['reason'] = 'namespace_mismatch';
+      return $result;
+    }
+
+    return $result;
+  }
+
+  /**
    * @param array<string, array<string, mixed>> $knowledgeJson
    * @param array<string, mixed> $validation
-   * @return array<string, mixed>
+   * @param array{tenant_key?: string, sno?: string, gcs_prefix?: string} $resolvedContext BDS Authority resolved Tenant Context (V21).
    */
-  public function uploadKnowledge(string $tenantSno, array $knowledgeJson, array $validation, ?string $sourceSheetId = null): array
+  public function uploadKnowledge(string $tenantSno, array $knowledgeJson, array $validation, array $resolvedContext, ?string $sourceSheetId = null): array
   {
     $startedAt = gmdate('Y-m-d\TH:i:s\Z');
-    $gate = self::evaluateWriteGate();
+    $gate = self::evaluateResolvedIdentityGate($resolvedContext);
 
     if ($gate['open'] !== true) {
       return $this->blockedResult($tenantSno, $startedAt, $gate['reason'], $gate);
     }
 
-    if ($tenantSno !== self::PILOT_TENANT_SNO || $tenantSno !== $gate['target_sno']) {
+    if ($tenantSno !== $gate['resolved_sno'] || $tenantSno !== $gate['target_sno']) {
       return $this->blockedResult($tenantSno, $startedAt, 'tenant_not_allowed', $gate);
     }
 

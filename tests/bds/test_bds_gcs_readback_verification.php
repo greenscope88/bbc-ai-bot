@@ -9,8 +9,14 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR . 'BdsGcsUploader.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR . 'BdsJsonWriter.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR . 'BdsSourceRegistryLoader.php';
 
-$tenantSno = BdsGcsUploader::PILOT_TENANT_SNO;
+$pilotEntry = BdsSourceRegistryLoader::loadByTenantKey('travel_b');
+if ($pilotEntry === null || (string) ($pilotEntry['sno'] ?? '') === '') {
+  fwrite(STDERR, "FAIL: travel_b BDS Authority entry not resolvable\n");
+  exit(1);
+}
+$tenantSno = (string) $pilotEntry['sno'];
 $bucket = getenv('BDS_GCS_BUCKET');
 $bucket = is_string($bucket) && trim($bucket) !== '' ? trim($bucket) : BdsGcsUploader::DEFAULT_BUCKET;
 $credentialsPath = getenv('BDS_GOOGLE_APPLICATION_CREDENTIALS');

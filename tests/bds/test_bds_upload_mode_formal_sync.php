@@ -19,6 +19,7 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPA
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR . 'BdsJsonWriter.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR . 'BdsKnowledgeDocumentBuilder.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR . 'BdsGcsUploader.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR . 'BdsSourceRegistryLoader.php';
 
 $failures = 0;
 
@@ -310,12 +311,98 @@ test_assert(($syncReport['dry_run'] ?? true) === false, 'formal sync_report dry_
 test_assert(($syncReport['source_type'] ?? '') === 'upload_portal', 'formal sync_report source_type');
 test_assert(($syncReport['upload_session_id'] ?? '') === $sessionId, 'formal sync_report upload_session_id');
 
+// Matrix E — GCS Write Gate single-authority identity validation (pure function, no external I/O)
+$travelBEntry = BdsSourceRegistryLoader::loadByTenantKey('travel_b');
+$travelDEntry = BdsSourceRegistryLoader::loadByTenantKey('travel_d');
+test_assert($travelBEntry !== null, 'E: travel_b resolves from BDS Authority');
+test_assert($travelDEntry !== null, 'E: travel_d resolves from BDS Authority');
+
+if ($travelBEntry !== null && $travelDEntry !== null) {
+    $travelBContext = [
+        'tenant_key' => (string) $travelBEntry['tenant_key'],
+        'sno' => (string) $travelBEntry['sno'],
+        'gcs_prefix' => (string) $travelBEntry['gcs_prefix'],
+    ];
+    $travelDContext = [
+        'tenant_key' => (string) $travelDEntry['tenant_key'],
+        'sno' => (string) $travelDEntry['sno'],
+        'gcs_prefix' => (string) $travelDEntry['gcs_prefix'],
+    ];
+    test_assert($travelBContext['sno'] !== $travelDContext['sno'], 'E: travel_b and travel_d have distinct sno');
+    test_assert($travelBContext['gcs_prefix'] !== $travelDContext['gcs_prefix'], 'E: travel_b and travel_d have distinct namespace');
+
+    $savedGateEnv = [
+        'BDS_DRY_RUN' => getenv('BDS_DRY_RUN'),
+        'BDS_GCS_WRITE_ENABLED' => getenv('BDS_GCS_WRITE_ENABLED'),
+        'BDS_TARGET_SNO' => getenv('BDS_TARGET_SNO'),
+    ];
+    putenv('BDS_DRY_RUN=false');
+    putenv('BDS_GCS_WRITE_ENABLED=true');
+
+    // E1 — travel_b passes the Gate with its own resolved Context.
+    putenv('BDS_TARGET_SNO=' . $travelBContext['sno']);
+    $gateB = BdsGcsUploader::evaluateResolvedIdentityGate($travelBContext);
+    test_assert($gateB['open'] === true, 'E1: travel_b resolved Context opens the Gate');
+    test_assert($gateB['reason'] === 'gate_open', 'E1: travel_b reason is gate_open');
+
+    // E2 — travel_d passes the same Gate with its own resolved Context (no allowlist, no branch).
+    putenv('BDS_TARGET_SNO=' . $travelDContext['sno']);
+    $gateD = BdsGcsUploader::evaluateResolvedIdentityGate($travelDContext);
+    test_assert($gateD['open'] === true, 'E2: travel_d resolved Context opens the Gate');
+    test_assert($gateD['reason'] === 'gate_open', 'E2: travel_d reason is gate_open');
+
+    // E3 — target sno mismatch (operational target sno points at a different tenant) fails closed.
+    putenv('BDS_TARGET_SNO=' . $travelDContext['sno']);
+    $gateMismatch = BdsGcsUploader::evaluateResolvedIdentityGate($travelBContext);
+    test_assert($gateMismatch['open'] === false, 'E3: target sno mismatch fails closed');
+    test_assert($gateMismatch['reason'] === 'target_sno_mismatch', 'E3: target sno mismatch reason');
+
+    // E4 — tampered namespace (sno matches, gcs_prefix borrowed from the other tenant) fails closed.
+    putenv('BDS_TARGET_SNO=' . $travelDContext['sno']);
+    $tamperedContext = $travelDContext;
+    $tamperedContext['gcs_prefix'] = $travelBContext['gcs_prefix'];
+    $gateNamespaceTamper = BdsGcsUploader::evaluateResolvedIdentityGate($tamperedContext);
+    test_assert($gateNamespaceTamper['open'] === false, 'E4: tampered namespace fails closed');
+    test_assert($gateNamespaceTamper['reason'] === 'namespace_mismatch', 'E4: tampered namespace reason');
+
+    // E5 — incomplete resolved Context (missing tenant_key) fails closed before any GCS call.
+    putenv('BDS_TARGET_SNO=' . $travelBContext['sno']);
+    $incompleteContext = ['tenant_key' => '', 'sno' => $travelBContext['sno'], 'gcs_prefix' => $travelBContext['gcs_prefix']];
+    $gateIncomplete = BdsGcsUploader::evaluateResolvedIdentityGate($incompleteContext);
+    test_assert($gateIncomplete['open'] === false, 'E5: incomplete resolved Context fails closed');
+    test_assert($gateIncomplete['reason'] === 'resolved_context_incomplete', 'E5: incomplete resolved Context reason');
+
+    // E6 — Gate rejection propagates to uploadKnowledge(): no GCS call, uploaded_objects=[].
+    putenv('BDS_TARGET_SNO=' . $travelDContext['sno']);
+    $blockedUploader = new BdsGcsUploader(null, null, $testRoot . DIRECTORY_SEPARATOR . 'gate_reject_probe');
+    $blockedResult = $blockedUploader->uploadKnowledge($travelBContext['sno'], [], ['ok' => true], $travelBContext);
+    test_assert(($blockedResult['ok'] ?? true) === false, 'E6: mismatched Context upload result not ok');
+    test_assert(($blockedResult['uploaded_objects'] ?? null) === [], 'E6: mismatched Context uploads no objects');
+    test_assert(($blockedResult['blocked_reason'] ?? '') === 'target_sno_mismatch', 'E6: mismatched Context blocked_reason');
+
+    restore_env($savedGateEnv);
+}
+
+test_assert(
+    stripos((string) file_get_contents(dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR . 'BdsGcsUploader.php'), 'PILOT_TENANT_SNO') === false,
+    'E: BdsGcsUploader source contains no PILOT_TENANT_SNO'
+);
+test_assert(
+    stripos((string) file_get_contents(dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR . 'BdsGcsUploader.php'), 'target_sno_not_pilot') === false,
+    'E: BdsGcsUploader source contains no target_sno_not_pilot'
+);
+
 prepare_project_staging($sessionId, $xlsxPath, $stagingDir);
 
 putenv('BDS_DRY_RUN=false');
 putenv('BDS_GCS_WRITE_ENABLED=true');
 putenv('BDS_TARGET_SNO=' . $tenantSno);
-$gate = BdsGcsUploader::evaluateWriteGate();
+$resolvedContext = [
+    'tenant_key' => 'travel_b',
+    'sno' => $tenantSno,
+    'gcs_prefix' => 'tenants/' . $tenantSno . '/',
+];
+$gate = BdsGcsUploader::evaluateResolvedIdentityGate($resolvedContext);
 fwrite(STDOUT, 'GATE_OPEN|' . ($gate['open'] ? 'yes' : 'no') . '|' . $gate['reason'] . PHP_EOL);
 
 $reportsDir = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'var' . DIRECTORY_SEPARATOR . 'bds'
