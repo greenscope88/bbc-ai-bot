@@ -123,6 +123,62 @@ final class LineCredentialResolver
         }
     }
 
+    /**
+     * Resolve Messaging API access token by credential_env_prefix only.
+     * Used by Admin Bot Info identity derivation when channelId is unknown or wrong.
+     * Never logs token/secret values.
+     *
+     * @return array{
+     *   ok: bool,
+     *   channel_access_token: string|null,
+     *   errorCode: string|null,
+     *   missing_keys: list<string>
+     * }
+     */
+    public static function resolveAccessTokenByCredentialEnvPrefix(string $credentialEnvPrefix): array
+    {
+        $prefix = trim($credentialEnvPrefix);
+        if ($prefix === '') {
+            return [
+                'ok' => false,
+                'channel_access_token' => null,
+                'errorCode' => 'MISSING_CREDENTIAL_ENV_PREFIX',
+                'missing_keys' => ['credential_env_prefix'],
+            ];
+        }
+
+        $secretKey = self::ENV_SECRET_PREFIX . $prefix;
+        $tokenKey = self::ENV_TOKEN_PREFIX . $prefix;
+        $missing = [];
+        $secret = self::getEnvNonEmpty($secretKey);
+        if ($secret === null) {
+            $missing[] = $secretKey;
+        }
+        $token = self::getEnvNonEmpty($tokenKey);
+        if ($token === null) {
+            $missing[] = $tokenKey;
+        }
+        if ($missing !== []) {
+            self::logDecision(null, false, 'prefix:' . $prefix, $missing, 'MISSING_CREDENTIALS');
+
+            return [
+                'ok' => false,
+                'channel_access_token' => null,
+                'errorCode' => 'MISSING_CREDENTIALS',
+                'missing_keys' => $missing,
+            ];
+        }
+
+        self::logDecision(null, true, 'prefix:' . $prefix, [], null);
+
+        return [
+            'ok' => true,
+            'channel_access_token' => $token,
+            'errorCode' => null,
+            'missing_keys' => [],
+        ];
+    }
+
     private static function getEnvNonEmpty(string $key): ?string
     {
         $val = getenv($key);

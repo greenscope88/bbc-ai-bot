@@ -18,9 +18,18 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPA
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
     . 'intent' . DIRECTORY_SEPARATOR . 'AiIntentContextLoader.php';
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
+    . 'intent' . DIRECTORY_SEPARATOR . 'AiuGeminiUnderstandingClientStub.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
+    . 'intent' . DIRECTORY_SEPARATOR . 'AiuPromptRequest.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
     . 'conversation' . DIRECTORY_SEPARATOR . 'ConversationRuntimeFacade.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'core' . DIRECTORY_SEPARATOR
+    . 'tenant' . DIRECTORY_SEPARATOR . 'ConfigTenantRegistry.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'tests' . DIRECTORY_SEPARATOR
+    . 'support' . DIRECTORY_SEPARATOR . 'AiuDestinationSemanticsTestFixtures.php';
 
 $failures = 0;
+$productionRegistry = new ConfigTenantRegistry();
 
 function test_assert(bool $cond, string $message): void
 {
@@ -40,21 +49,42 @@ $dCid = $travelDSno . ':line:Uaiu-auth-d';
 
 $flagOff = [
     AiIntentUnderstandingRuntimeSelector::FLAG_ENABLED => false,
-    AiIntentUnderstandingRuntimeSelector::FLAG_TENANTS => [$pilotSno],
+    'tenant_registry' => $productionRegistry,
 ];
 $flagOn = [
     AiIntentUnderstandingRuntimeSelector::FLAG_ENABLED => true,
-    AiIntentUnderstandingRuntimeSelector::FLAG_TENANTS => [$pilotSno],
+    'tenant_registry' => $productionRegistry,
 ];
-// Golden allowlist mirrors config/bats_feature.php: travel_b pilot + travel_d.
+// Production membership is Registry status+features (travel_b + travel_d aiu_authoritative).
 $flagOnWithTravelD = [
     AiIntentUnderstandingRuntimeSelector::FLAG_ENABLED => true,
-    AiIntentUnderstandingRuntimeSelector::FLAG_TENANTS => [$pilotSno, $travelDSno],
+    'tenant_registry' => $productionRegistry,
 ];
 
-$runtimeFactory = static function () {
+// Deterministic product fixture for selector mapping assertions (stub has no product default).
+$selectorGeminiStub = new AiuGeminiUnderstandingClientStub(static function (AiuPromptRequest $request): array {
+    $text = trim($request->getCustomerUtterance());
+    if (mb_strpos($text, '東京', 0, 'UTF-8') !== false || mb_strpos($text, '自由行', 0, 'UTF-8') !== false) {
+        return [
+            'intent' => 'product_search',
+            'entities' => AiuDestinationSemanticsTestFixtures::mergeEntities([
+                'date_expression' => '3月',
+                'search_keyword_tokens' => ['東京', '自由行'],
+            ], ['東京']),
+            'confidence' => 0.91,
+            'clarification' => [
+                'required' => false,
+                'reason' => '',
+            ],
+        ];
+    }
+
+    return AiuGeminiUnderstandingClientStub::defaultResolver($request);
+});
+
+$runtimeFactory = static function () use ($selectorGeminiStub) {
     return AiIntentUnderstandingRuntime::createForTesting(
-        null,
+        $selectorGeminiStub,
         AiIntentContextLoader::createForTesting(ConversationRuntimeFacade::createForTesting())
     );
 };
@@ -83,24 +113,28 @@ test_assert(count($resOff) === 2, 'flag off: only 2 fields');
 test_assert(!array_key_exists('intent_type', $resOff), 'flag off: no intent_type');
 test_assert(!array_key_exists('fallback_reason', $resOff), 'flag off: no fallback_reason');
 
-$flagOnTenantMismatch = [
+$flagOnUnknownTenant = [
     AiIntentUnderstandingRuntimeSelector::FLAG_ENABLED => true,
-    AiIntentUnderstandingRuntimeSelector::FLAG_TENANTS => ['other-tenant-sno'],
+    'tenant_registry' => $productionRegistry,
 ];
-$resTenantMismatch = AiIntentUnderstandingRuntimeSelector::resolve(
-    $params('我想3月去東京自由行', $flagOnTenantMismatch),
-    $runtimeFactory()
-);
-test_assert($resTenantMismatch['runtime_source'] === AiIntentUnderstandingRuntimeSelector::SOURCE_FAIL_CLOSED, 'tenant mismatch: fail_closed');
+$resTenantMismatch = AiIntentUnderstandingRuntimeSelector::resolve([
+    'tenant_sno' => 'other-tenant-sno',
+    'conversation_id' => 'other-tenant-sno:line:Uaiu-other',
+    'message' => '我想3月去東京自由行',
+    'now' => $now,
+    'reference_date' => $now,
+    'config' => $flagOnUnknownTenant,
+], $runtimeFactory());
+test_assert($resTenantMismatch['runtime_source'] === AiIntentUnderstandingRuntimeSelector::SOURCE_FAIL_CLOSED, 'unknown tenant: fail_closed');
 test_assert(
     ($resTenantMismatch['failure_reason'] ?? '') === AiIntentUnderstandingRuntimeSelector::FAILURE_REASON_AUTHORITY_DISABLED,
-    'tenant mismatch: authority disabled'
+    'unknown tenant: authority disabled'
 );
-test_assert(count($resTenantMismatch) === 2, 'tenant mismatch: only 2 fields');
-test_assert(!array_key_exists('intent_type', $resTenantMismatch), 'tenant mismatch: no intent_type');
-test_assert(!array_key_exists('legacy_intent_type', $resTenantMismatch), 'tenant mismatch: no legacy_intent_type');
-test_assert(!array_key_exists('fallback_reason', $resTenantMismatch), 'tenant mismatch: no fallback_reason');
-test_assert(!array_key_exists('aiu_result', $resTenantMismatch), 'tenant mismatch: no aiu_result');
+test_assert(count($resTenantMismatch) === 2, 'unknown tenant: only 2 fields');
+test_assert(!array_key_exists('intent_type', $resTenantMismatch), 'unknown tenant: no intent_type');
+test_assert(!array_key_exists('legacy_intent_type', $resTenantMismatch), 'unknown tenant: no legacy_intent_type');
+test_assert(!array_key_exists('fallback_reason', $resTenantMismatch), 'unknown tenant: no fallback_reason');
+test_assert(!array_key_exists('aiu_result', $resTenantMismatch), 'unknown tenant: no aiu_result');
 
 $resOnProduct = AiIntentUnderstandingRuntimeSelector::resolve(
     $params('我想3月去東京自由行', $flagOn),
@@ -207,21 +241,18 @@ test_assert(
     'flag on human service: mapped human_service_request'
 );
 
-// THIRD-TENANT-V8: travel_d added to intent_understanding_authoritative_tenant_snos
-// alongside travel_b (golden multi-tenant allowlist, mirrors config/bats_feature.php).
-// Appended last so it cannot perturb the shared runtime/registry state relied on by
-// the pre-existing $cid-based assertions above.
+// Registry-driven AIU membership (status+features.aiu_authoritative).
 test_assert(
     AiIntentUnderstandingRuntimeSelector::isAuthoritativeEnabled($flagOnWithTravelD, $travelDSno) === true,
-    'travel_d allowlisted: isAuthoritativeEnabled true'
+    'travel_d registry feature: isAuthoritativeEnabled true'
 );
 test_assert(
     AiIntentUnderstandingRuntimeSelector::isAuthoritativeEnabled($flagOnWithTravelD, $pilotSno) === true,
-    'travel_b regression under multi-tenant allowlist: isAuthoritativeEnabled true'
+    'travel_b registry feature: isAuthoritativeEnabled true'
 );
 test_assert(
     AiIntentUnderstandingRuntimeSelector::isAuthoritativeEnabled($flagOnWithTravelD, 'other-tenant-sno') === false,
-    'non-allowlisted sno under multi-tenant allowlist: isAuthoritativeEnabled false'
+    'unknown sno: isAuthoritativeEnabled false'
 );
 
 // resolve() for travel_d must pass the Authority gate (never AIU_AUTHORITY_DISABLED),
@@ -237,11 +268,9 @@ $resTravelD = AiIntentUnderstandingRuntimeSelector::resolve([
 ], $runtimeFactory());
 test_assert(
     ($resTravelD['failure_reason'] ?? null) !== AiIntentUnderstandingRuntimeSelector::FAILURE_REASON_AUTHORITY_DISABLED,
-    'travel_d allowlisted: resolve() not authority disabled'
+    'travel_d registry feature: resolve() not authority disabled'
 );
 
-// Non-allowlisted sno remains fail-closed with AUTHORITY_DISABLED under the golden
-// multi-tenant allowlist (resolve() short-circuits before touching the runtime).
 $resOtherWithTravelD = AiIntentUnderstandingRuntimeSelector::resolve([
     'tenant_sno' => 'other-tenant-sno',
     'conversation_id' => 'other-tenant-sno:line:Uaiu-other',
@@ -250,10 +279,10 @@ $resOtherWithTravelD = AiIntentUnderstandingRuntimeSelector::resolve([
     'reference_date' => $now,
     'config' => $flagOnWithTravelD,
 ], $runtimeFactory());
-test_assert($resOtherWithTravelD['runtime_source'] === AiIntentUnderstandingRuntimeSelector::SOURCE_FAIL_CLOSED, 'non-allowlisted sno: fail_closed');
+test_assert($resOtherWithTravelD['runtime_source'] === AiIntentUnderstandingRuntimeSelector::SOURCE_FAIL_CLOSED, 'unknown sno: fail_closed');
 test_assert(
     ($resOtherWithTravelD['failure_reason'] ?? '') === AiIntentUnderstandingRuntimeSelector::FAILURE_REASON_AUTHORITY_DISABLED,
-    'non-allowlisted sno: authority disabled'
+    'unknown sno: authority disabled'
 );
 
 if ($failures > 0) {

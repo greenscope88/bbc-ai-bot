@@ -81,11 +81,9 @@ return [
     // legacy-compatible intent_type mapping. Legacy detect always runs for Shadow parity.
     // Shadow probe continues independently. Reversible in one line (set back to false).
     // Production reply flow remains Legacy until this flag is explicitly turned ON.
+    // Production AIU membership is Registry status+features.aiu_authoritative (not this list).
     'intent_understanding_authoritative_enabled' => true,
-    'intent_understanding_authoritative_tenant_snos' => [
-        '5f99b8d665e8444d', // travel_b pilot
-        '5fecdf66e9224bee', // travel_d
-    ],
+    'intent_understanding_authoritative_tenant_snos' => [],
     // Phase 2-F Step 2-F-2a Grounding Layer shadow probe (safe default OFF).
     // Shadow-only: assembles GroundedInput in parallel and logs structure / reply
     // parity against the legacy compose path. Never changes outbound reply.
@@ -94,10 +92,9 @@ return [
     // Phase 2-F Step 2-F-2b Authoritative Grounding path (safe default OFF).
     // When enabled for allowlisted tenant (travel_b pilot), Knowledge / Product exits
     // use GroundingRuntime::assemble() -> compose(). Legacy compose remains fallback.
+    // Production Grounding membership is Registry status+features.grounding_authoritative (not this list).
     'grounding_layer_authoritative_enabled' => true,
-    'grounding_layer_authoritative_tenant_snos' => [
-        '5f99b8d665e8444d', // travel_b pilot
-    ],
+    'grounding_layer_authoritative_tenant_snos' => [],
     // Phase 2-E Step 2-E-2a Composer Runtime foundation (safe default OFF).
     // When OFF: GroundedResponseComposer uses legacy pass-through only (2-E-1).
     // When ON: ComposerRuntime pipeline (Human Takeover guard + pass-through fallback).

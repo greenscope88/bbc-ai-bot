@@ -68,10 +68,17 @@ final class GroundingPipelineRuntime
 
     public const ROUTE_DESTINATION_EXECUTION_GATE = 'phase_9c1_destination_execution_gate';
 
+    public const FEATURE_KEY = 'grounding_authoritative';
+
     /**
+     * Global kill switch remains FLAG_ENABLED.
+     * Production membership: Registry status in {staging,enabled} AND features.grounding_authoritative.
+     * FLAG_TENANTS is not a Production Activation Authority.
+     *
      * @param array<string, mixed> $config
+     * @param mixed $registry TenantRegistryInterface|null
      */
-    public static function isAuthoritativeEnabled(array $config, string $tenantSno): bool
+    public static function isAuthoritativeEnabled(array $config, string $tenantSno, $registry = null): bool
     {
         $enabled = isset($config[self::FLAG_ENABLED]) && (bool) $config[self::FLAG_ENABLED];
         if (!$enabled) {
@@ -83,11 +90,29 @@ final class GroundingPipelineRuntime
             return false;
         }
 
-        $allow = isset($config[self::FLAG_TENANTS]) && is_array($config[self::FLAG_TENANTS])
-            ? array_values(array_filter(array_map('strval', $config[self::FLAG_TENANTS])))
-            : [];
+        if (!is_object($registry) || !method_exists($registry, 'resolveBySno')) {
+            if (isset($config['tenant_registry']) && is_object($config['tenant_registry']) && method_exists($config['tenant_registry'], 'resolveBySno')) {
+                $registry = $config['tenant_registry'];
+            } elseif (isset($config['tenant_registry_path']) && is_string($config['tenant_registry_path']) && $config['tenant_registry_path'] !== '') {
+                require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'tenant' . DIRECTORY_SEPARATOR . 'ConfigTenantRegistry.php';
+                $registry = new \ConfigTenantRegistry($config['tenant_registry_path']);
+            } else {
+                require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'tenant' . DIRECTORY_SEPARATOR . 'ConfigTenantRegistry.php';
+                $registry = new \ConfigTenantRegistry();
+            }
+        }
 
-        return in_array($tenantSno, $allow, true);
+        $tenant = $registry->resolveBySno($tenantSno);
+        if ($tenant === null) {
+            return false;
+        }
+
+        $status = $tenant->getStatus();
+        if ($status !== 'staging' && $status !== 'enabled') {
+            return false;
+        }
+
+        return $tenant->isFeatureEnabled(self::FEATURE_KEY);
     }
 
     /**

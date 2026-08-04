@@ -70,40 +70,51 @@ final class AiIntentUnderstandingRuntimeSelector
 
      */
 
-    public static function isAuthoritativeEnabled(array $config, string $tenantSno): bool
+    public const FEATURE_KEY = 'aiu_authoritative';
 
+    /**
+     * Global kill switch remains FLAG_ENABLED.
+     * Production membership: Registry status in {staging,enabled} AND features.aiu_authoritative.
+     * FLAG_TENANTS is not a Production Activation Authority.
+     *
+     * @param array<string, mixed> $config
+     * @param TenantRegistryInterface|null $registry
+     */
+    public static function isAuthoritativeEnabled(array $config, string $tenantSno, $registry = null): bool
     {
-
         $enabled = isset($config[self::FLAG_ENABLED]) && (bool) $config[self::FLAG_ENABLED];
-
         if (!$enabled) {
-
             return false;
-
         }
-
-
 
         $tenantSno = trim($tenantSno);
-
         if ($tenantSno === '') {
-
             return false;
-
         }
 
+        if (!$registry instanceof \TenantRegistryInterface) {
+            if (isset($config['tenant_registry']) && $config['tenant_registry'] instanceof \TenantRegistryInterface) {
+                $registry = $config['tenant_registry'];
+            } elseif (isset($config['tenant_registry_path']) && is_string($config['tenant_registry_path']) && $config['tenant_registry_path'] !== '') {
+                require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'tenant' . DIRECTORY_SEPARATOR . 'ConfigTenantRegistry.php';
+                $registry = new \ConfigTenantRegistry($config['tenant_registry_path']);
+            } else {
+                require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'tenant' . DIRECTORY_SEPARATOR . 'ConfigTenantRegistry.php';
+                $registry = new \ConfigTenantRegistry();
+            }
+        }
 
+        $tenant = $registry->resolveBySno($tenantSno);
+        if ($tenant === null) {
+            return false;
+        }
 
-        $allow = isset($config[self::FLAG_TENANTS]) && is_array($config[self::FLAG_TENANTS])
+        $status = $tenant->getStatus();
+        if ($status !== 'staging' && $status !== 'enabled') {
+            return false;
+        }
 
-            ? array_values(array_filter(array_map('strval', $config[self::FLAG_TENANTS])))
-
-            : [];
-
-
-
-        return in_array($tenantSno, $allow, true);
-
+        return $tenant->isFeatureEnabled(self::FEATURE_KEY);
     }
 
 
@@ -134,9 +145,9 @@ final class AiIntentUnderstandingRuntimeSelector
 
             $tenantSno = trim((string) ($params['tenant_sno'] ?? ''));
 
+            $registry = isset($params['tenant_registry']) ? $params['tenant_registry'] : null;
 
-
-            if (!self::isAuthoritativeEnabled($config, $tenantSno)) {
+            if (!self::isAuthoritativeEnabled($config, $tenantSno, $registry)) {
 
                 return self::failClosedResult(self::FAILURE_REASON_AUTHORITY_DISABLED);
 
